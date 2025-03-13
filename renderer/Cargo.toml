@@ -1,0 +1,56 @@
+[package]
+name = "renderer"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+# The dependencies here are independent from the workspace versions
+[dependencies]
+# When using this example outside of the original Vello workspace,
+# remove the path property of the following Vello dependency requirement.
+# vello = { version = "0.2.0", git = "https://github.com/linebender/vello", rev = "a00cd9f" }
+# velato = { version = "0.3.0", git = "https://github.com/linebender/velato", rev = "2a3b0a3" }
+anyhow = "1.0.86"
+pollster = "0.3.0"
+image = { version = "0.23.14", features = ["png", "jpeg"] }
+itertools = "0.13.0"
+wgpu = { git = "https://github.com/gfx-rs/wgpu", rev = "a13f0a0"}
+nalgebra = "0.33.0"
+custom_debug = "0.6.1"
+bytemuck = "1.20.0"
+psydk-proc = { path = "../psydk-proc" }
+foreign-types-shared = "0.3.1"
+cosmic-text = "0.12.1"
+winit = "0.30.8"
+
+# vello
+skrifa = { version = "0.26.5", optional = true }
+vello = { git = "https://github.com/linebender/vello.git", rev = "4ec6b24", optional = true }
+vello_svg = { version = "0.6.0", optional = true }
+
+# macOS only
+[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+metal = "0.31.0"
+skia-safe = { version = "0.81.0", features = ["metal"], optional = true }
+
+
+# windows only
+[target.'cfg(target_os = "windows")'.dependencies]
+skia-safe = { version = "0.81.0", features = ["d3d"], optional = true }
+windows = { version = "0.58.0", features = [
+    "Win32",
+    "Win32_Graphics",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Direct3D12",
+    "Win32_Graphics_Direct3D",
+    "Win32_Foundation",
+    "Win32_Graphics_Dxgi_Common",
+] }
+
+
+[features]
+default = ["skia"]
+skia = ["dep:skia-safe"]
+vello = ["dep:vello"]

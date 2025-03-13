@@ -1,0 +1,36 @@
+[project]
+channels = ["conda-forge"]
+description = "Add a short description here"
+name = "psydk"
+platforms = ["win-64", "osx-arm64"]
+version = "0.1.0"
+
+[tasks]
+"build-py" = { cwd = "psydk", cmd = "maturin build" }
+"build-py-ios" = { cwd = "psydk", env = { PYTHON_VERSION = "3.10", PYTHONDIR = "$PIXI_PROJECT_ROOT/psydk/build_helpers/ios-arm64/" }, cmd = "build_helpers/build_ios.sh" }
+"build-docs" = "sphinx-build -M html docs/source/ docs/build/ -W -a -j auto -n --keep-going"
+
+"dev-py" = { cwd = "psydk", cmd = "maturin develop" }
+
+
+[dependencies]
+python = "3.10.*"
+pixi-pycharm = ">=0.0.8,<0.0.9"
+pip = ">=24.3.1,<25"
+mkdocs = ">=1.6.1,<2"
+mkdocs-material = ">=9.6.5,<10"
+mkdocstrings-python = ">=1.16.1,<2"
+griffe-inherited-docstrings = ">=1.1.1,<2"
+pymunk = ">=6.10.0,<7"
+emsdk = ">=3.1.46,<4"
+numpy = ">=2.2.3,<3"
+pandas = ">=2.2.3,<3"
+
+[pypi-dependencies]
+maturin = ">=1.7.4, <2"
+cibuildwheel = ">=2.23.0, <3"
+sphinx = ">=8.1.3,<9"
+sphinxcontrib-napoleon = ">=0.7, <0.8"
+sphinx-rtd-theme = ">=3.0.2, <4"
+pydata-sphinx-theme = ">=0.16.1, <0.17"
+briefcase = ">=0.3.22, <0.4"
