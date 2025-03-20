@@ -42,6 +42,7 @@ pub struct SkiaScene {
     // pub canvas: skia_safe::Canvas,
     pub width: u32,
     pub height: u32,
+    pub bg_color: RGBA,
 }
 
 pub struct SkiaRenderer {
@@ -84,6 +85,7 @@ impl SkiaScene {
             picture_recorder,
             width,
             height,
+            bg_color: RGBA::WHITE,
         }
     }
 
@@ -174,10 +176,6 @@ impl Scene for SkiaScene {
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
-    }
-
-    fn set_background_color(&mut self, color: RGBA) {
-        todo!()
     }
 
     fn set_width(&mut self, width: u32) {
@@ -305,13 +303,23 @@ impl Scene for SkiaScene {
         // canvas.draw_glyphs_at(&glyph_ids, glyph_positions, origin, &skia_font, &paint);
         canvas.draw_glyphs_at(&glyph_ids, glyph_positions, origin, &skia_font, &paint);
     }
+
+    fn set_bg_color(&mut self, color: RGBA) {
+        self.bg_color = color;
+        let bg_color: skia_safe::Color4f = color.into();
+        self.picture_recorder.recording_canvas().unwrap().clear(bg_color);
+    }
+
+    fn bg_color(&self) -> RGBA {
+        self.bg_color
+    }
 }
 
 impl Renderer for SkiaRenderer {
     fn render_to_texture(
         &self,
         device: &Device,
-        queue: &Queue,
+        _queue: &Queue,
         texture: &Texture,
         width: u32,
         height: u32,
@@ -332,6 +340,9 @@ impl Renderer for SkiaRenderer {
 
         // try to downcast the scene to a SkiaScene
         let skia_scene = scene.as_any_mut().downcast_mut::<SkiaScene>().unwrap();
+        // set the background color
+        let bg_color: skia_safe::Color4f = skia_scene.bg_color.into();
+
         let picture = skia_scene.picture_recorder.finish_recording_as_picture(None).unwrap();
 
         // draw the picture to the canvas

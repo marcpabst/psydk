@@ -26,8 +26,8 @@ impl DynamicScene {
         self.0.lock().unwrap()
     }
 
-    pub fn set_background_color(&mut self, color: RGBA) {
-        self.inner().set_background_color(color);
+    pub fn set_bg_color(&mut self, color: RGBA) {
+        self.inner().set_bg_color(color);
     }
 
     pub fn set_width(&mut self, width: u32) {
@@ -108,7 +108,6 @@ impl DynamicScene {
 pub trait Scene: Any {
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
-    fn set_background_color(&mut self, color: RGBA);
     fn set_width(&mut self, width: u32);
     fn set_height(&mut self, height: u32);
     fn background_color(&self) -> RGBA;
@@ -170,4 +169,6 @@ pub trait Scene: Any {
         transform: Option<Affine>,
         blend_mode: Option<BlendMode>,
     );
+    fn set_bg_color(&mut self, color: RGBA);
+    fn bg_color(&self) -> RGBA;
 }

@@ -127,6 +127,8 @@ pub struct WindowState {
     /// Event handlers for the window.
     #[dbg(placeholder = "...")]
     pub event_handlers: HashMap<EventHandlerId, (EventKind, EventHandler)>,
+    /// Background color of the window.
+    pub bg_color: LinRgba,
 }
 
 unsafe impl Send for WindowState {}
@@ -272,11 +274,14 @@ impl Window {
         let scene = win_state
             .renderer
             .create_scene(win_state.size.width, win_state.size.height);
-        Frame {
-            bg_color: LinRgba::new(0.0, 0.0, 0.0, 1.0),
+        let mut frame = Frame {
             scene,
             window: self.clone(),
-        }
+        };
+
+        frame.set_bg_color(win_state.bg_color);
+
+        frame
     }
     fn remove_event_handler(&self, id: EventHandlerId) {
         let mut state = self.state.lock().unwrap();
@@ -374,6 +379,22 @@ impl Window {
         self.size().into()
     }
 
+    #[pyo3(name = "bg_color")]
+    #[getter]
+    fn py_get_bg_color(&self, py: Python) -> LinRgba {
+        let self_wrapper = SendWrapper::new(self);
+        py.allow_threads(move || self_wrapper.state.lock().unwrap().bg_color)
+    }
+
+    #[pyo3(name = "bg_color")]
+    #[setter]
+    fn py_set_bg_color(&self, bg_color: PyRef<LinRgba>) {
+        let py = bg_color.py();
+        let bg_color = *bg_color;
+        let self_wrapper = SendWrapper::new(self);
+        py.allow_threads(move || self_wrapper.state.lock().unwrap().bg_color = bg_color)
+    }
+
     /// Add an event handler to the window. The event handler will be called
     /// whenever an event of the specified kind occurs.
     ///
@@ -433,7 +454,6 @@ impl FrameIterator {
 #[pyclass]
 #[pyo3(unsendable)]
 pub struct Frame {
-    pub bg_color: super::color::LinRgba,
     #[dbg(placeholder = "...")]
     scene: DynamicScene,
     /// The window that the frame is associated with.
@@ -443,7 +463,7 @@ pub struct Frame {
 impl Frame {
     /// Set the background color of the frame.
     pub fn set_bg_color(&mut self, bg_color: LinRgba) {
-        self.bg_color = bg_color;
+        self.scene_mut().set_bg_color(bg_color.into());
     }
 
     /// Draw onto the frame.
@@ -451,7 +471,6 @@ impl Frame {
         let mut stimulus = stimulus.lock();
 
         let now = Instant::now();
-
         {
             // this needs to be scoped so that the mutable borrow of self is released
             let window_state = self.window.state.lock().unwrap();
@@ -483,13 +502,8 @@ impl Frame {
         py.allow_threads(move || self_wrapper.draw(stimulus_wrapper.as_super()));
     }
 
-    #[getter(bg_color)]
-    fn py_get_bg_color(&self) -> super::color::LinRgba {
-        self.bg_color
-    }
-
     #[setter(bg_color)]
     fn py_set_bg_color(&mut self, bg_color: super::color::LinRgba) {
-        self.bg_color = bg_color;
+        self.set_bg_color(bg_color);
     }
 }

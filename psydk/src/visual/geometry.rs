@@ -779,3 +779,118 @@ impl<'py> FromPyObject<'py> for Anchor {
         }
     }
 }
+
+// convience function to create Size
+
+#[pyfunction]
+/// Create a new Size with the given value in pixels.
+pub fn px(value: f32) -> Size {
+    Size::Pixels(value)
+}
+
+#[pyfunction]
+/// Create a new Size with the given value as a fraction of the viewport width.
+pub fn vw(value: f32) -> Size {
+    Size::ViewportWidth(value)
+}
+
+#[pyfunction]
+/// Create a new Size with the given value as a fraction of the viewport height.
+pub fn vh(value: f32) -> Size {
+    Size::ViewportHeight(value)
+}
+
+#[pyfunction]
+/// Create a new Size with the given value in degrees of visual angle.
+pub fn deg(value: f32) -> Size {
+    Size::Degrees(value)
+}
+
+#[pyfunction]
+/// Create a new Size with the given value in millimeters.
+pub fn mm(value: f32) -> Size {
+    Size::Millimeters(value)
+}
+
+#[pyfunction]
+/// Create a new Size with the given value in centimeters.
+pub fn cm(value: f32) -> Size {
+    Size::Centimeters(value)
+}
+
+#[pyfunction]
+#[pyo3(name = "in")]
+/// Create a new Size with the given value in inches.
+pub fn py_in(value: f32) -> Size {
+    Size::Inches(value)
+}
+
+#[pyfunction]
+/// Create a new Size with the given value in points.
+pub fn pt(value: f32) -> Size {
+    Size::Points(value)
+}
+
+// convience function to create Shape
+
+#[pyfunction]
+#[pyo3(signature = (
+    width,
+    height,
+    x = IntoSize(Size::Pixels(0.0)),
+    y = IntoSize(Size::Pixels(0.0)),
+))]
+/// Create a new rectangle.
+pub fn rectangle(width: IntoSize, height: IntoSize, x: IntoSize, y: IntoSize) -> Shape {
+    Shape::Rectangle {
+        x: x.into(),
+        y: y.into(),
+        width: width.into(),
+        height: height.into(),
+    }
+}
+
+#[pyfunction]
+#[pyo3(signature = (
+    radius,
+    x = IntoSize(Size::Pixels(0.0)),
+    y = IntoSize(Size::Pixels(0.0)),
+))]
+/// Create a new circle, centered at (x, y) with the given radius.
+pub fn circle(radius: IntoSize, x: IntoSize, y: IntoSize) -> Shape {
+    Shape::Circle {
+        x: x.into(),
+        y: y.into(),
+        radius: radius.into(),
+    }
+}
+
+#[pyfunction]
+/// Create a new line.
+pub fn line(x1: IntoSize, y1: IntoSize, x2: IntoSize, y2: IntoSize) -> Shape {
+    Shape::Line {
+        x1: x1.into(),
+        y1: y1.into(),
+        x2: x2.into(),
+        y2: y2.into(),
+    }
+}
+
+#[pyfunction]
+/// Create a new ellipse.
+pub fn ellipse(x: IntoSize, y: IntoSize, radius_x: IntoSize, radius_y: IntoSize) -> Shape {
+    Shape::Ellipse {
+        x: x.into(),
+        y: y.into(),
+        radius_x: radius_x.into(),
+        radius_y: radius_y.into(),
+    }
+}
+
+#[pyfunction]
+/// Create a new polygon.
+pub fn polygon(points: Vec<(IntoSize, IntoSize)>) -> Shape {
+    Shape::Polygon {
+        points: points.into_iter().map(|(x, y)| (x.into(), y.into())).collect(),
+    }
+}

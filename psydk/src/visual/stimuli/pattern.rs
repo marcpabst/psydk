@@ -40,7 +40,7 @@ pub struct PatternParams {
     pub y: Size,
     pub phase_x: f64,
     pub phase_y: f64,
-    pub cycle_length: Size,
+    pub pattern_size: Size,
     pub fill_color: LinRgba,
     pub background_color: LinRgba,
     pub pattern_rotation: f64,
@@ -70,7 +70,7 @@ impl PatternStimulus {
         y: Size,
         phase_x: f64,
         phase_y: f64,
-        cycle_length: Size,
+        pattern_size: Size,
         fill_color: LinRgba,
         background_color: LinRgba,
         pattern: FillPattern,
@@ -91,7 +91,7 @@ impl PatternStimulus {
                 y,
                 phase_x,
                 phase_y,
-                cycle_length,
+                pattern_size,
                 fill_color,
                 background_color,
                 pattern_rotation,
@@ -197,7 +197,7 @@ impl PyPatternStimulus {
         y = IntoSize(Size::Pixels(0.0)),
         phase_x = 0.0,
         phase_y = 0.0,
-        cycle_length = IntoSize(Size::Pixels(100.0)),
+        pattern_size = IntoSize(Size::Pixels(100.0)),
         fill_color = IntoLinRgba(LinRgba::default()),
         background_color = IntoLinRgba(LinRgba::default()),
         pattern = FillPattern::Uniform,
@@ -237,7 +237,7 @@ impl PyPatternStimulus {
         y: IntoSize,
         phase_x: f64,
         phase_y: f64,
-        cycle_length: IntoSize,
+        pattern_size: IntoSize,
         fill_color: IntoLinRgba,
         background_color: IntoLinRgba,
         pattern: FillPattern,
@@ -257,7 +257,7 @@ impl PyPatternStimulus {
                 y.into(),
                 phase_x,
                 phase_y,
-                cycle_length.into(),
+                pattern_size.into(),
                 fill_color.into(),
                 background_color.into(),
                 pattern,
@@ -303,10 +303,10 @@ impl Stimulus for PatternStimulus {
         let x_origin = self.params.x.eval(windows_size, screen_props) as f64;
         let y_origin = self.params.y.eval(windows_size, screen_props) as f64;
 
-        let cycle_length = self.params.cycle_length.eval(windows_size, screen_props);
+        let pattern_size = self.params.pattern_size.eval(windows_size, screen_props);
 
-        let shift_x = (self.params.phase_x % 360.0) / 360.0 * cycle_length as f64;
-        let shift_y = (self.params.phase_y % 360.0) / 360.0 * cycle_length as f64;
+        let shift_x = (self.params.phase_x % 360.0) / 360.0 * pattern_size as f64;
+        let shift_y = (self.params.phase_y % 360.0) / 360.0 * pattern_size as f64;
 
         let pattern_transform = Affine::rotate(self.params.pattern_rotation);
 
@@ -315,10 +315,10 @@ impl Stimulus for PatternStimulus {
             FillPattern::Sinosoidal => todo!(),
             FillPattern::Checkerboard | FillPattern::Stripes => Brush::Image {
                 image: &self.pattern_image.as_ref().unwrap(),
-                start: (shift_x, shift_y).into(),
+                start: (x_origin + shift_x, y_origin + shift_y).into(),
                 fit_mode: ImageFitMode::Exact {
-                    width: cycle_length,
-                    height: cycle_length,
+                    width: pattern_size,
+                    height: pattern_size,
                 },
                 sampling: ImageSampling::Nearest,
                 edge_mode: (Extend::Repeat, Extend::Repeat),

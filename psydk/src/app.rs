@@ -27,7 +27,10 @@ use crate::{
     errors,
     experiment::{EventLoopAction, ExperimentManager, Monitor, WindowOptions},
     input::Event,
-    visual::window::{PhysicalScreen, Window, WindowState},
+    visual::{
+        color::LinRgba,
+        window::{PhysicalScreen, Window, WindowState},
+    },
     EventTryFrom,
 };
 
@@ -225,6 +228,7 @@ impl App {
             size: size.into(),
             physical_screen: PhysicalScreen::new(size.width, width_mm, viewing_distance),
             event_handlers: HashMap::new(), // TODO this should be a weak reference
+            bg_color: LinRgba::new(0.5, 0.5, 0.5, 1.0),
         };
 
         // create channel for physical input

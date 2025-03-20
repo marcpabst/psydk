@@ -86,6 +86,20 @@ fn psydk(m: &Bound<'_, PyModule>) -> PyResult<()> {
             m.add_class::<visual::geometry::Transformation2D>()?;
             m.add_class::<visual::geometry::Shape>()?;
             m.add_class::<visual::geometry::Size>()?;
+            m.add_function(wrap_pyfunction!(visual::geometry::px, &m)?)?;
+            m.add_function(wrap_pyfunction!(visual::geometry::vw, &m)?)?;
+            m.add_function(wrap_pyfunction!(visual::geometry::vh, &m)?)?;
+            m.add_function(wrap_pyfunction!(visual::geometry::deg, &m)?)?;
+            m.add_function(wrap_pyfunction!(visual::geometry::mm, &m)?)?;
+            m.add_function(wrap_pyfunction!(visual::geometry::cm, &m)?)?;
+            m.add_function(wrap_pyfunction!(visual::geometry::py_in, &m)?)?;
+
+            m.add_function(wrap_pyfunction!(visual::geometry::rectangle, &m)?)?;
+            m.add_function(wrap_pyfunction!(visual::geometry::circle, &m)?)?;
+            m.add_function(wrap_pyfunction!(visual::geometry::ellipse, &m)?)?;
+            m.add_function(wrap_pyfunction!(visual::geometry::line, &m)?)?;
+            m.add_function(wrap_pyfunction!(visual::geometry::polygon, &m)?)?;
+
             m
         };
 
