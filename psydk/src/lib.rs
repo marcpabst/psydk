@@ -26,6 +26,7 @@ pub mod app;
 pub mod audio;
 pub mod errors;
 pub mod input;
+pub mod time;
 pub mod utils;
 pub mod visual;
 
@@ -121,6 +122,26 @@ fn psydk(m: &Bound<'_, PyModule>) -> PyResult<()> {
     };
 
     m.add_submodule(&m_visual)?;
+
+    let m_audio = {
+        let m = new_submodule!(m, "psydk", "audio");
+        m.add_class::<audio::PyStream>()?;
+        m.add_class::<audio::PyDevice>()?;
+        m.add_class::<audio::PyHost>()?;
+        m.add_class::<audio::PyAudioObject>()?;
+        m
+    };
+
+    m.add_submodule(&m_audio)?;
+
+    let m_time = {
+        let m = new_submodule!(m, "psydk", "time");
+        m.add_class::<time::PyTimestamp>()?;
+        m.add_function(wrap_pyfunction!(time::py_now, &m)?)?;
+        m
+    };
+
+    m.add_submodule(&m_time)?;
 
     Ok(())
 }

@@ -77,7 +77,6 @@ pub(crate) fn create_fill_brush2<'a>(
 }
 
 pub(crate) fn get_renderer_factory(py: Python) -> PyResult<PyRendererFactory> {
-    // create the image
     // first, try to get __renderer_factory from the __globals__
     let renderer_factory = py
         .eval(c_str!("__renderer_factory"), None, None)

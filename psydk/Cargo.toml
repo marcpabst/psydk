@@ -31,7 +31,7 @@ crate-type = ["cdylib"]
 # General dependencies
 [dependencies]
 # wgpu = { path = "../../wgpu/wgpu" }
-wgpu = { git = "https://github.com/gfx-rs/wgpu", rev = "a13f0a0"}
+wgpu = { git = "https://github.com/gfx-rs/wgpu", rev = "a13f0a0" }
 serde = { version = "1.0", features = ["derive"] }
 renderer = { path = "../renderer" }
 psydk-proc = { path = "../psydk-proc" }
@@ -43,7 +43,6 @@ bytemuck = { version = "1.14.0", features = ["derive"] }
 nalgebra = "0.33.0"
 web-time = "1.0.0"
 image = "0.24.7"
-rodio = "0.18.0"
 fontdb = "0.16.0"
 fastrand = "2.0.1"
 async-broadcast = "=0.7.0"
@@ -71,14 +70,15 @@ send_wrapper = "0.6.0"
 numpy = "0.23.*"
 strum_macros = "0.26.4"
 csscolorparser = "0.7.0"
+pollster = "0.4.0"
+cosmic-text = "0.12.1"
+timed-audio = { path = "../../timed-audio" }
 
 # Gstreamer dependencies
 glib = { version = "0.20.6", optional = true }
 gstreamer = { version = "0.23.3", optional = true }
 gstreamer-app = { version = "0.23.3", optional = true }
 gstreamer-video = { version = "0.23.3", optional = true }
-pollster = "0.4.0"
-cosmic-text = "0.12.1"
 # tikv-jemallocator = { version = "0.5.4", features = ["profiling"] }
 
 # MacOS dependencies

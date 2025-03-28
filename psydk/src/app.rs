@@ -184,7 +184,7 @@ impl App {
             present_mode: wgpu::PresentMode::Fifo,
             alpha_mode: swapchain_capabilities.alpha_modes[0],
             view_formats: swapchain_view_format,
-            desired_maximum_frame_latency: 2,
+            desired_maximum_frame_latency: 1,
         };
 
         log::debug!("Surface configuration: {:?}", config);
@@ -284,10 +284,13 @@ impl App {
 
         let action_sender = self.action_sender.clone();
 
+        let audio_host = timed_audio::cpal::default_host().into();
+
         let exp_manager = ExperimentManager::new(
             event_loop_proxy,
             action_sender,
             self.renderer_factory.clone(),
+            audio_host,
             self.font_manager.clone(),
         );
 

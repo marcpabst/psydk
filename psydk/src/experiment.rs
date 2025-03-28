@@ -12,7 +12,12 @@ use pyo3::{
 use renderer::{cosmic_text, renderer::RendererFactory};
 use winit::event_loop::EventLoopProxy;
 
-use crate::{app::App, errors, visual::window::Window};
+use crate::{
+    app::App,
+    audio::{PyDevice, PyHost, PyStream},
+    errors,
+    visual::window::Window,
+};
 
 #[derive(Dbg)]
 pub enum EventLoopAction {
@@ -122,12 +127,13 @@ impl WindowOptions {
 }
 
 /// The ExperimentManager is available to the user in the experiment function.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 #[pyclass(unsendable)]
 pub struct ExperimentManager {
     event_loop_proxy: EventLoopProxy<()>,
     action_sender: Sender<EventLoopAction>,
     renderer_factory: Arc<dyn RendererFactory>,
+    audio_host: Arc<timed_audio::cpal::Host>,
     font_manager: Arc<Mutex<cosmic_text::FontSystem>>,
 }
 
@@ -136,12 +142,14 @@ impl ExperimentManager {
         event_loop_proxy: EventLoopProxy<()>,
         action_sender: Sender<EventLoopAction>,
         renderer_factory: Arc<dyn RendererFactory>,
+        audio_host: Arc<timed_audio::cpal::Host>,
         font_manager: Arc<Mutex<cosmic_text::FontSystem>>,
     ) -> Self {
         Self {
             event_loop_proxy,
             action_sender,
             renderer_factory,
+            audio_host,
             font_manager,
         }
     }
@@ -237,6 +245,13 @@ impl ExperimentManager {
     ///  The new window.
     fn py_create_default_window(&self, fullscreen: bool, monitor: Option<u32>) -> Window {
         self.create_default_window(fullscreen, monitor)
+    }
+
+    // Create a new audio stream
+    #[pyo3(name = "create_audio_stream")]
+    #[pyo3(signature = (device = None))]
+    fn py_create_audio_stream(&self, device: Option<&PyDevice>) -> PyStream {
+        PyStream::new(&self.audio_host, device)
     }
 
     #[pyo3(name = "get_available_monitors")]
