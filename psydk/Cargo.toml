@@ -79,6 +79,8 @@ glib = { version = "0.20.6", optional = true }
 gstreamer = { version = "0.23.3", optional = true }
 gstreamer-app = { version = "0.23.3", optional = true }
 gstreamer-video = { version = "0.23.3", optional = true }
+gix = "0.70.0"
+sysinfo = "0.30.13"
 # tikv-jemallocator = { version = "0.5.4", features = ["profiling"] }
 
 # MacOS dependencies

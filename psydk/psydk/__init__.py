@@ -1,5 +1,4 @@
 # import the contents of the Rust library into the Python extension
-print("importing psydk")
 from .psydk import *
 from .psydk import __all__
 

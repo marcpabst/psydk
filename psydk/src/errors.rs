@@ -65,6 +65,8 @@ pub enum psydkError {
     SingleImageError,
 }
 
+pub type PsydkResult<T> = std::result::Result<T, psydkError>;
+
 // macro that error with the given message
 #[macro_export]
 macro_rules! error {

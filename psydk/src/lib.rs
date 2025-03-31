@@ -25,6 +25,7 @@ use crate::input::{Event, EventHandlingExt, EventKind, EventTryFrom};
 pub mod app;
 pub mod audio;
 pub mod errors;
+pub mod git;
 pub mod input;
 pub mod time;
 pub mod utils;

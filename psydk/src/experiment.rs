@@ -1,7 +1,12 @@
-use std::sync::{
-    mpsc::{channel, Receiver, Sender},
-    Arc, Mutex,
+use std::{
+    collections::HashMap,
+    sync::{
+        mpsc::{channel, Receiver, Sender},
+        Arc, Mutex,
+    },
 };
+
+use sysinfo::System;
 
 use derive_debug::Dbg;
 use pyo3::{
@@ -15,7 +20,8 @@ use winit::event_loop::EventLoopProxy;
 use crate::{
     app::App,
     audio::{PyDevice, PyHost, PyStream},
-    errors,
+    errors::{self, psydkError, PsydkResult},
+    git::PyRepository,
     visual::window::Window,
 };
 
@@ -217,6 +223,38 @@ impl ExperimentManager {
         println!("waiting for monitors");
         receiver.recv().unwrap()
     }
+
+    pub fn get_repository(&self) -> PsydkResult<Option<gix::Repository>> {
+        // get the current directory
+        let mut current_dir = std::env::current_dir().map_err(|e| errors::psydkError::IOError(e))?;
+        // try to open the repository, otherwise traverse the directory tree
+        while current_dir.parent().is_some() {
+            let repo = gix::open(current_dir.clone()).ok();
+            if let Some(repo) = repo {
+                return Ok(Some(repo));
+            }
+            current_dir.pop();
+        }
+        Ok(None)
+    }
+
+    pub fn system_info(&self) -> HashMap<String, String> {
+        let mut info = HashMap::new();
+        info.insert("os_name".to_string(), System::name().unwrap_or("unknown".to_string()));
+        info.insert(
+            "os_version".to_string(),
+            System::os_version().unwrap_or("unknown".to_string()),
+        );
+        info.insert(
+            "os_kernel_version".to_string(),
+            System::kernel_version().unwrap_or("unknown".to_string()),
+        );
+        info.insert(
+            "cpu_architecture".to_string(),
+            System::cpu_arch().unwrap_or("unknown".to_string()),
+        );
+        info
+    }
 }
 
 #[pymethods]
@@ -257,6 +295,16 @@ impl ExperimentManager {
     #[pyo3(name = "get_available_monitors")]
     fn py_get_available_monitors(&self) -> Vec<Monitor> {
         self.get_available_monitors()
+    }
+
+    #[pyo3(name = "get_repository")]
+    fn py_get_repository(&self) -> PsydkResult<Option<PyRepository>> {
+        self.get_repository().map(|r| r.map(|r| r.into()))
+    }
+
+    #[pyo3(name = "system_info")]
+    fn py_system_info(&self) -> PyResult<HashMap<String, String>> {
+        Ok(self.system_info())
     }
 }
 
