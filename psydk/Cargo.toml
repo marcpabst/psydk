@@ -30,8 +30,8 @@ crate-type = ["cdylib"]
 
 # General dependencies
 [dependencies]
-# wgpu = { path = "../../wgpu/wgpu" }
-wgpu = { git = "https://github.com/gfx-rs/wgpu", rev = "a13f0a0" }
+wgpu = { path = "../../wgpu/wgpu" }
+# wgpu = { git = "https://github.com/gfx-rs/wgpu", rev = "a13f0a0" }
 serde = { version = "1.0", features = ["derive"] }
 renderer = { path = "../renderer" }
 psydk-proc = { path = "../psydk-proc" }
@@ -94,8 +94,10 @@ objc2 = "0.5.1"
 objc2-foundation = "0.2.0"
 
 [features]
-# default = ["gst"]
+default = ["metal"]
 gst = ["dep:glib", "dep:gstreamer", "dep:gstreamer-app", "dep:gstreamer-video"]
+metal = []
+dx12 = []
 
 # include debug symbols in release builds
 [profile.release]

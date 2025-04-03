@@ -101,6 +101,8 @@ impl From<PixelSize> for (u32, u32) {
     }
 }
 
+pub type FrameId = u64;
+
 /// Internal window state. This is used to store the winit window, the wgpu
 /// device, the wgpu queue, etc.
 #[derive(Dbg)]
@@ -129,6 +131,12 @@ pub struct WindowState {
     pub event_handlers: HashMap<EventHandlerId, (EventKind, EventHandler)>,
     /// Background color of the window.
     pub bg_color: LinRgba,
+    /// The frame callbacks that maps the frame number to the callback.
+    #[dbg(placeholder = "...")]
+    pub frame_callbacks: HashMap<FrameId, Box<dyn FnOnce() + Send>>,
+    /// Queue of frames that have been submitted.
+    #[dbg(placeholder = "...")]
+    pub frame_queue: Vec<FrameId>,
 }
 
 unsafe impl Send for WindowState {}
@@ -185,7 +193,21 @@ impl Window {
     }
 
     /// Present a frame on the window.
-    pub fn present(&self, frame: &mut Frame) {
+    pub fn present(
+        &self,
+        frame: &mut Frame,
+        repeat_frames: Option<u32>,
+        repeat_time: Option<f64>,
+        repeat_update: bool,
+    ) {
+        // make sure that only one of repeat_frames or repeat_time is set (or none)
+        if repeat_frames.is_some() && repeat_time.is_some() {
+            // TODO: proper error handling
+            panic!("You can only set one of repeat_frames or repeat_time");
+        }
+
+        let repeat_frames = repeat_frames.unwrap_or(1);
+
         // lock the gpu state and window state
         let gpu_state = &mut self.gpu_state.lock().unwrap();
         let mut win_state = &mut self.state.lock().unwrap();
@@ -197,32 +219,65 @@ impl Window {
 
         let config = &win_state.config;
 
-        let suface_texture = win_state
-            .surface
-            .get_current_texture()
-            .expect("Failed to acquire next swap chain texture");
+        for i in 0..repeat_frames {
+            let suface_texture = win_state
+                .surface
+                .get_current_texture()
+                .expect("Failed to acquire next swap chain texture");
 
-        let width = suface_texture.texture.size().width;
-        let height = suface_texture.texture.size().height;
+            let width = suface_texture.texture.size().width;
+            let height = suface_texture.texture.size().height;
 
-        let texture = win_state.wgpu_renderer.texture();
+            let texture = win_state.wgpu_renderer.texture();
 
-        win_state
-            .renderer
-            .render_to_texture(device, queue, texture, width, height, &mut frame.scene);
+            win_state
+                .renderer
+                .render_to_texture(device, queue, texture, width, height, &mut frame.scene);
 
-        let surface_texture_view = suface_texture.texture.create_view(&wgpu::TextureViewDescriptor {
-            format: Some(config.format),
-            ..wgpu::TextureViewDescriptor::default()
-        });
+            let surface_texture_view = suface_texture.texture.create_view(&wgpu::TextureViewDescriptor {
+                format: Some(config.format),
+                ..wgpu::TextureViewDescriptor::default()
+            });
 
-        // render the texture to the surface
-        win_state
-            .wgpu_renderer
-            .render_to_texture(device, queue, &surface_texture_view);
+            // render the texture to the surface
+            win_state
+                .wgpu_renderer
+                .render_to_texture(device, queue, &surface_texture_view);
 
-        // present the frame
-        suface_texture.present();
+            // on macos, we will don't need to use the frame queue as we can tell metal to run the callback
+            #[cfg(feature = "metal")]
+            {
+                if let Some(on_present) = frame.on_present.take() {
+                    let drawable = unsafe {
+                        suface_texture.as_hal::<wgpu::hal::api::Metal, _, _>(|suface_texture| suface_texture.drawable())
+                    };
+                }
+            }
+            // present the frame
+            suface_texture.present();
+
+            // on dx12, get the frame id and add it to the frame queue
+            // then wait for the frame to be presented
+            #[cfg(feature = "dx12")]
+            {
+                let swap_chain =
+                    unsafe { surface.as_hal::<wgpu::hal::api::Metal, _, _>(|surface| surface.swap_chain()) };
+                let frame_id = swap_chain.GetLastPresentCount();
+                win_state.frame_queue.push(frame_id);
+                // this is waiting for the frame latency waitable object to be signaled
+                swap_chain.wait_for_frame_latency_object();
+                // get the frame id that was presented from the frame queue
+                let frame_id = win_state.frame_queue.remove(0);
+                // get the callback for the frame id
+                let callback = win_state.frame_callbacks.remove(&frame_id).unwrap();
+                // call the callback
+                callback();
+            }
+        }
+
+        // TODO wait for the frame to be presented
+        // TODO on Windows, we will run the callback here
+        // TODO on MacOS we will let Metal run the callback
     }
 
     pub fn close(&self) {
@@ -271,12 +326,13 @@ impl Window {
     /// Return a new frame for the window.
     pub fn get_frame(&self) -> Frame {
         let win_state = &self.state.lock().unwrap();
-        let scene = win_state
-            .renderer
-            .create_scene(win_state.size.width, win_state.size.height);
+        // let scene = win_state
+        //     .renderer
+        //     .create_scene(win_state.size.width, win_state.size.height);
         let mut frame = Frame {
-            scene,
+            stimuli: Vec::new(),
             window: self.clone(),
+            on_present: None,
         };
 
         frame.set_bg_color(win_state.bg_color);
@@ -358,10 +414,24 @@ impl Window {
     }
 
     #[pyo3(name = "present")]
-    fn py_present(&self, frame: &mut Frame, py: Python) {
+    #[pyo3(signature = (frame, repeat_frames=None, repeat_time=None, repeat_update=true))]
+    /// Present a frame on the window. By default, the frame will be presented once.
+    /// Alternatively, you can specify the number of times to present the frame or the
+    /// time to present the frame. Please note that if you're using a fixed frame rate monitor
+    /// with the `repeat_time` parameter, `repeat_time` need to be a multiple of the
+    /// monitor's frame time. Otherwise, the this function will error.
+    ///
+    fn py_present(
+        &self,
+        frame: &mut Frame,
+        repeat_frames: Option<u32>,
+        repeat_time: Option<f64>,
+        repeat_update: bool,
+        py: Python,
+    ) {
         let self_wrapper = SendWrapper::new(self.clone());
         let frame_wrapper = SendWrapper::new(frame);
-        py.allow_threads(move || self_wrapper.present(frame_wrapper.take()));
+        py.allow_threads(move || self_wrapper.present(frame_wrapper.take(), repeat_frames, repeat_time, repeat_update));
     }
 
     #[getter(cursor_visible)]
@@ -452,12 +522,15 @@ impl FrameIterator {
 
 #[derive(Dbg)]
 #[pyclass]
-#[pyo3(unsendable)]
 pub struct Frame {
     #[dbg(placeholder = "...")]
-    scene: DynamicScene,
+    /// The vector of stimuli that will be drawn upon presentation.
+    stimuli: Vec<DynamicStimulus>,
     /// The window that the frame is associated with.
     window: Window,
+    /// An optional callback that will be called when the frame is presented.
+    #[dbg(skip)]
+    on_present: Option<Box<dyn FnOnce() + Send + Sync>>,
 }
 
 impl Frame {
@@ -467,7 +540,7 @@ impl Frame {
     }
 
     /// Draw onto the frame.
-    pub fn draw(&mut self, stimulus: &DynamicStimulus) {
+    pub fn add(&mut self, stimulus: &DynamicStimulus) {
         let mut stimulus = stimulus.lock();
 
         let now = Instant::now();
@@ -495,11 +568,11 @@ impl Frame {
 
 #[pymethods]
 impl Frame {
-    #[pyo3(name = "draw")]
-    fn py_draw(&mut self, stimulus: crate::visual::stimuli::PyStimulus, py: Python) {
+    #[pyo3(name = "add")]
+    fn py_add(&mut self, stimulus: crate::visual::stimuli::PyStimulus, py: Python) {
         let mut self_wrapper = SendWrapper::new(self);
         let stimulus_wrapper = SendWrapper::new(stimulus);
-        py.allow_threads(move || self_wrapper.draw(stimulus_wrapper.as_super()));
+        py.allow_threads(move || self_wrapper.add(stimulus_wrapper.as_super()));
     }
 
     #[setter(bg_color)]

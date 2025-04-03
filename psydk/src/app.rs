@@ -229,6 +229,7 @@ impl App {
             physical_screen: PhysicalScreen::new(size.width, width_mm, viewing_distance),
             event_handlers: HashMap::new(), // TODO this should be a weak reference
             bg_color: LinRgba::new(0.5, 0.5, 0.5, 1.0),
+            frame_callbacks: HashMap::new(),
         };
 
         // create channel for physical input
