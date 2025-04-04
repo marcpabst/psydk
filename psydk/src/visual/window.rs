@@ -29,6 +29,7 @@ use super::{
 };
 use crate::{
     app::GPUState,
+    experiment::Monitor,
     input::{Event, EventHandler, EventHandlerId, EventHandlingExt, EventKind, EventReceiver},
     RenderThreadChannelPayload,
 };
@@ -168,6 +169,8 @@ pub struct Window {
     pub state: Arc<Mutex<WindowState>>,
     /// gpu state for the window
     pub gpu_state: Arc<Mutex<GPUState>>,
+    /// The global configuration for the experiment.
+    pub config: Arc<Mutex<crate::config::ExperimentConfig>>,
     /// Broadcast sender for keyboard events.
     pub event_broadcast_sender: async_broadcast::Sender<Event>,
     /// Broadcast receiver for keyboard events.
@@ -199,6 +202,7 @@ impl Window {
         repeat_frames: Option<u32>,
         repeat_time: Option<f64>,
         repeat_update: bool,
+        pedantic: Option<bool>,
     ) {
         // make sure that only one of repeat_frames or repeat_time is set (or none)
         if repeat_frames.is_some() && repeat_time.is_some() {
@@ -206,18 +210,38 @@ impl Window {
             panic!("You can only set one of repeat_frames or repeat_time");
         }
 
-        let repeat_frames = repeat_frames.unwrap_or(1);
-
         // lock the gpu state and window state
         let gpu_state = &mut self.gpu_state.lock().unwrap();
         let mut win_state = &mut self.state.lock().unwrap();
+
+        let pedantic = pedantic.unwrap_or(self.config.lock().unwrap().pedantic);
+
+        // if repeat_time is set, we need to calculate the repeat frames
+        let f_repeat_frames = if let Some(repeat_time) = repeat_time {
+            // get the refresh rate of the monitor
+            let refresh_rate = self.get_current_monitor().unwrap().refresh_rate().unwrap();
+            // calculate the repeat frames
+            repeat_time / (1.0 / refresh_rate)
+        } else {
+            repeat_frames.unwrap_or(1) as f64
+        };
+
+        // if pedantic is set, we need to make sure that the repeat frames is a whole number
+        // (with a small tolerance)
+        if pedantic && f_repeat_frames.fract() > 0.0001 {
+            // TODO: proper error handling
+            panic!("You specified a `repeat_time` that is not a multiple of the monitor's reported frame time. This can lead to unexpected behavior and is therefore diallowed by default. However, you can disable this check by disabling pedantic mode. In this case, the repeat time will be rounded to the nearest integer number of frames.");
+        }
+
+        // convert the repeat frames to an integer
+        let repeat_frames = f_repeat_frames.round() as u32;
 
         let device = &gpu_state.device;
         let queue = &gpu_state.queue;
         let width = win_state.size.width;
         let height = win_state.size.height;
 
-        let config = &win_state.config;
+        let config = win_state.config.clone();
 
         for i in 0..repeat_frames {
             let suface_texture = win_state
@@ -230,9 +254,18 @@ impl Window {
 
             let texture = win_state.wgpu_renderer.texture();
 
+            let mut scene = win_state.renderer.create_scene(width, height);
+
+            for stimulus in &frame.stimuli {
+                let now = Instant::now();
+                let mut stimulus = (&stimulus).lock();
+                stimulus.update_animations(now, &win_state);
+                stimulus.draw(&mut scene, &win_state);
+            }
+
             win_state
                 .renderer
-                .render_to_texture(device, queue, texture, width, height, &mut frame.scene);
+                .render_to_texture(device, queue, texture, width, height, &mut scene);
 
             let surface_texture_view = suface_texture.texture.create_view(&wgpu::TextureViewDescriptor {
                 format: Some(config.format),
@@ -245,14 +278,14 @@ impl Window {
                 .render_to_texture(device, queue, &surface_texture_view);
 
             // on macos, we will don't need to use the frame queue as we can tell metal to run the callback
-            #[cfg(feature = "metal")]
-            {
-                if let Some(on_present) = frame.on_present.take() {
-                    let drawable = unsafe {
-                        suface_texture.as_hal::<wgpu::hal::api::Metal, _, _>(|suface_texture| suface_texture.drawable())
-                    };
-                }
-            }
+            // #[cfg(feature = "metal")]
+            // {
+            //     if let Some(on_present) = frame.on_present.take() {
+            //         let drawable = unsafe {
+            //             suface_texture.as_hal::<wgpu::hal::api::Metal, _, _>(|suface_texture| suface_texture.drawable())
+            //         };
+            //     }
+            // }
             // present the frame
             suface_texture.present();
 
@@ -282,6 +315,20 @@ impl Window {
 
     pub fn close(&self) {
         todo!()
+    }
+
+    pub fn get_current_monitor(&self) -> Option<Monitor> {
+        let win_state = &self.state.lock().unwrap();
+        let monitor = win_state.winit_window.current_monitor();
+        if let Some(monitor) = monitor {
+            Some(Monitor {
+                name: monitor.name().unwrap_or_default(),
+                resolution: monitor.size().into(),
+                handle: monitor.clone(),
+            })
+        } else {
+            None
+        }
     }
 
     /// Set the visibility of the mouse cursor.
@@ -414,7 +461,7 @@ impl Window {
     }
 
     #[pyo3(name = "present")]
-    #[pyo3(signature = (frame, repeat_frames=None, repeat_time=None, repeat_update=true))]
+    #[pyo3(signature = (frame, repeat_frames=None, repeat_time=None, repeat_update=true, pedantic=None))]
     /// Present a frame on the window. By default, the frame will be presented once.
     /// Alternatively, you can specify the number of times to present the frame or the
     /// time to present the frame. Please note that if you're using a fixed frame rate monitor
@@ -427,11 +474,20 @@ impl Window {
         repeat_frames: Option<u32>,
         repeat_time: Option<f64>,
         repeat_update: bool,
+        pedantic: Option<bool>,
         py: Python,
     ) {
         let self_wrapper = SendWrapper::new(self.clone());
         let frame_wrapper = SendWrapper::new(frame);
-        py.allow_threads(move || self_wrapper.present(frame_wrapper.take(), repeat_frames, repeat_time, repeat_update));
+        py.allow_threads(move || {
+            self_wrapper.present(
+                frame_wrapper.take(),
+                repeat_frames,
+                repeat_time,
+                repeat_update,
+                pedantic,
+            )
+        });
     }
 
     #[getter(cursor_visible)]
@@ -442,6 +498,13 @@ impl Window {
     #[setter(cursor_visible)]
     fn py_set_cursor_visible(&self, visible: bool) {
         self.set_cursor_visible(visible);
+    }
+
+    #[pyo3(name = "get_current_monitor")]
+    fn py_get_current_monitor(&self) -> Option<Monitor> {
+        let self_wrapper = SendWrapper::new(self);
+        let monitor = self_wrapper.get_current_monitor();
+        monitor
     }
 
     #[pyo3(name = "get_size")]
@@ -536,33 +599,25 @@ pub struct Frame {
 impl Frame {
     /// Set the background color of the frame.
     pub fn set_bg_color(&mut self, bg_color: LinRgba) {
-        self.scene_mut().set_bg_color(bg_color.into());
+        // TODO
     }
 
     /// Draw onto the frame.
     pub fn add(&mut self, stimulus: &DynamicStimulus) {
-        let mut stimulus = stimulus.lock();
+        self.stimuli.push(stimulus.clone());
 
-        let now = Instant::now();
-        {
-            // this needs to be scoped so that the mutable borrow of self is released
-            let window_state = self.window.state.lock().unwrap();
-            stimulus.update_animations(now, &window_state);
-        }
+        // let now = Instant::now();
+        // {
+        //     // this needs to be scoped so that the mutable borrow of self is released
+        //     let window_state = self.window.state.lock().unwrap();
+        //     stimulus.update_animations(now, &window_state);
+        // }
 
-        stimulus.draw(self);
+        // stimulus.draw(self);
     }
 
     pub fn window(&self) -> Window {
         self.window.clone()
-    }
-
-    pub fn scene(&self) -> &DynamicScene {
-        &self.scene
-    }
-
-    pub fn scene_mut(&mut self) -> &mut DynamicScene {
-        &mut self.scene
     }
 }
 

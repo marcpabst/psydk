@@ -63,7 +63,7 @@ pub struct Monitor {
     #[pyo3(get)]
     pub name: String,
     pub resolution: (u32, u32),
-    handle: winit::monitor::MonitorHandle,
+    pub handle: winit::monitor::MonitorHandle,
 }
 
 impl Monitor {
@@ -81,6 +81,22 @@ impl Monitor {
 
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    pub fn refresh_rate(&self) -> Option<f64> {
+        self.handle.refresh_rate_millihertz().map(|r| r as f64 / 1000.0)
+    }
+}
+
+#[pymethods]
+impl Monitor {
+    #[getter]
+    #[pyo3(name = "refresh_rate")]
+    // Refresh rate in Hz
+    fn py_refresh_rate(&self) -> PyResult<f64> {
+        self.refresh_rate()
+            .map(|r| r as f64)
+            .ok_or_else(|| psydkError::MonitorError("Monitor does not have a refresh rate".to_string()).into())
     }
 }
 
@@ -141,6 +157,7 @@ pub struct ExperimentManager {
     renderer_factory: Arc<dyn RendererFactory>,
     audio_host: Arc<timed_audio::cpal::Host>,
     font_manager: Arc<Mutex<cosmic_text::FontSystem>>,
+    config: Arc<Mutex<crate::config::ExperimentConfig>>,
 }
 
 impl ExperimentManager {
@@ -157,6 +174,7 @@ impl ExperimentManager {
             renderer_factory,
             audio_host,
             font_manager,
+            config: Arc::new(Mutex::new(crate::config::ExperimentConfig::default())),
         }
     }
 
@@ -178,12 +196,14 @@ impl ExperimentManager {
         let action = EventLoopAction::CreateNewWindow(window_options.clone(), sender);
 
         // send action
-        println!("Sending action");
         self.action_sender.send(action).unwrap();
         self.event_loop_proxy.send_event(());
 
         // wait for response
-        let window = receiver.recv().expect("Failed to create window");
+        let mut window = receiver.recv().expect("Failed to create window");
+
+        // set the config (this could be done in the event loop, should we need it there)
+        window.config = self.config.clone();
         log::debug!("New window successfully created");
 
         window

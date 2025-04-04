@@ -24,11 +24,11 @@ use crate::input::{Event, EventHandlingExt, EventKind, EventTryFrom};
 
 pub mod app;
 pub mod audio;
+pub mod config;
 pub mod errors;
 pub mod git;
 pub mod input;
 pub mod time;
-pub mod utils;
 pub mod visual;
 
 pub mod experiment;
@@ -130,6 +130,10 @@ fn psydk(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m.add_class::<audio::PyDevice>()?;
         m.add_class::<audio::PyHost>()?;
         m.add_class::<audio::PyAudioObject>()?;
+        m.add_function(wrap_pyfunction!(audio::py_create_silence, &m)?)?;
+        m.add_function(wrap_pyfunction!(audio::py_create_sine_wave, &m)?)?;
+        m.add_function(wrap_pyfunction!(audio::py_create_white_noise, &m)?)?;
+        m.add_function(wrap_pyfunction!(audio::py_create_from_samples, &m)?)?;
         m
     };
 

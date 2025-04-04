@@ -63,6 +63,10 @@ pub enum psydkError {
     // single image error
     #[error("Only one image was provided. This is currently not supported.")]
     SingleImageError,
+
+    // a monitor error
+    #[error("Monitor error: {0}")]
+    MonitorError(String),
 }
 
 pub type PsydkResult<T> = std::result::Result<T, psydkError>;

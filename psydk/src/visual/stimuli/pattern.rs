@@ -7,7 +7,7 @@ use renderer::{
     colors::RGBA,
     renderer::RendererFactory,
     styles::ImageFitMode,
-    DynamicBitmap,
+    DynamicBitmap, DynamicScene,
 };
 use strum::EnumString;
 use uuid::Uuid;
@@ -21,7 +21,7 @@ use super::{
 use crate::visual::{
     color::{IntoLinRgba, LinRgba},
     geometry::{Shape, Size, Transformation2D},
-    window::Frame,
+    window::{Frame, WindowState},
 };
 
 #[derive(EnumString, Debug, Clone, Copy, PartialEq, FromPyStr)]
@@ -288,13 +288,11 @@ impl Stimulus for PatternStimulus {
         self.animations.push(animation);
     }
 
-    fn draw(&mut self, frame: &mut Frame) {
+    fn draw(&mut self, scene: &mut DynamicScene, window_state: &WindowState) {
         if !self.visible {
             return;
         }
 
-        let window = frame.window();
-        let window_state = window.lock_state();
         let windows_size = window_state.size;
         let screen_props = window_state.physical_screen;
 
@@ -347,11 +345,9 @@ impl Stimulus for PatternStimulus {
 
                 let shape = renderer::shapes::Shape::circle((x, y), radius);
 
-                frame.scene_mut().draw_shape_fill(shape, fill_brush.clone(), None, None);
+                scene.draw_shape_fill(shape, fill_brush.clone(), None, None);
 
-                frame
-                    .scene_mut()
-                    .draw_shape_stroke(shape, stroke_brush, stroke_options, None, None);
+                scene.draw_shape_stroke(shape, stroke_brush, stroke_options, None, None);
             }
             Shape::Rectangle { x, y, width, height } => {
                 let x = x.eval(windows_size, screen_props) as f64;
@@ -365,11 +361,9 @@ impl Stimulus for PatternStimulus {
 
                 let shape = renderer::shapes::Shape::rectangle((x, y), width, height);
 
-                frame.scene_mut().draw_shape_fill(shape, fill_brush.clone(), None, None);
+                scene.draw_shape_fill(shape, fill_brush.clone(), None, None);
 
-                frame
-                    .scene_mut()
-                    .draw_shape_stroke(shape, stroke_brush, stroke_options, None, None);
+                scene.draw_shape_stroke(shape, stroke_brush, stroke_options, None, None);
             }
             Shape::Ellipse {
                 x,
@@ -393,9 +387,7 @@ impl Stimulus for PatternStimulus {
 
                 let shape = renderer::shapes::Shape::line((x1, y1), (x2, y2));
 
-                frame
-                    .scene_mut()
-                    .draw_shape_stroke(shape, stroke_brush, stroke_options, None, None);
+                scene.draw_shape_stroke(shape, stroke_brush, stroke_options, None, None);
             }
             Shape::Polygon { points } => {
                 todo!("Render polygon")

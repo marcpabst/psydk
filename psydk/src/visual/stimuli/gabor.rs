@@ -8,6 +8,7 @@ use renderer::{
     colors::RGBA,
     shapes::{Point, Shape},
     styles::BlendMode,
+    DynamicScene,
 };
 use strum::EnumString;
 use uuid::Uuid;
@@ -19,7 +20,7 @@ use super::{
 use crate::visual::{
     color::LinRgba,
     geometry::{Anchor, Size, Transformation2D},
-    window::Frame,
+    window::{Frame, WindowState},
 };
 
 #[derive(EnumString, Debug, Clone, Copy, PartialEq, FromPyStr)]
@@ -261,17 +262,13 @@ impl Stimulus for GaborStimulus {
         self.id
     }
 
-    fn draw(&mut self, frame: &mut Frame) {
+    fn draw(&mut self, scene: &mut DynamicScene, window_state: &WindowState) {
         if !self.visible {
             return;
         }
 
-        let window = frame.window();
-        let window_state = window.lock_state();
         let window_size = window_state.size;
         let screen_props = window_state.physical_screen;
-
-        let mut scene = frame.scene_mut();
 
         // convert physical units to pixels
         let radius = self.params.radius.eval(window_size, screen_props) as f64;

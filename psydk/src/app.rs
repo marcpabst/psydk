@@ -24,6 +24,7 @@ use winit::{
 };
 
 use crate::{
+    config::ExperimentConfig,
     errors,
     experiment::{EventLoopAction, ExperimentManager, Monitor, WindowOptions},
     input::Event,
@@ -230,6 +231,7 @@ impl App {
             event_handlers: HashMap::new(), // TODO this should be a weak reference
             bg_color: LinRgba::new(0.5, 0.5, 0.5, 1.0),
             frame_callbacks: HashMap::new(),
+            frame_queue: Vec::new(),
         };
 
         // create channel for physical input
@@ -245,11 +247,11 @@ impl App {
             gpu_state: self.gpu_state.clone(),
             event_broadcast_sender,
             event_broadcast_receiver,
+            config: Arc::new(Mutex::new(ExperimentConfig::default())),
         };
 
         let win_clone = window.clone();
 
-        // TODO: add event handlers
         // add a default event handler for mouse move events, which updates the mouse
         // position
         // window.add_event_handler(EventKind::CursorMoved, move |event| {
@@ -325,7 +327,6 @@ impl ApplicationHandler<()> for App {
     }
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: ()) {
-        println!("received user event");
         // check if we need to create a new window
         self.action_receiver.try_recv().map(|action| match action {
             EventLoopAction::CreateNewWindow(options, sender) => {
@@ -334,7 +335,6 @@ impl ApplicationHandler<()> for App {
                 sender.send(window).unwrap();
             }
             EventLoopAction::GetAvailableMonitors(sender) => {
-                println!("getting monitors");
                 let monitors = event_loop.available_monitors();
 
                 // convert into a vector of monitors

@@ -9,7 +9,7 @@ use renderer::{
     brushes::{Brush, Extend, ImageSampling},
     shapes::Shape,
     styles::ImageFitMode,
-    DynamicBitmap,
+    DynamicBitmap, DynamicScene,
 };
 use uuid::Uuid;
 
@@ -21,7 +21,7 @@ use crate::{
     experiment::PyRendererFactory,
     visual::{
         geometry::{Anchor, Size, Transformation2D},
-        window::Frame,
+        window::{Frame, WindowState},
     },
 };
 
@@ -131,13 +131,11 @@ impl Stimulus for ImageStimulus {
         self.id
     }
 
-    fn draw(&mut self, frame: &mut Frame) {
+    fn draw(&mut self, scene: &mut DynamicScene, window_state: &WindowState) {
         if !self.visible {
             return;
         }
 
-        let window = frame.window();
-        let window_state = window.lock_state();
         let window_size = window_state.size;
         let screen_props = window_state.physical_screen;
 
@@ -155,7 +153,7 @@ impl Stimulus for ImageStimulus {
 
         let trans_mat = self.transformation.eval(window_size, screen_props);
 
-        frame.scene_mut().draw_shape_fill(
+        scene.draw_shape_fill(
             Shape::Rectangle {
                 a: (x, y).into(),
                 w: width as f64,

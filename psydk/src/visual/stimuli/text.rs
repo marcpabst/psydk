@@ -16,12 +16,13 @@ use cosmic_text::Style as CosmicStyle;
 use cosmic_text::Weight as CosmicWeight;
 
 use psydk_proc::{FromPyStr, StimulusParams};
+use renderer::DynamicScene;
 use strum::EnumString;
 use uuid::Uuid;
 
 use crate::visual::color::IntoLinRgba;
 use crate::visual::color::LinRgba;
-use crate::visual::window::Frame;
+use crate::visual::window::{Frame, WindowState};
 use renderer::affine::Affine;
 use renderer::brushes::Brush;
 use renderer::colors::RGBA;
@@ -215,13 +216,11 @@ impl Stimulus for TextStimulus {
         self.id
     }
 
-    fn draw(&mut self, frame: &mut Frame) {
+    fn draw(&mut self, scene: &mut DynamicScene, window_state: &WindowState) {
         if !self.visible {
             return;
         }
 
-        let window = frame.window();
-        let window_state = window.lock_state();
         let window_size = window_state.size;
         let screen_props = window_state.physical_screen;
         let mut font_manager = self.font_manager.lock().unwrap();
@@ -275,7 +274,7 @@ impl Stimulus for TextStimulus {
 
         let brush = Brush::Solid(fill_color);
 
-        frame.scene_mut().draw_glyphs(
+        scene.draw_glyphs(
             (new_x, -new_y).into(),
             &glyphs,
             &self.font,

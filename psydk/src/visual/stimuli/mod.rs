@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use dyn_clone::DynClone;
 use pyo3::{exceptions::PyValueError, prelude::*};
-use renderer::image::GenericImageView;
+use renderer::{image::GenericImageView, DynamicScene};
 use strum_macros::{Display, EnumString};
 
 use super::{
@@ -133,8 +133,10 @@ pub trait StimulusParams {
 
 /// The stimulus trait.
 pub trait Stimulus: downcast_rs::Downcast + std::fmt::Debug + Send {
-    /// Draw the stimulus onto the frame.
-    fn draw(&mut self, scene: &mut Frame);
+    /// Draw the stimulus onto the scene.
+    fn draw(&mut self, scene: &mut DynamicScene, win_state: &WindowState) {
+        // by default, stimuli will do nothing
+    }
 
     /// Check if the stimulus contains a specific Point.
     fn contains(&self, x: Size, y: Size, window: &Window) -> bool {
