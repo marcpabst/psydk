@@ -30,8 +30,8 @@ crate-type = ["cdylib"]
 
 # General dependencies
 [dependencies]
-wgpu = { path = "../../wgpu/wgpu" }
-# wgpu = { git = "https://github.com/gfx-rs/wgpu", rev = "a13f0a0" }
+# wgpu = { path = "../../wgpu/wgpu" }
+wgpu = { git = "https://github.com/marcpabst/wgpu", rev = "ada4fc4" }
 serde = { version = "1.0", features = ["derive"] }
 renderer = { path = "../renderer" }
 psydk-proc = { path = "../psydk-proc" }
