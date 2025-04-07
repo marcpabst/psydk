@@ -67,6 +67,14 @@ pub enum psydkError {
     // a monitor error
     #[error("Monitor error: {0}")]
     MonitorError(String),
+
+    // a parameter error
+    #[error("Parameter error: {0}")]
+    ParameterError(String),
+
+    // presentation error
+    #[error("Presentation error: {0}")]
+    PresentationError(String),
 }
 
 pub type PsydkResult<T> = std::result::Result<T, psydkError>;

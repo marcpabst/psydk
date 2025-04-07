@@ -323,7 +323,7 @@ impl App {
 
 impl ApplicationHandler<()> for App {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
-        println!("app resumed");
+
     }
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: ()) {
@@ -343,10 +343,7 @@ impl ApplicationHandler<()> for App {
                         Monitor::new(monitor.name().unwrap_or("Unnamed monitor".to_string()), (0, 0), monitor)
                     })
                     .collect();
-
-                println!("sending monitors");
                 sender.send(monitors).unwrap();
-                println!("sent monitors");
             }
         });
     }

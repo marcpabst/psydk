@@ -3,7 +3,7 @@ use std::sync::Arc;
 use numpy::{IntoPyArray, PyReadonlyArrayDyn};
 use pyo3::ffi::c_str;
 use pyo3::types::PyAnyMethods;
-use pyo3::{pyclass, pyfunction, pymethods, PyResult, Python};
+use pyo3::{pyclass, pyfunction, pymethods, Bound, PyAny, PyObject, PyRef, PyResult, Python};
 use timed_audio::cpal::traits::{DeviceTrait, HostTrait};
 use timed_audio::cpal::{default_host, Device, Host};
 use timed_audio::{AudioObject, Stream};
@@ -29,7 +29,7 @@ impl Default for PyHost {
 #[pyclass]
 #[pyo3(name = "Stream")]
 pub struct PyStream {
-    stream: Stream,
+    stream: Option<Stream>,
 }
 
 #[derive(Clone)]
@@ -56,7 +56,7 @@ impl PyStream {
         let config = device.default_output_config().unwrap();
         let sample_format = config.sample_format();
         Self {
-            stream: Stream::new(&device, &config.into(), sample_format),
+            stream: Some(Stream::new(&device, &config.into(), sample_format)),
         }
     }
 }
@@ -64,17 +64,35 @@ impl PyStream {
 #[pymethods]
 impl PyStream {
     fn play(&self, audio_object: PyAudioObject) {
-        self.stream.play_now(audio_object.audio_object);
+        self.stream.as_ref().unwrap().play_now(audio_object.audio_object);
     }
 
     fn play_at(&self, audio_object: PyAudioObject, timestamp: PyTimestamp) {
-        self.stream.play_at(audio_object.audio_object, timestamp.timestamp);
-        println!("Playing at {:?}", timestamp.timestamp);
+        self.stream
+            .as_ref()
+            .unwrap()
+            .play_at(audio_object.audio_object, timestamp.timestamp);
     }
 
     #[getter]
     fn sample_rate(&self) -> u32 {
-        self.stream.sample_rate()
+        self.stream.as_ref().unwrap().sample_rate()
+    }
+
+    // allow stream to be used as a context manager
+    fn __enter__(slf: PyRef<Self>) -> PyRef<Self> {
+        slf
+    }
+
+    fn __exit__(
+        &mut self,
+        _exc_type: &Bound<'_, crate::PyAny>,
+        _exc_value: &crate::Bound<'_, crate::PyAny>,
+        _traceback: &crate::Bound<'_, crate::PyAny>,
+    ) -> PyResult<()> {
+        // drop the stream
+        self.stream = None;
+        Ok(())
     }
 }
 
@@ -127,27 +145,23 @@ pub(crate) fn get_host(py: Python) -> PyResult<PyHost> {
 #[pyfunction]
 #[pyo3(name = "create_silence")]
 pub fn py_create_silence(py: Python, duration: f32) -> PyAudioObject {
-    let host = get_host(py).unwrap();
     PyAudioObject::silence(std::time::Duration::from_secs_f32(duration))
 }
 
 #[pyfunction]
 #[pyo3(name = "create_white_noise")]
 pub fn py_create_white_noise(py: Python, amplitude: f32, duration: f32) -> PyAudioObject {
-    let host = get_host(py).unwrap();
     PyAudioObject::white_noise(amplitude, duration)
 }
 
 #[pyfunction]
 #[pyo3(name = "create_sine_wave")]
 pub fn py_create_sine_wave(py: Python, frequency: f32, volume: f32, duration: f32) -> PyAudioObject {
-    let host = get_host(py).unwrap();
     PyAudioObject::sine_wave(frequency, volume, std::time::Duration::from_secs_f32(duration))
 }
 
 #[pyfunction]
 #[pyo3(name = "create_from_samples")]
 pub fn py_create_from_samples(py: Python, samples: PyReadonlyArrayDyn<'_, f32>, sample_rate: u32) -> PyAudioObject {
-    let host = get_host(py).unwrap();
     PyAudioObject::from_samples(samples, sample_rate)
 }

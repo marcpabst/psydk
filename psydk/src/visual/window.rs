@@ -29,8 +29,10 @@ use super::{
 };
 use crate::{
     app::GPUState,
+    errors::{psydkError, PsydkResult},
     experiment::Monitor,
     input::{Event, EventHandler, EventHandlerId, EventHandlingExt, EventKind, EventReceiver},
+    time::PyTimestamp,
     RenderThreadChannelPayload,
 };
 
@@ -203,12 +205,18 @@ impl Window {
         repeat_time: Option<f64>,
         repeat_update: bool,
         pedantic: Option<bool>,
-    ) {
+    ) -> PsydkResult<Option<Instant>> {
         // make sure that only one of repeat_frames or repeat_time is set (or none)
         if repeat_frames.is_some() && repeat_time.is_some() {
-            // TODO: proper error handling
-            panic!("You can only set one of repeat_frames or repeat_time");
+            return Err(psydkError::ParameterError(
+                "You can only specify one of repeat_frames or repeat_time".into(),
+            ));
         }
+
+        let mut onset_time = Arc::new(Mutex::new(None));
+
+        // get the refresh rate of the  monitor
+        let refresh_rate = self.get_current_refresh_rate().expect("Failed to get refresh rate");
 
         // lock the gpu state and window state
         let gpu_state = &mut self.gpu_state.lock().unwrap();
@@ -218,8 +226,6 @@ impl Window {
 
         // if repeat_time is set, we need to calculate the repeat frames
         let f_repeat_frames = if let Some(repeat_time) = repeat_time {
-            // get the refresh rate of the monitor
-            let refresh_rate = self.get_current_monitor().unwrap().refresh_rate().unwrap();
             // calculate the repeat frames
             repeat_time / (1.0 / refresh_rate)
         } else {
@@ -228,9 +234,10 @@ impl Window {
 
         // if pedantic is set, we need to make sure that the repeat frames is a whole number
         // (with a small tolerance)
-        if pedantic && f_repeat_frames.fract() > 0.0001 {
+        if pedantic && (f_repeat_frames - f_repeat_frames).round().abs() > 0.0001 {
             // TODO: proper error handling
-            panic!("You specified a `repeat_time` that is not a multiple of the monitor's reported frame time. This can lead to unexpected behavior and is therefore diallowed by default. However, you can disable this check by disabling pedantic mode. In this case, the repeat time will be rounded to the nearest integer number of frames.");
+            let repeat_time = repeat_time.unwrap_or(0.0);
+            return Err(psydkError::ParameterError(format!("You specified a `repeat_time` {repeat_time} that is not a multiple of the monitor's reported frame time ({refresh_rate} fps -> number of frames: {f_repeat_frames}) This can lead to unexpected behavior and is therefore diallowed by default. However, you can disable this check by disabling pedantic mode. In this case, the repeat time will be rounded to the nearest integer number of frames.")));
         }
 
         // convert the repeat frames to an integer
@@ -277,15 +284,23 @@ impl Window {
                 .wgpu_renderer
                 .render_to_texture(device, queue, &surface_texture_view);
 
-            // on macos, we will don't need to use the frame queue as we can tell metal to run the callback
-            // #[cfg(feature = "metal")]
-            // {
-            //     if let Some(on_present) = frame.on_present.take() {
-            //         let drawable = unsafe {
-            //             suface_texture.as_hal::<wgpu::hal::api::Metal, _, _>(|suface_texture| suface_texture.drawable())
-            //         };
-            //     }
+            // on metal, we will don't need to use the frame queue as we can tell metal to run the callback
+            // #[cfg(all(target_os = "macos", feature = "metal"))]
+            // unsafe {
+            //     // if let Some(on_present) = frame.on_present.take() {
+            //     //     let drawable = unsafe {
+            //             suface_texture.texture
+            //                 .as_hal::<wgpu::hal::api::Metal, _, _>(|suface_texture| {
+
+            //                     if let Some(suface_texture) = suface_texture {
+
+
+            //                     }
+            //                 });
+            //     //     };
+            //     // }
             // }
+
             // present the frame
             suface_texture.present();
 
@@ -299,6 +314,9 @@ impl Window {
                 win_state.frame_queue.push(frame_id);
                 // this is waiting for the frame latency waitable object to be signaled
                 swap_chain.wait_for_frame_latency_object();
+                // timestamp frame presentation
+                let timestamp = Instant::now();
+                onset_time.lock().unwrap().replace(timestamp);
                 // get the frame id that was presented from the frame queue
                 let frame_id = win_state.frame_queue.remove(0);
                 // get the callback for the frame id
@@ -311,15 +329,42 @@ impl Window {
         // TODO wait for the frame to be presented
         // TODO on Windows, we will run the callback here
         // TODO on MacOS we will let Metal run the callback
+
+        let mut onset_time = onset_time.lock().unwrap();
+        // if the onset time is None, set it to the current time
+        if onset_time.is_none() {
+            let now = Instant::now();
+            *onset_time = Some(now);
+        }
+        Ok(*onset_time)
     }
 
     pub fn close(&self) {
         todo!()
     }
 
+    pub fn get_current_refresh_rate(&self) -> Option<f64> {
+        let winit_window = {
+            let win_state = &self.state.lock().unwrap();
+            win_state.winit_window.clone()
+        };
+
+        let monitor = winit_window.current_monitor();
+
+        if let Some(monitor) = monitor {
+            monitor.refresh_rate_millihertz().map(|x| x as f64 / 1000.0)
+        } else {
+            None
+        }
+    }
+
     pub fn get_current_monitor(&self) -> Option<Monitor> {
-        let win_state = &self.state.lock().unwrap();
-        let monitor = win_state.winit_window.current_monitor();
+        let winit_window = {
+            let win_state = &self.state.lock().unwrap();
+            win_state.winit_window.clone()
+        };
+        let monitor = winit_window.current_monitor();
+
         if let Some(monitor) = monitor {
             Some(Monitor {
                 name: monitor.name().unwrap_or_default(),
@@ -476,18 +521,21 @@ impl Window {
         repeat_update: bool,
         pedantic: Option<bool>,
         py: Python,
-    ) {
+    ) -> PyResult<Option<PyTimestamp>> {
         let self_wrapper = SendWrapper::new(self.clone());
         let frame_wrapper = SendWrapper::new(frame);
         py.allow_threads(move || {
-            self_wrapper.present(
-                frame_wrapper.take(),
-                repeat_frames,
-                repeat_time,
-                repeat_update,
-                pedantic,
-            )
-        });
+            self_wrapper
+                .present(
+                    frame_wrapper.take(),
+                    repeat_frames,
+                    repeat_time,
+                    repeat_update,
+                    pedantic,
+                )
+                .map(|x| x.map(|x| PyTimestamp { timestamp: x }))
+        })
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
     }
 
     #[getter(cursor_visible)]
@@ -501,10 +549,9 @@ impl Window {
     }
 
     #[pyo3(name = "get_current_monitor")]
-    fn py_get_current_monitor(&self) -> Option<Monitor> {
+    fn py_get_current_monitor(&self, py: Python) -> Option<Monitor> {
         let self_wrapper = SendWrapper::new(self);
-        let monitor = self_wrapper.get_current_monitor();
-        monitor
+        py.allow_threads(move || self_wrapper.get_current_monitor())
     }
 
     #[pyo3(name = "get_size")]
@@ -560,6 +607,22 @@ impl Window {
     #[pyo3(name = "create_event_receiver")]
     fn py_create_event_receiver(&self) -> EventReceiver {
         self.create_event_receiver()
+    }
+
+    // allows Window to be used as a context manager
+    fn __enter__(slf: PyRef<Self>) -> PyResult<Py<Window>> {
+        // return self
+        Ok(slf.into())
+    }
+
+    fn __exit__(
+        slf: PyRef<Self>,
+        _exc_type: Option<PyObject>,
+        _exc_value: Option<PyObject>,
+        _traceback: Option<PyObject>,
+    ) -> PyResult<()> {
+        // slf.close();
+        Ok(())
     }
 }
 

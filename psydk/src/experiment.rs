@@ -216,14 +216,12 @@ impl ExperimentManager {
         // find all monitors available
 
         let monitors = self.get_available_monitors();
-        println!("{:?}", monitor);
-        println!("Found monitors: {:?}", monitors);
         // get the second monitor if available, otherwise use the first one
         let monitor = monitors
             .get(monitor.unwrap_or(0) as usize)
             .unwrap_or(monitors.first().expect("No monitor found - this should not happen"));
 
-        println!("Creating default window on monitor {:?}", monitor);
+
         self.create_window(&WindowOptions::FullscreenHighestResolution {
             monitor: Some(monitor.clone()),
             refresh_rate: None,
@@ -240,7 +238,7 @@ impl ExperimentManager {
         // wake up the event loop
         self.event_loop_proxy.send_event(());
 
-        println!("waiting for monitors");
+
         receiver.recv().unwrap()
     }
 
