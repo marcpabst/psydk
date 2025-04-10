@@ -203,6 +203,7 @@ impl Stimulus for ImageStimulus {
 
     fn contains(&self, x: Size, y: Size, window: &Window) -> bool {
         let window_state = window.state.lock().unwrap();
+        let window_state = window_state.as_ref().unwrap();
         let window_size = window_state.size;
         let screen_props = window_state.physical_screen;
 

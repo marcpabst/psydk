@@ -29,6 +29,7 @@ use crate::{
 pub enum EventLoopAction {
     CreateNewWindow(WindowOptions, Sender<Window>),
     GetAvailableMonitors(Sender<Vec<Monitor>>),
+    Exit,
 }
 
 #[derive(Debug)]
@@ -150,7 +151,7 @@ impl WindowOptions {
 
 /// The ExperimentManager is available to the user in the experiment function.
 #[derive(Clone)]
-#[pyclass(unsendable)]
+#[pyclass]
 pub struct ExperimentManager {
     event_loop_proxy: EventLoopProxy<()>,
     action_sender: Sender<EventLoopAction>,
@@ -176,6 +177,13 @@ impl ExperimentManager {
             font_manager,
             config: Arc::new(Mutex::new(crate::config::ExperimentConfig::default())),
         }
+    }
+
+    pub fn exit(&self) {
+        // send exit action
+        self.action_sender.send(EventLoopAction::Exit).unwrap();
+        // wake up the event loop
+        self.event_loop_proxy.send_event(()).unwrap();
     }
 
     pub fn font_manager(&self) -> &Arc<Mutex<cosmic_text::FontSystem>> {
@@ -221,7 +229,6 @@ impl ExperimentManager {
             .get(monitor.unwrap_or(0) as usize)
             .unwrap_or(monitors.first().expect("No monitor found - this should not happen"));
 
-
         self.create_window(&WindowOptions::FullscreenHighestResolution {
             monitor: Some(monitor.clone()),
             refresh_rate: None,
@@ -237,7 +244,6 @@ impl ExperimentManager {
 
         // wake up the event loop
         self.event_loop_proxy.send_event(());
-
 
         receiver.recv().unwrap()
     }
@@ -324,6 +330,11 @@ impl ExperimentManager {
     fn py_system_info(&self) -> PyResult<HashMap<String, String>> {
         Ok(self.system_info())
     }
+
+    #[pyo3(name = "exit")]
+    fn py_exit(&self) {
+        self.exit();
+    }
 }
 
 /// Runs your experiment function. This function will block the current thread
@@ -389,6 +400,5 @@ pub fn py_run_experiment(
     };
 
     py.allow_threads(move || app.run_experiment(rust_experiment_fn))?; // run the experiment
-    println!("Experiment finished");
     Ok(())
 }

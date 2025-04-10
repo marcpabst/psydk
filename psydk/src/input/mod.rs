@@ -354,6 +354,7 @@ impl EventTryFrom<winit_event::WindowEvent> for Event {
 
                 // move by x_origin and y_origin
                 let window_state = window.state.lock().unwrap();
+                let window_state = window_state.as_ref().unwrap();
                 let window_size = window_state.size;
                 let position = (
                     position.0 - (window_size.width as f32 / 2.0),
@@ -408,6 +409,7 @@ impl EventTryFrom<winit_event::WindowEvent> for Event {
 
                 // move by x_origin and y_origin
                 let window_state = window.state.lock().unwrap();
+                let window_state = window_state.as_ref().unwrap();
                 let window_size = window_state.size;
                 let position = (
                     position.0 - (window_size.width as f32 / 2.0),
@@ -454,7 +456,7 @@ impl EventTryFrom<winit_event::WindowEvent> for Event {
 
 /// Receives physical input events.
 #[derive(Debug)]
-#[pyclass(unsendable)]
+#[pyclass]
 pub struct EventReceiver {
     pub(crate) receiver: async_broadcast::Receiver<Event>,
 }

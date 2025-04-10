@@ -29,6 +29,7 @@ pub mod errors;
 pub mod git;
 pub mod input;
 pub mod time;
+pub mod utils;
 pub mod visual;
 
 pub mod experiment;
@@ -147,6 +148,15 @@ fn psydk(m: &Bound<'_, PyModule>) -> PyResult<()> {
     };
 
     m.add_submodule(&m_time)?;
+
+    let m_utils = {
+        let m = new_submodule!(m, "psydk", "utils");
+        m.add_class::<utils::PyCSVWriter>()?;
+        m.add_function(wrap_pyfunction!(time::py_now, &m)?)?;
+        m
+    };
+
+    m.add_submodule(&m_utils)?;
 
     Ok(())
 }

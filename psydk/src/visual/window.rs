@@ -163,12 +163,12 @@ impl WindowState {
 /// to submit them to the screen for rendering. Each window has a render task
 /// that is responsible for rendering stimuli to the screen.
 #[derive(Dbg, Clone)]
-#[pyclass(unsendable)]
+#[pyclass]
 pub struct Window {
     /// Window ID
     pub winit_id: WindowId,
     /// The window state. Shared between all clones of the window.
-    pub state: Arc<Mutex<WindowState>>,
+    pub state: Arc<Mutex<Option<WindowState>>>,
     /// gpu state for the window
     pub gpu_state: Arc<Mutex<GPUState>>,
     /// The global configuration for the experiment.
@@ -193,6 +193,7 @@ impl Window {
         let size = size.into();
         let mut gpu_state = self.gpu_state.lock().unwrap();
         let mut win_state = self.state.lock().unwrap();
+        let mut win_state = win_state.as_mut().unwrap();
 
         win_state.resize(size, &mut gpu_state);
     }
@@ -221,6 +222,7 @@ impl Window {
         // lock the gpu state and window state
         let gpu_state = &mut self.gpu_state.lock().unwrap();
         let mut win_state = &mut self.state.lock().unwrap();
+        let mut win_state = win_state.as_mut().unwrap();
 
         let pedantic = pedantic.unwrap_or(self.config.lock().unwrap().pedantic);
 
@@ -294,7 +296,6 @@ impl Window {
 
             //                     if let Some(suface_texture) = suface_texture {
 
-
             //                     }
             //                 });
             //     //     };
@@ -340,12 +341,16 @@ impl Window {
     }
 
     pub fn close(&self) {
-        todo!()
+        // close the window
+        let mut win_state = self.state.lock().unwrap();
+        // set the state to None
+        *win_state = None;
     }
 
     pub fn get_current_refresh_rate(&self) -> Option<f64> {
         let winit_window = {
-            let win_state = &self.state.lock().unwrap();
+            let win_state = self.state.lock().unwrap();
+            let win_state = win_state.as_ref().unwrap();
             win_state.winit_window.clone()
         };
 
@@ -360,7 +365,8 @@ impl Window {
 
     pub fn get_current_monitor(&self) -> Option<Monitor> {
         let winit_window = {
-            let win_state = &self.state.lock().unwrap();
+            let win_state = self.state.lock().unwrap();
+            let win_state = win_state.as_ref().unwrap();
             win_state.winit_window.clone()
         };
         let monitor = winit_window.current_monitor();
@@ -379,19 +385,23 @@ impl Window {
     /// Set the visibility of the mouse cursor.
     pub fn set_cursor_visible(&self, visible: bool) {
         let mut win_state = self.state.lock().unwrap();
+        let mut win_state = win_state.as_mut().unwrap();
         win_state.mouse_cursor_visible = visible;
         win_state.winit_window.set_cursor_visible(false);
     }
 
     /// Returns true if the mouse cursor is currently visible.
     pub fn cursor_visible(&self) -> bool {
-        let win_state = &self.state.lock().unwrap();
+        let win_state = self.state.lock().unwrap();
+        let win_state = win_state.as_ref().unwrap();
+
         win_state.mouse_cursor_visible
     }
 
     /// Returns the mouse position. None if cursor not in window.
     pub fn mouse_position(&self) -> Option<(f32, f32)> {
-        let win_state = &self.state.lock().unwrap();
+        let win_state = self.state.lock().unwrap();
+        let win_state = win_state.as_ref().unwrap();
         win_state.mouse_position.clone()
     }
 
@@ -411,13 +421,15 @@ impl Window {
 
     /// Returns the size of the window in pixels.
     pub fn size(&self) -> PixelSize {
-        let win_state = &self.state.lock().unwrap();
+        let win_state = self.state.lock().unwrap();
+        let win_state = win_state.as_ref().unwrap();
         win_state.size
     }
 
     /// Return a new frame for the window.
     pub fn get_frame(&self) -> Frame {
-        let win_state = &self.state.lock().unwrap();
+        let win_state = self.state.lock().unwrap();
+        let win_state = win_state.as_ref().unwrap();
         // let scene = win_state
         //     .renderer
         //     .create_scene(win_state.size.width, win_state.size.height);
@@ -433,6 +445,7 @@ impl Window {
     }
     fn remove_event_handler(&self, id: EventHandlerId) {
         let mut state = self.state.lock().unwrap();
+        let state = state.as_mut().unwrap();
         state.event_handlers.remove(&id);
     }
 
@@ -441,6 +454,7 @@ impl Window {
 
         let event_handlers = {
             let state = self.state.lock().unwrap();
+            let state = state.as_ref().unwrap();
 
             // clone the event handlers
             let event_handlers = &state.event_handlers;
@@ -470,6 +484,7 @@ impl Window {
         F: Fn(Event) -> bool + 'static + Send + Sync,
     {
         let mut state = self.state.lock().unwrap();
+        let mut state = state.as_mut().unwrap();
         let mut event_handlers = &mut state.event_handlers;
 
         // find a free id
@@ -484,10 +499,6 @@ impl Window {
         event_handlers.insert(id, (kind, Arc::new(handler)));
 
         id
-    }
-
-    pub fn lock_state(&self) -> MutexGuard<WindowState> {
-        self.state.lock().unwrap()
     }
 }
 
@@ -563,7 +574,11 @@ impl Window {
     #[getter]
     fn py_get_bg_color(&self, py: Python) -> LinRgba {
         let self_wrapper = SendWrapper::new(self);
-        py.allow_threads(move || self_wrapper.state.lock().unwrap().bg_color)
+        py.allow_threads(move || {
+            let state = self_wrapper.state.lock().unwrap();
+            let state = state.as_ref().unwrap();
+            state.bg_color
+        })
     }
 
     #[pyo3(name = "bg_color")]
@@ -572,7 +587,11 @@ impl Window {
         let py = bg_color.py();
         let bg_color = *bg_color;
         let self_wrapper = SendWrapper::new(self);
-        py.allow_threads(move || self_wrapper.state.lock().unwrap().bg_color = bg_color)
+        py.allow_threads(move || {
+            let mut state = self_wrapper.state.lock().unwrap();
+            let mut state = state.as_mut().unwrap();
+            state.bg_color = bg_color
+        })
     }
 
     /// Add an event handler to the window. The event handler will be called
@@ -610,7 +629,7 @@ impl Window {
     }
 
     // allows Window to be used as a context manager
-    fn __enter__(slf: PyRef<Self>) -> PyResult<Py<Window>> {
+    fn __enter__(slf: PyRef<Self>) -> PyResult<Py<Self>> {
         // return self
         Ok(slf.into())
     }
@@ -628,7 +647,7 @@ impl Window {
 
 /// FrameIterator is an iterator that yields frames.
 #[derive(Debug, Clone)]
-#[pyclass(unsendable)]
+#[pyclass]
 pub struct FrameIterator {
     /// The window that the frames are associated with.
     window: Window,

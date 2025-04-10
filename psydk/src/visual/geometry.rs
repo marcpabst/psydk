@@ -366,6 +366,7 @@ impl Size {
     #[pyo3(name = "eval")]
     fn py_eval(&self, window: &Window) -> f32 {
         let window_state = window.state.lock().unwrap();
+        let window_state = window_state.as_ref().unwrap();
         self.eval(window_state.size, window_state.physical_screen)
     }
 }

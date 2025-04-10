@@ -243,7 +243,7 @@ impl App {
         // create handle
         let window = Window {
             winit_id,
-            state: Arc::new(Mutex::new(window_state)),
+            state: Arc::new(Mutex::new(Some(window_state))),
             gpu_state: self.gpu_state.clone(),
             event_broadcast_sender,
             event_broadcast_receiver,
@@ -291,7 +291,7 @@ impl App {
 
         let exp_manager = ExperimentManager::new(
             event_loop_proxy,
-            action_sender,
+            action_sender.clone(),
             self.renderer_factory.clone(),
             audio_host,
             self.font_manager.clone(),
@@ -300,6 +300,10 @@ impl App {
         // start experiment
         thread::spawn(move || {
             let res = experiment_fn(exp_manager);
+
+            // send Exit event to the event loop, then wake it up
+            action_sender.send(EventLoopAction::Exit).unwrap();
+            event_loop_proxy2.send_event(()).unwrap();
 
             // panic if the experiment function returns an error
             if let Err(e) = res {
@@ -313,8 +317,6 @@ impl App {
 
         // start event loop
         let _ = event_loop.run_app(self);
-        println!("event loop finished");
-        // this should never return
         Ok(())
     }
 
@@ -322,9 +324,7 @@ impl App {
 }
 
 impl ApplicationHandler<()> for App {
-    fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
-
-    }
+    fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {}
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: ()) {
         // check if we need to create a new window
@@ -344,6 +344,9 @@ impl ApplicationHandler<()> for App {
                     })
                     .collect();
                 sender.send(monitors).unwrap();
+            }
+            EventLoopAction::Exit => {
+                event_loop.exit();
             }
         });
     }
@@ -382,6 +385,7 @@ impl ApplicationHandler<()> for App {
                 if let WindowEvent::CursorMoved { position, .. } = event {
                     if let Some(window) = window {
                         let mut window_state = window.state.lock().unwrap();
+                        let window_state = window_state.as_mut().unwrap();
                         let win_size = window_state.size;
                         let shifted_position = (
                             position.x as f32 - win_size.width as f32 / 2.0,
