@@ -7,7 +7,7 @@
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum psydkError {
+pub enum PsydkError {
     // Pyo3 errors
     #[error("{0}")]
     Pyo3Error(#[from] pyo3::PyErr),
@@ -77,19 +77,19 @@ pub enum psydkError {
     PresentationError(String),
 }
 
-pub type PsydkResult<T> = std::result::Result<T, psydkError>;
+pub type PsydkResult<T> = std::result::Result<T, PsydkError>;
 
 // macro that error with the given message
 #[macro_export]
 macro_rules! error {
     ($msg:expr) => {
-        return Err(psydkError::CustomError($msg.to_string()));
+        return Err(PsydkError::CustomError($msg.to_string()));
     };
 }
 
-// allow psydkError to be converted to a PyErr
-impl From<psydkError> for pyo3::PyErr {
-    fn from(err: psydkError) -> pyo3::PyErr {
+// allow PsydkError to be converted to a PyErr
+impl From<PsydkError> for pyo3::PyErr {
+    fn from(err: PsydkError) -> pyo3::PyErr {
         pyo3::exceptions::PyException::new_err(err.to_string())
     }
 }

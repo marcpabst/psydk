@@ -3,7 +3,7 @@ use std::sync::Arc;
 use numpy::{IntoPyArray, PyReadonlyArrayDyn};
 use pyo3::ffi::c_str;
 use pyo3::types::PyAnyMethods;
-use pyo3::{pyclass, pyfunction, pymethods, Bound, PyAny, PyObject, PyRef, PyResult, Python};
+use pyo3::{pyclass, pyfunction, pymethods, Bound, PyAny, PyObject, PyRef, PyRefMut, PyResult, Python};
 use timed_audio::cpal::traits::{DeviceTrait, HostTrait};
 use timed_audio::cpal::{default_host, Device, Host};
 use timed_audio::{AudioObject, Stream};
@@ -85,13 +85,13 @@ impl PyStream {
     }
 
     fn __exit__(
-        &mut self,
-        _exc_type: &Bound<'_, crate::PyAny>,
-        _exc_value: &crate::Bound<'_, crate::PyAny>,
-        _traceback: &crate::Bound<'_, crate::PyAny>,
+        mut slf: PyRefMut<Self>,
+        exc_type: Bound<'_, crate::PyAny>,
+        exc_value: Bound<'_, crate::PyAny>,
+        traceback: Bound<'_, crate::PyAny>,
     ) -> PyResult<()> {
         // drop the stream
-        self.stream = None;
+        slf.stream = None;
         Ok(())
     }
 }

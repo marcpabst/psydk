@@ -61,7 +61,7 @@ pub(crate) fn create_fill_brush2<'a>(
     stroke_color: &Option<LinRgba>,
     stroke_width: &Option<Size>,
     gradient: &Option<Gradient>,
-) -> Result<Brush<'a>, crate::errors::psydkError> {
+) -> Result<Brush<'a>, crate::errors::PsydkError> {
     let fill_origin = fill_origin.unwrap_or((0.0, 0.0));
     if let Some(pattern) = pattern {
         let default_color = LinRgba::default();

@@ -29,7 +29,7 @@ use super::{
 };
 use crate::{
     app::GPUState,
-    errors::{psydkError, PsydkResult},
+    errors::{PsydkError, PsydkResult},
     experiment::Monitor,
     input::{Event, EventHandler, EventHandlerId, EventHandlingExt, EventKind, EventReceiver},
     time::PyTimestamp,
@@ -209,7 +209,7 @@ impl Window {
     ) -> PsydkResult<Option<Instant>> {
         // make sure that only one of repeat_frames or repeat_time is set (or none)
         if repeat_frames.is_some() && repeat_time.is_some() {
-            return Err(psydkError::ParameterError(
+            return Err(PsydkError::ParameterError(
                 "You can only specify one of repeat_frames or repeat_time".into(),
             ));
         }
@@ -239,7 +239,7 @@ impl Window {
         if pedantic && (f_repeat_frames - f_repeat_frames).round().abs() > 0.0001 {
             // TODO: proper error handling
             let repeat_time = repeat_time.unwrap_or(0.0);
-            return Err(psydkError::ParameterError(format!("You specified a `repeat_time` {repeat_time} that is not a multiple of the monitor's reported frame time ({refresh_rate} fps -> number of frames: {f_repeat_frames}) This can lead to unexpected behavior and is therefore diallowed by default. However, you can disable this check by disabling pedantic mode. In this case, the repeat time will be rounded to the nearest integer number of frames.")));
+            return Err(PsydkError::ParameterError(format!("You specified a `repeat_time` {repeat_time} that is not a multiple of the monitor's reported frame time ({refresh_rate} fps -> number of frames: {f_repeat_frames}) This can lead to unexpected behavior and is therefore diallowed by default. However, you can disable this check by disabling pedantic mode. In this case, the repeat time will be rounded to the nearest integer number of frames.")));
         }
 
         // convert the repeat frames to an integer

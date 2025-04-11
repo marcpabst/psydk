@@ -273,9 +273,9 @@ impl App {
     // }
 
     /// Starts the experiment. This will block until the experiment is finished.
-    pub fn run_experiment<F>(&mut self, experiment_fn: F) -> Result<(), errors::psydkError>
+    pub fn run_experiment<F>(&mut self, experiment_fn: F) -> Result<(), errors::PsydkError>
     where
-        F: FnOnce(ExperimentManager) -> Result<(), errors::psydkError> + 'static + Send,
+        F: FnOnce(ExperimentManager) -> Result<(), errors::PsydkError> + 'static + Send,
     {
         log::debug!("Main task is running on thread {:?}", std::thread::current().id());
 
@@ -297,27 +297,39 @@ impl App {
             self.font_manager.clone(),
         );
 
+        // create mutex to hold potential error
+        let error_mutex = Arc::new(Mutex::new(None));
+        let error_mutex_clone = error_mutex.clone();
+
         // start experiment
         thread::spawn(move || {
             let res = experiment_fn(exp_manager);
 
             // send Exit event to the event loop, then wake it up
-            action_sender.send(EventLoopAction::Exit).unwrap();
+            action_sender.send(EventLoopAction::Exit(None)).unwrap();
             event_loop_proxy2.send_event(()).unwrap();
 
             // panic if the experiment function returns an error
             if let Err(e) = res {
-                // throw error
-                log::error!("Experiment failed with {:?}: {:}", e, e);
-                // quit program
-                panic!("Experiment failed with {:?}: {:}", e, e.to_string());
-                // std::process::exit(1);
+                // put the error in the mutex
+                let mut error = error_mutex_clone.lock().unwrap();
+                *error = Some(e);
             }
         });
 
         // start event loop
         let _ = event_loop.run_app(self);
-        Ok(())
+
+        // check if there was an error
+        let error = error_mutex.lock().unwrap().take();
+        match error {
+            Some(e) => {
+                return Err(e);
+            }
+            None => {
+                return Ok(());
+            }
+        }
     }
 
     // Start a thread that will dispath
@@ -345,7 +357,7 @@ impl ApplicationHandler<()> for App {
                     .collect();
                 sender.send(monitors).unwrap();
             }
-            EventLoopAction::Exit => {
+            EventLoopAction::Exit(..) => {
                 event_loop.exit();
             }
         });

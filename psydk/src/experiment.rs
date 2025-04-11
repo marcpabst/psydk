@@ -20,7 +20,7 @@ use winit::event_loop::EventLoopProxy;
 use crate::{
     app::App,
     audio::{PyDevice, PyHost, PyStream},
-    errors::{self, psydkError, PsydkResult},
+    errors::{self, PsydkError, PsydkResult},
     git::PyRepository,
     visual::window::Window,
 };
@@ -29,7 +29,7 @@ use crate::{
 pub enum EventLoopAction {
     CreateNewWindow(WindowOptions, Sender<Window>),
     GetAvailableMonitors(Sender<Vec<Monitor>>),
-    Exit,
+    Exit(Option<errors::PsydkError>),
 }
 
 #[derive(Debug)]
@@ -97,7 +97,7 @@ impl Monitor {
     fn py_refresh_rate(&self) -> PyResult<f64> {
         self.refresh_rate()
             .map(|r| r as f64)
-            .ok_or_else(|| psydkError::MonitorError("Monitor does not have a refresh rate".to_string()).into())
+            .ok_or_else(|| PsydkError::MonitorError("Monitor does not have a refresh rate".to_string()).into())
     }
 }
 
@@ -179,12 +179,12 @@ impl ExperimentManager {
         }
     }
 
-    pub fn exit(&self) {
-        // send exit action
-        self.action_sender.send(EventLoopAction::Exit).unwrap();
-        // wake up the event loop
-        self.event_loop_proxy.send_event(()).unwrap();
-    }
+    // pub fn exit(&self) {
+    //     // send exit action
+    //     self.action_sender.send(EventLoopAction::Exit(None)).unwrap();
+    //     // wake up the event loop
+    //     self.event_loop_proxy.send_event(()).unwrap();
+    // }
 
     pub fn font_manager(&self) -> &Arc<Mutex<cosmic_text::FontSystem>> {
         &self.font_manager
@@ -250,7 +250,7 @@ impl ExperimentManager {
 
     pub fn get_repository(&self) -> PsydkResult<Option<gix::Repository>> {
         // get the current directory
-        let mut current_dir = std::env::current_dir().map_err(|e| errors::psydkError::IOError(e))?;
+        let mut current_dir = std::env::current_dir().map_err(|e| errors::PsydkError::IOError(e))?;
         // try to open the repository, otherwise traverse the directory tree
         while current_dir.parent().is_some() {
             let repo = gix::open(current_dir.clone()).ok();
@@ -331,10 +331,10 @@ impl ExperimentManager {
         Ok(self.system_info())
     }
 
-    #[pyo3(name = "exit")]
-    fn py_exit(&self) {
-        self.exit();
-    }
+    // #[pyo3(name = "exit")]
+    // fn py_exit(&self) {
+    //     self.exit();
+    // }
 }
 
 /// Runs your experiment function. This function will block the current thread
@@ -368,7 +368,7 @@ pub fn py_run_experiment(
         .downcast::<PyDict>()?
         .set_item("__renderer_factory", renderer_factory)?;
 
-    let rust_experiment_fn = move |em: ExperimentManager| -> Result<(), errors::psydkError> {
+    let rust_experiment_fn = move |em: ExperimentManager| -> Result<(), errors::PsydkError> {
         Python::with_gil(|py| -> _ {
             // bind kwargs
             let kwargs = if let Some(kwargs) = kwargs {
