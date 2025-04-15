@@ -604,7 +604,7 @@ impl Window {
     /// callback : callable
     ///  The callback that will be called when the event occurs. The callback should take a single argument, an instance of `Event`.
     #[pyo3(name = "add_event_handler")]
-    fn py_add_event_handler(&self, kind: EventKind, callback: Py<PyAny>, py: Python<'_>) {
+    fn py_add_event_handler(&self, kind: EventKind, callback: Py<PyAny>, py: Python<'_>) -> EventHandlerId {
         // let kind = EventKind::from_str(&kind).expect("Invalid event kind");
 
         let rust_callback_fn = move |event: Event| -> bool {
@@ -619,7 +619,16 @@ impl Window {
 
         let self_wrapper = SendWrapper::new(self);
 
-        let id = self.add_event_handler(kind, rust_callback_fn);
+        let id = py.allow_threads(move || self_wrapper.add_event_handler(kind, rust_callback_fn));
+
+        id
+    }
+
+    /// Remove an event handler from the window.
+    #[pyo3(name = "remove_event_handler")]
+    fn py_remove_event_handler(&self, id: EventHandlerId, py: Python) {
+        let self_wrapper = SendWrapper::new(self);
+        py.allow_threads(move || self_wrapper.remove_event_handler(id));
     }
 
     /// Create a new EventReceiver that will receive events from the window.

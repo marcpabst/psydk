@@ -21,7 +21,7 @@ impl Into<Point> for (f32, f32) {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum Shape {
     Circle {
         center: Point,
@@ -46,6 +46,12 @@ pub enum Shape {
         radius_x: f64,
         radius_y: f64,
         rotation: f64,
+    },
+    Polygon {
+        points: Vec<Point>,
+    },
+    Path {
+        points: Vec<Point>,
     },
 }
 
@@ -89,5 +95,15 @@ impl Shape {
             radius_y,
             rotation,
         }
+    }
+
+    pub fn polygon(points: Vec<impl Into<Point>>) -> Self {
+        let points = points.into_iter().map(|p| p.into()).collect();
+        Self::Polygon { points }
+    }
+
+    pub fn path(points: Vec<impl Into<Point>>) -> Self {
+        let points = points.into_iter().map(|p| p.into()).collect();
+        Self::Path { points }
     }
 }

@@ -323,19 +323,19 @@ impl Stimulus for GaborStimulus {
         let alpha = self.params.alpha.unwrap_or(1.0);
         scene.start_layer(
             BlendMode::SourceOver,
-            gaussian_shape,
+            gaussian_shape.clone(),
             Some(transform.into()),
             None,
             alpha as f32,
         );
         scene.draw_shape_fill(
-            gaussian_shape,
+            gaussian_shape.clone(),
             gaussian_brush,
             Some(transform.into()),
             Some(BlendMode::SourceOver),
         );
         scene.draw_shape_fill(
-            grating_shape,
+            grating_shape.clone(),
             grating_brush,
             Some(transform.into()),
             Some(BlendMode::SourceIn),

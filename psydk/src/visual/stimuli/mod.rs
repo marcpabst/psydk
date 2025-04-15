@@ -120,6 +120,9 @@ impl<'py> FromPyObject<'py> for IntoStimulusParamValue {
         if let Ok(value) = ob.extract::<super::geometry::Shape>() {
             return Ok(Self(StimulusParamValue::Shape(value)));
         }
+        if let Ok(value) = ob.extract::<super::geometry::Shape>() {
+            return Ok(Self(StimulusParamValue::Shape(value.into())));
+        }
         Err(pyo3::exceptions::PyTypeError::new_err(
             "Could not convert the value to a StimulusParamValue",
         ))
@@ -385,6 +388,7 @@ macro_rules! impl_pystimulus_for_wrapper {
                     Some(StimulusParamValue::LinRgba(val)) => Ok(val.into_py(py)),
                     Some(StimulusParamValue::Shape(val)) => Ok(val.into_py(py)),
                     Some(StimulusParamValue::StrokeStyle(val)) => Ok(val.into_py(py)),
+                    Some(StimulusParamValue::Shape(val)) => Ok(val.into_py(py)),
                     None => Err(PyValueError::new_err("parameter not found")),
                 }
             }
@@ -463,6 +467,18 @@ macro_rules! impl_pystimulus_for_wrapper {
                     StimulusParamValue::LinRgba(_) => {
                         let value = value.extract::<crate::visual::color::IntoLinRgba>(py)?;
                         let value = StimulusParamValue::LinRgba(value.into());
+
+                        py.allow_threads(move || {
+                            let mut ds = dynamic_stimulus.0.lock().unwrap();
+                            let ds = ds.downcast_mut::<$name>().expect("downcast failed");
+                            ds.set_param(name, value);
+                        });
+
+                        return Ok(());
+                    }
+                    StimulusParamValue::Shape(_) => {
+                        let value = value.extract::<super::super::geometry::Shape>(py)?;
+                        let value = StimulusParamValue::Shape(value);
 
                         py.allow_threads(move || {
                             let mut ds = dynamic_stimulus.0.lock().unwrap();

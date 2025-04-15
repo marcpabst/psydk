@@ -607,6 +607,9 @@ pub enum Shape {
 
     /// A polygon.
     Polygon { points: Vec<(Size, Size)> },
+
+    /// A path.
+    Path { points: Vec<(Size, Size)> },
 }
 
 #[pymethods]
@@ -707,6 +710,20 @@ impl Shape {
             radius_x: radius_x.into(),
             radius_y: radius_y.into(),
         }
+    }
+
+    #[staticmethod]
+    /// Create a new polygon.
+    fn polygon(points: Vec<(IntoSize, IntoSize)>) -> Shape {
+        let points = points.into_iter().map(|(x, y)| (x.into(), y.into())).collect();
+        Shape::Polygon { points }
+    }
+
+    #[staticmethod]
+    /// Create a new path.
+    fn path(points: Vec<(IntoSize, IntoSize)>) -> Shape {
+        let points = points.into_iter().map(|(x, y)| (x.into(), y.into())).collect();
+        Shape::Path { points }
     }
 
     // for printing
@@ -892,6 +909,14 @@ pub fn ellipse(x: IntoSize, y: IntoSize, radius_x: IntoSize, radius_y: IntoSize)
 /// Create a new polygon.
 pub fn polygon(points: Vec<(IntoSize, IntoSize)>) -> Shape {
     Shape::Polygon {
+        points: points.into_iter().map(|(x, y)| (x.into(), y.into())).collect(),
+    }
+}
+
+#[pyfunction]
+/// Create a new path.
+pub fn path(points: Vec<(IntoSize, IntoSize)>) -> Shape {
+    Shape::Path {
         points: points.into_iter().map(|(x, y)| (x.into(), y.into())).collect(),
     }
 }

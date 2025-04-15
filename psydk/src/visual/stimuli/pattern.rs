@@ -345,7 +345,7 @@ impl Stimulus for PatternStimulus {
 
                 let shape = renderer::shapes::Shape::circle((x, y), radius);
 
-                scene.draw_shape_fill(shape, fill_brush.clone(), None, None);
+                scene.draw_shape_fill(shape.clone(), fill_brush.clone(), None, None);
 
                 scene.draw_shape_stroke(shape, stroke_brush, stroke_options, None, None);
             }
@@ -361,7 +361,7 @@ impl Stimulus for PatternStimulus {
 
                 let shape = renderer::shapes::Shape::rectangle((x, y), width, height);
 
-                scene.draw_shape_fill(shape, fill_brush.clone(), None, None);
+                scene.draw_shape_fill(shape.clone(), fill_brush.clone(), None, None);
 
                 scene.draw_shape_stroke(shape, stroke_brush, stroke_options, None, None);
             }
@@ -390,7 +390,40 @@ impl Stimulus for PatternStimulus {
                 scene.draw_shape_stroke(shape, stroke_brush, stroke_options, None, None);
             }
             Shape::Polygon { points } => {
-                todo!("Render polygon")
+                let points = points
+                    .iter()
+                    .map(|p| {
+                        let x = p.0.eval(windows_size, screen_props) as f64;
+                        let y = p.1.eval(windows_size, screen_props) as f64;
+
+                        // move by x_origin and y_origin
+                        (x + x_origin, y + y_origin).into()
+                    })
+                    .collect::<Vec<(f64, f64)>>();
+
+                let shape = renderer::shapes::Shape::polygon(points);
+
+                scene.draw_shape_fill(shape.clone(), fill_brush.clone(), None, None);
+
+                scene.draw_shape_stroke(shape, stroke_brush, stroke_options, None, None);
+            }
+            Shape::Path { points } => {
+                let points = points
+                    .iter()
+                    .map(|p| {
+                        let x = p.0.eval(windows_size, screen_props) as f64;
+                        let y = p.1.eval(windows_size, screen_props) as f64;
+
+                        // move by x_origin and y_origin
+                        (x + x_origin, y + y_origin).into()
+                    })
+                    .collect::<Vec<(f64, f64)>>();
+
+                let shape = renderer::shapes::Shape::path(points);
+
+                scene.draw_shape_fill(shape.clone(), fill_brush.clone(), None, None);
+
+                scene.draw_shape_stroke(shape, stroke_brush, stroke_options, None, None);
             }
         };
     }

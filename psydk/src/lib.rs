@@ -102,6 +102,7 @@ fn psydk(m: &Bound<'_, PyModule>) -> PyResult<()> {
             m.add_function(wrap_pyfunction!(visual::geometry::ellipse, &m)?)?;
             m.add_function(wrap_pyfunction!(visual::geometry::line, &m)?)?;
             m.add_function(wrap_pyfunction!(visual::geometry::polygon, &m)?)?;
+            m.add_function(wrap_pyfunction!(visual::geometry::path, &m)?)?;
 
             m
         };

@@ -134,6 +134,29 @@ impl SkiaScene {
                 let rect = skia_safe::Rect::from_xywh(a.x as f32, a.y as f32, b.x as f32, b.y as f32);
                 skia_canvas.draw_round_rect(rect, radius as f32, radius as f32, &skia_paint);
             }
+            Shape::Polygon { points } => {
+                let mut path = skia_safe::path::Path::new();
+                if points.len() == 0 {
+                    return;
+                }
+                path.move_to(points[0]);
+                for point in points.iter().skip(1) {
+                    path.line_to(*point);
+                }
+                path.close();
+                skia_canvas.draw_path(&path, &skia_paint);
+            }
+            Shape::Path { points } => {
+                let mut path = skia_safe::path::Path::new();
+                if points.len() == 0 {
+                    return;
+                }
+                path.move_to(points[0]);
+                for point in points.iter().skip(1) {
+                    path.line_to(*point);
+                }
+                skia_canvas.draw_path(&path, &skia_paint);
+            }
         }
         // restore the canvas
         if let Some(_) = affine {
@@ -772,6 +795,25 @@ impl From<&Shape> for skia_safe::Path {
                     (*radius as scalar, *radius as scalar),
                     None,
                 );
+            }
+            Shape::Polygon { points } => {
+                if points.len() == 0 {
+                    return path;
+                }
+                path.move_to(points[0]);
+                for point in points.iter().skip(1) {
+                    path.line_to(*point);
+                }
+                path.close();
+            }
+            Shape::Path { points } => {
+                if points.len() == 0 {
+                    return path;
+                }
+                path.move_to(points[0]);
+                for point in points.iter().skip(1) {
+                    path.line_to(*point);
+                }
             }
         }
         path

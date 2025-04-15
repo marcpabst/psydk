@@ -7,7 +7,7 @@ version = "0.1.0"
 
 [tasks]
 "build-py" = { cwd = "psydk", cmd = "maturin build" }
-"build-py-ios" = { cwd = "psydk", env = { PYTHON_VERSION = "3.10", PYTHONDIR = "$PIXI_PROJECT_ROOT/psydk/build_helpers/ios-arm64/" }, cmd = "build_helpers/build_ios.sh" }
+"build-py-ios" = { cwd = "psydk", env = { PYTHON_VERSION = "3.10", PYTHONDIR = "$PIXI_PROJECT_ROOT/psydk/dependencies/build_helpers/iphoneos/" }, cmd = "dependencies/build_helpers/build_ios.sh" }
 "build-docs" = "sphinx-build -M html docs/source/ docs/build/ -W -a -j auto -n --keep-going"
 
 "dev-py" = { cwd = "psydk", cmd = "maturin develop" }
