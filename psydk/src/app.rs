@@ -68,8 +68,17 @@ impl App {
         let (action_sender, action_receiver) = std::sync::mpsc::channel();
 
         let backend = wgpu::Backends::METAL | wgpu::Backends::DX12;
+        let backend_options = wgpu::BackendOptions {
+            gl: wgpu::GlBackendOptions::default(),
+            dx12: wgpu::Dx12BackendOptions {
+                latency_waitable_object: wgpu::wgt::Dx12UseFrameLatencyWaitableObject::DontWait,
+                ..Default::default()
+            },
+            noop: wgpu::NoopBackendOptions::default(),
+        };
         let instance_desc = wgpu::InstanceDescriptor {
             backends: backend,
+            backend_options,
             // use defaults for the rest
             ..Default::default()
         };

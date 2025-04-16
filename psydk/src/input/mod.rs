@@ -192,6 +192,16 @@ pub enum Event {
         /// The amount of vertical scrolling.
         vertical: f32,
     },
+    /// Onset event.
+    Onset {
+        /// Timestamp of the event.
+        timestamp: SystemTime,
+    },
+    /// Offset event.
+    Offset {
+        /// Timestamp of the event.
+        timestamp: SystemTime,
+    },
     /// Any other event. The string contains the name of the event.
     Other {
         /// Timestamp of the event.

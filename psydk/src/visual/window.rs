@@ -307,23 +307,33 @@ impl Window {
 
             // on dx12, get the frame id and add it to the frame queue
             // then wait for the frame to be presented
-            #[cfg(feature = "dx12")]
+            #[cfg(all(feature = "dx12", target_os = "windows"))]
             {
-                let swap_chain =
-                    unsafe { surface.as_hal::<wgpu::hal::api::Metal, _, _>(|surface| surface.swap_chain()) };
-                let frame_id = swap_chain.GetLastPresentCount();
-                win_state.frame_queue.push(frame_id);
+                let swap_chain = unsafe {
+                    win_state
+                        .surface
+                        .as_hal::<wgpu::hal::api::Dx12, _, _>(|surface| surface.unwrap().swap_chain().unwrap())
+                };
+
+                let waitable_handle = unsafe {
+                    win_state
+                        .surface
+                        .as_hal::<wgpu::hal::api::Dx12, _, _>(|surface| surface.unwrap().waitable_handle().unwrap())
+                };
+
+                let frame_id = unsafe { swap_chain.GetLastPresentCount() }.unwrap();
+                win_state.frame_queue.push(frame_id.into());
                 // this is waiting for the frame latency waitable object to be signaled
-                swap_chain.wait_for_frame_latency_object();
+                unsafe { windows::Win32::System::Threading::WaitForSingleObject(waitable_handle, 10000) };
                 // timestamp frame presentation
                 let timestamp = Instant::now();
                 onset_time.lock().unwrap().replace(timestamp);
                 // get the frame id that was presented from the frame queue
                 let frame_id = win_state.frame_queue.remove(0);
                 // get the callback for the frame id
-                let callback = win_state.frame_callbacks.remove(&frame_id).unwrap();
-                // call the callback
-                callback();
+                // let callback = win_state.frame_callbacks.remove(&frame_id).unwrap();
+                // // call the callback
+                // callback();
             }
         }
 
@@ -436,7 +446,7 @@ impl Window {
         let mut frame = Frame {
             stimuli: Vec::new(),
             window: self.clone(),
-            on_present: None,
+            event_handlers: HashMap::new(),
         };
 
         frame.set_bg_color(win_state.bg_color);
@@ -683,8 +693,8 @@ pub struct Frame {
     /// The window that the frame is associated with.
     window: Window,
     /// An optional callback that will be called when the frame is presented.
-    #[dbg(skip)]
-    on_present: Option<Box<dyn FnOnce() + Send + Sync>>,
+    #[dbg(placeholder = "...")]
+    pub event_handlers: HashMap<EventHandlerId, (EventKind, EventHandler)>,
 }
 
 impl Frame {
@@ -707,6 +717,26 @@ impl Frame {
         // stimulus.draw(self);
     }
 
+    fn add_event_handler<F>(&mut self, kind: EventKind, handler: F) -> EventHandlerId
+    where
+        F: Fn(Event) -> bool + 'static + Send + Sync,
+    {
+        let mut event_handlers = &mut self.event_handlers;
+
+        // find a free id
+        let id = loop {
+            let id = rand::random::<EventHandlerId>();
+            if !event_handlers.contains_key(&id) {
+                break id;
+            }
+        };
+
+        // add handler
+        event_handlers.insert(id, (kind, Arc::new(handler)));
+
+        id
+    }
+
     pub fn window(&self) -> Window {
         self.window.clone()
     }
@@ -724,5 +754,23 @@ impl Frame {
     #[setter(bg_color)]
     fn py_set_bg_color(&mut self, bg_color: super::color::LinRgba) {
         self.set_bg_color(bg_color);
+    }
+
+    #[pyo3(name = "add_event_handler")]
+    fn py_add_event_handler(&mut self, kind: EventKind, callback: Py<PyAny>, py: Python<'_>) -> EventHandlerId {
+        let rust_callback_fn = move |event: Event| -> bool {
+            Python::with_gil(|py| -> PyResult<()> {
+                callback.call1(py, (event,))
+                    .expect("Error calling callback in event handler. Make sure the callback takes a single argument of type Event. Error");
+                Ok(())
+            }).unwrap();
+            false
+        };
+
+        let mut self_wrapper = SendWrapper::new(self);
+
+        let id = py.allow_threads(move || self_wrapper.add_event_handler(kind, rust_callback_fn));
+
+        id
     }
 }
