@@ -16,7 +16,7 @@ anyhow = "1.0.86"
 pollster = "0.3.0"
 image = { version = "0.23.14", features = ["png", "jpeg"] }
 itertools = "0.13.0"
-wgpu = { git = "https://github.com/marcpabst/wgpu", rev = "ada4fc4" }
+wgpu = { git = "https://github.com/marcpabst/wgpu", rev = "2535dd4" }
 # wgpu = { git = "https://github.com/gfx-rs/wgpu", rev = "a13f0a0"}
 nalgebra = "0.33.0"
 custom_debug = "0.6.1"
