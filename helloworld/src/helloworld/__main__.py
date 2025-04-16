@@ -27,9 +27,6 @@ def my_experiment(
     """
 
     with ctx.create_default_window(fullscreen=True, monitor=2) as window:
-        # create event receiver
-        event_receiver = window.create_event_receiver()
-
         n_trials = 100
 
         for trial in range(n_trials):
@@ -112,6 +109,11 @@ def my_experiment(
             h2 = window.add_event_handler("mouse_button_release", mouse_up_handler)
             h3 = window.add_event_handler("cursor_moved", mouse_move_handler)
 
+            # touch event handlers
+            h4 = window.add_event_handler("touch_start", mouse_down_handler)
+            h5 = window.add_event_handler("touch_end", mouse_up_handler)
+            h6 = window.add_event_handler("touch_move", mouse_move_handler)
+
             while not draw_state["finished"]:
                 # draw the path
                 path_stim["shape"] = path(points)
@@ -128,6 +130,9 @@ def my_experiment(
             window.remove_event_handler(h1)
             window.remove_event_handler(h2)
             window.remove_event_handler(h3)
+            window.remove_event_handler(h4)
+            window.remove_event_handler(h5)
+            window.remove_event_handler(h6)
 
             # show for 1 seconds
             frame = window.get_frame()

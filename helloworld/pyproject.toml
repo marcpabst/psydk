@@ -140,7 +140,12 @@ requires = ["toga-winforms~=0.4.7"]
 
 # Mobile deployments
 [tool.briefcase.app.helloworld.iOS]
-requires = ["toga-iOS~=0.4.7", "std-nslog~=1.0.3", "numpy"]
+requires = [
+    "toga-iOS~=0.4.7",
+    "std-nslog~=1.0.3",
+    "numpy",
+    "../psydk/target/wheels/psydk-0.1.5-py3-none-any.whl",
+]
 
 [tool.briefcase.app.helloworld.android]
 requires = ["toga-android~=0.4.7"]

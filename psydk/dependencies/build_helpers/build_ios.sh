@@ -36,24 +36,24 @@ if [ $rc -ne 0 ]; then
     exit $rc
 fi
 
-# find the wheel
-WHEEL=$(find ../target/wheels -name "*.whl")
+# # find the wheel
+# WHEEL=$(find ../target/wheels -name "*.whl")
 
-# convert to absolute path
-WHEEL=$(realpath $WHEEL)
+# # convert to absolute path
+# WHEEL=$(realpath $WHEEL)
 
-# unzip the wheel
-rm -rf ../target/wheels/unzipped
-unzip $WHEEL -d ../target/wheels/unzipped
+# # unzip the wheel
+# rm -rf ../target/wheels/unzipped
+# unzip $WHEEL -d ../target/wheels/unzipped
 
-# rename all .*so files to *.dylib
-find ../target/wheels/unzipped -name "*.so" -exec bash -c 'mv "$1" "${1%.so}.so"' _ {} \;
+# # rename all .*so files to *.dylib
+# find ../target/wheels/unzipped -name "*.so" -exec bash -c 'mv "$1" "${1%.so}.so"' _ {} \;
 
 
-# zip the wheel back up
-cd ../target/wheels/unzipped
-rm -f $WHEEL
-zip -r $WHEEL *
+# # zip the wheel back up
+# cd ../target/wheels/unzipped
+# rm -f $WHEEL
+# zip -r $WHEEL *
 
-# rename wheel to psydk-0.1.6-py3-none-any.whl
-mv $WHEEL ../psydk-0.1.6-py3-none-any.whl
+# # rename wheel to psydk-0.1.6-py3-none-any.whl
+# mv $WHEEL ../psydk-0.1.6-py3-none-any.whl
