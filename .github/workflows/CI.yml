@@ -5,7 +5,7 @@ on: [push, pull_request]
 jobs:
 
   build_wheels:
-    name: Build wheels for ${{ matrix.platform }}
+    name: Build wheels for ${{ matrix.name }} on ${{ matrix.runs-on }}
     runs-on: ${{ matrix.runs-on }}
     strategy:
       fail-fast: false
@@ -63,10 +63,10 @@ jobs:
           CIBW_ENVIRONMENT_LINUX: "PATH=$HOME/.cargo/bin:$PATH"
           MACOSX_DEPLOYMENT_TARGET: 10.12
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4.6.2
         with:
-          name: cibw-wheels-${{ matrix.os }}-${{ strategy.job-index }}
-          path: ./psydk/wheelhouse/*.whl
+          name: wheels-${{ matrix.name }}
+          path: ./wheelhouse/*.whl
 
   make_sdist:
     name: Make SDist
