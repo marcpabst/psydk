@@ -1,4 +1,4 @@
-name: Build
+name: CI
 
 on: [push, pull_request]
 
@@ -67,6 +67,7 @@ jobs:
           with:
             name: cibw-wheels-${{ matrix.os }}-${{ strategy.job-index }}
             path: ./psydk/wheelhouse/*.whl
+
   make_sdist:
     name: Make SDist
     runs-on: ubuntu-latest
