@@ -65,6 +65,10 @@ jobs:
         working-directory: ./psydk
         run: python -m cibuildwheel --output-dir wheelhouse
         env:
+          IPHONEOS_DEPLOYMENT_TARGET: "23.0"
+          CIBW_PLATFORM: ${{ matrix.platform }}
+          CIBW_ARCHS: ${{ matrix.archs }}
+          CIBW_BUILD: "cp*"
           CIBW_BEFORE_ALL_LINUX: curl -sSf https://sh.rustup.rs | sh -s -- -y
           CIBW_BEFORE_ALL_WINDOWS: rustup target add i686-pc-windows-msvc
           CIBW_ENVIRONMENT_LINUX: "PATH=$HOME/.cargo/bin:$PATH"
