@@ -5,8 +5,8 @@ on: [push, pull_request]
 jobs:
 
   build_wheels:
-    name: Build wheels on ${{ matrix.platform }} for ${{ matrix.name }}
-    runs-on: ${{ matrix.platform }}
+    name: Build wheels for ${{ matrix.platform }}
+    runs-on: ${{ matrix.runs-on }}
     strategy:
       fail-fast: false
       matrix:
