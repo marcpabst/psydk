@@ -3,9 +3,9 @@
 ### High-performance, low-latency, cross-platform experiment framework for the cognitive sciences.
 
 > [!WARNING]
-> This project is still in early development, and not everything is working yet. Feel free to try it out and provide feedback, but be aware that things may change rapidly and that there may be bugs. Issues and pull requests are welcome!
+> This project is still a bit experimental, and not everything is completely working yet. Feel free to try it out and provide feedback, but be aware that things may change rapidly and that there may be bugs. **If you're interested in using psydk for your research, please feel free to reach out!**
 
-![PyPI - Version](https://img.shields.io/pypi/v/psydk?style=flat-square&logo=python&logoColor=%23FFFFFF&label=PyPi&labelColor=%23292929&color=%23016DAD) ![PyPI - Version](https://img.shields.io/pypi/v/psydk-py?style=flat-square&logo=anaconda&logoColor=%23FFFFFF&label=Conda&labelColor=%23292929&color=%23016DAD) ![Crates.io Version](https://img.shields.io/crates/v/psydk?style=flat-square&logo=rust&label=Crates.io&labelColor=%23292929&color=%23E43716) ![GitHub Release](https://img.shields.io/github/v/release/marcpabst/psydk?include_prereleases&style=flat-square&logo=github&logoColor=white&label=Release&labelColor=%233292929&color=%23e3e3e3) ![GitHub License](https://img.shields.io/github/license/marcpabst/psydk?style=flat-square&label=License%20&labelColor=%23292929&color=brightgreen)
+![PyPI - Version](https://img.shields.io/pypi/v/psydk?style=flat-square&logo=python&logoColor=%23FFFFFF&label=PyPi&labelColor=%23292929&color=%23016DAD)  ![GitHub License](https://img.shields.io/github/license/marcpabst/psydk?style=flat-square&label=License%20&labelColor=%23292929&color=brightgreen)
 
 psydk is a framework for neuroscience and psychology experiments. It is designed to be fast, accurate, and cross-platform.
 
@@ -18,11 +18,14 @@ psydk is a framework for neuroscience and psychology experiments. It is designed
 - **Extensive self-testing**: psydk can make use of the Windows ETW API to measure the latency of the system and the experiment itself, to help you identify potential problems.
 - **Open-source**: psydk is open-source and free to use. You can use it for commercial and non-commercial projects.
 
+## Running on iOS
+Together with [Briefcase](https://docs.beeware.org/en/latest/tutorial/tutorial-5/iOS.html), psydk can be used to design Python-based experiments for iOS. To do this, iOS builds are available from PyPi. A demo project will be available soon - feel free to open an issue if you're interested in this feature!
+
 ## Code Structure
 
 Psydk is split into a number of crates:
 
-- `psydk`: The core functionality of psydk and the main entry point for the library. This is used to build the Python bindings using PyO3.
+- `psydk`: The core functionality of psydk. This is used to build the Python bindings using PyO3.
 - `psydk-renderer`: The rendering engine for psydk.
 - `timed-audio`: A library for playing audio with accurate timing.
 - `serial-triggers`: A library for sending triggers over a serial port (optionally with accurate timing).
