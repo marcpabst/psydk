@@ -3,72 +3,70 @@ name: Build
 on: [push, pull_request]
 
 jobs:
-    build_wheels:
-        name: Build wheels on ${{ matrix.os }}
-        runs-on: ${{ matrix.os }}
-        strategy:
-          fail-fast: false
-          matrix:
-            name: [ "macOS (x86_64)", "macOS (arm64)", "iOS", "Linux (x86_64)", "Linux (arm64)", "Windows (x86_64)" ] # Android, Windows (x86_64), Windows (arm64)
-            include:
-            - name: macOS (x86_64)
-              platform: macos
-              runs-on: macos-13
-              archs: auto
-            - name: macOS (arm64)
-              platform: macos
-              runs-on: macos-latest
-              archs: auto,universal2
-            - name: iOS
-              platform: ios
-              runs-on: macos-latest
-              archs: auto
-            - name: Linux (x86_64)
-              platform: linux
-              runs-on: ubuntu-24.04
-              archs: auto
-            - name: Linux (arm64)
-              platform: linux
-              runs-on: ubuntu-24.04-arm
-              archs: auto
-            # - name: Android
-            #   platform: android
-            #   runs-on: macos-latest
-            #   archs: auto
-            - name: Windows (x86_64)
-              platform: windows
-              runs-on: windows-latest
-              archs: auto
-            # - name: Windows (arm64)
-            #   platform: windows
-            #   runs-on: windows-latest-arm??
-            #   archs: auto
-
+  build_wheels:
+    name: Build wheels on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        name: [ "macOS (x86_64)", "macOS (arm64)", "iOS", "Linux (x86_64)", "Linux (arm64)", "Windows (x86_64)" ] # Android, Windows (x86_64), Windows (arm64)
+        include:
+        - name: macOS (x86_64)
+          platform: macos
+          runs-on: macos-13
+          archs: auto
+        - name: macOS (arm64)
+          platform: macos
+          runs-on: macos-latest
+          archs: auto,universal2
+        - name: iOS
+          platform: ios
+          runs-on: macos-latest
+          archs: auto
+        - name: Linux (x86_64)
+          platform: linux
+          runs-on: ubuntu-24.04
+          archs: auto
+        - name: Linux (arm64)
+          platform: linux
+          runs-on: ubuntu-24.04-arm
+          archs: auto
+        # - name: Android
+        #   platform: android
+        #   runs-on: macos-latest
+        #   archs: auto
+        - name: Windows (x86_64)
+          platform: windows
+          runs-on: windows-latest
+          archs: auto
+        # - name: Windows (arm64)
+        #   platform: windows
+        #   runs-on: windows-latest-arm??
+        #   archs: auto
 
     steps:
-      - uses: actions/checkout@v4
+        - uses: actions/checkout@v4
 
-      # Used to host cibuildwheel
-      - uses: actions/setup-python@v5
+        # Used to host cibuildwheel
+        - uses: actions/setup-python@v5
 
-      - name: Install cibuildwheel
-        run: python -m pip install cibuildwheel==2.23.0
+        - name: Install cibuildwheel
+          run: python -m pip install cibuildwheel==2.23.0
 
-      # - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - name: Build wheels
-        working-directory: ./psydk
-        run: python -m cibuildwheel --output-dir wheelhouse
-        env:
-          CIBW_BEFORE_ALL_LINUX: curl -sSf https://sh.rustup.rs | sh -s -- -y
-          CIBW_BEFORE_ALL_WINDOWS: rustup target add i686-pc-windows-msvc
-          CIBW_ENVIRONMENT_LINUX: "PATH=$HOME/.cargo/bin:$PATH"
-          MACOSX_DEPLOYMENT_TARGET: 10.12
+        - uses: actions-rust-lang/setup-rust-toolchain@v1
+        - name: Build wheels
+          working-directory: ./psydk
+          run: python -m cibuildwheel --output-dir wheelhouse
+          env:
+            CIBW_BEFORE_ALL_LINUX: curl -sSf https://sh.rustup.rs | sh -s -- -y
+            CIBW_BEFORE_ALL_WINDOWS: rustup target add i686-pc-windows-msvc
+            CIBW_ENVIRONMENT_LINUX: "PATH=$HOME/.cargo/bin:$PATH"
+            MACOSX_DEPLOYMENT_TARGET: 10.12
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: cibw-wheels-${{ matrix.os }}-${{ strategy.job-index }}
-          path: ./psydk/wheelhouse/*.whl
-
+        - uses: actions/upload-artifact@v4
+          with:
+            name: cibw-wheels-${{ matrix.os }}-${{ strategy.job-index }}
+            path: ./psydk/wheelhouse/*.whl
   make_sdist:
     name: Make SDist
     runs-on: ubuntu-latest
