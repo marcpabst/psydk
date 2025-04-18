@@ -5,7 +5,7 @@
 > [!WARNING]
 > This project is still a bit experimental, and not everything is completely working yet. Feel free to try it out and provide feedback, but be aware that things may change rapidly and that there may be bugs. **If you're interested in using psydk for your research, please feel free to reach out!**
 
-![PyPI - Version](https://img.shields.io/pypi/v/psydk?style=flat-square&logo=python&logoColor=%23FFFFFF&label=PyPi&labelColor=%23292929&color=%23016DAD)  ![GitHub License](https://img.shields.io/github/license/marcpabst/psydk?style=flat-square&label=License%20&labelColor=%23292929&color=brightgreen)
+[![PyPI - Version](https://img.shields.io/pypi/v/psydk?style=flat-square&logo=python&logoColor=%23FFFFFF&label=PyPi&labelColor=%23292929&color=%23016DAD)](https://pypi.org/project/psydk/)  ![GitHub License](https://img.shields.io/github/license/marcpabst/psydk?style=flat-square&label=License%20&labelColor=%23292929&color=brightgreen)
 
 psydk is a framework for neuroscience and psychology experiments. It is designed to be fast, accurate, and cross-platform.
 
