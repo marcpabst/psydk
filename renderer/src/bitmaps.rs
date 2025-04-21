@@ -1,7 +1,5 @@
 use std::{any::Any, fmt::Debug};
 
-use image::DynamicImage;
-
 pub use super::scenes::Scene;
 
 #[derive(Debug)]

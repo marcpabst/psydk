@@ -14,7 +14,7 @@ use super::{
     StimulusParamValue, StimulusParams, StrokeStyle,
 };
 use crate::{
-    experiment::{ExperimentManager, PyRendererFactory},
+    context::{ExperimentContext, PyRendererFactory},
     visual::{geometry::Size, window::Window},
 };
 
@@ -76,27 +76,35 @@ pub(crate) fn create_fill_brush2<'a>(
     }
 }
 
-pub(crate) fn get_renderer_factory(py: Python) -> PyResult<PyRendererFactory> {
-    // first, try to get __renderer_factory from the __globals__
-    let renderer_factory = py
-        .eval(c_str!("__renderer_factory"), None, None)
-        .expect("No renderer factory found in function scope. Are you calling this function from a stimulus callback?");
+// pub(crate) fn get_renderer_factory(py: Python) -> PyResult<PyRendererFactory> {
+//     // first, try to get __renderer_factory from the __globals__
+//     let renderer_factory = py
+//         .eval(c_str!("__renderer_factory"), None, None)
+//         .expect("No renderer factory found in function scope. Are you calling this function from a stimulus callback?");
+
+//     // covert to Rust type
+//     // let renderer_factory = PyRendererFactory::extract_bound(renderer_factory).unwrap();
+//     let renderer_factory: PyRendererFactory = renderer_factory.extract().unwrap();
+//     Ok(renderer_factory)
+// }
+
+pub(crate) fn get_experiment_context(em: Option<ExperimentContext>, py: Python) -> PyResult<ExperimentContext> {
+    // if we already have an experiment context, return it
+    if let Some(em) = em {
+        return Ok(em);
+    }
+
+    // first, try to get _experiment_context from the __globals__
+    let ec = py.eval(c_str!("_experiment_context"), None, None).map_err(|_| {
+        PyValueError::new_err("No experiment context found in function scope. Try passing it explicitly.")
+    })?;
 
     // covert to Rust type
-    // let renderer_factory = PyRendererFactory::extract_bound(renderer_factory).unwrap();
-    let renderer_factory: PyRendererFactory = renderer_factory.extract().unwrap();
-    Ok(renderer_factory)
+    let ec: ExperimentContext = ec.extract().unwrap();
+    Ok(ec)
 }
 
-pub(crate) fn get_experiment_manager(py: Python) -> PyResult<ExperimentManager> {
-    // create the image
-    // first, try to get __renderer_factory from the __globals__
-    let em = py
-        .eval(c_str!("__experiment_manager"), None, None)
-        .expect("No renderer factory found in function scope. Are you calling this function from a stimulus callback?");
-
-    // covert to Rust type
-    // let renderer_factory = PyRendererFactory::extract_bound(renderer_factory).unwrap();
-    let em: ExperimentManager = em.extract().unwrap();
-    Ok(em)
+pub fn is_valid_font_file(path: &str) -> bool {
+    let path = std::path::Path::new(path);
+    path.exists() && path.is_file() && path.extension().map_or(false, |ext| ext == "ttf" || ext == "otf")
 }

@@ -25,8 +25,8 @@ use winit::{
 
 use crate::{
     config::ExperimentConfig,
+    context::{EventLoopAction, ExperimentContext, Monitor, WindowOptions},
     errors,
-    experiment::{EventLoopAction, ExperimentManager, Monitor, WindowOptions},
     input::Event,
     visual::{
         color::LinRgba,
@@ -284,7 +284,7 @@ impl App {
     /// Starts the experiment. This will block until the experiment is finished.
     pub fn run_experiment<F>(&mut self, experiment_fn: F) -> Result<(), errors::PsydkError>
     where
-        F: FnOnce(ExperimentManager) -> Result<(), errors::PsydkError> + 'static + Send,
+        F: FnOnce(ExperimentContext) -> Result<(), errors::PsydkError> + 'static + Send,
     {
         log::debug!("Main task is running on thread {:?}", std::thread::current().id());
 
@@ -298,7 +298,7 @@ impl App {
 
         let audio_host = timed_audio::cpal::default_host().into();
 
-        let exp_manager = ExperimentManager::new(
+        let exp_manager = ExperimentContext::new(
             event_loop_proxy,
             action_sender.clone(),
             self.renderer_factory.clone(),

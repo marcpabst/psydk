@@ -29,8 +29,8 @@ use super::{
 };
 use crate::{
     app::GPUState,
+    context::Monitor,
     errors::{PsydkError, PsydkResult},
-    experiment::Monitor,
     input::{Event, EventHandler, EventHandlerId, EventHandlingExt, EventKind, EventReceiver},
     time::PyTimestamp,
     RenderThreadChannelPayload,

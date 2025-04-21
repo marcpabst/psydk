@@ -7,8 +7,8 @@ use std::{
 };
 
 use async_channel::{bounded, Receiver, Sender};
+use context::{py_run_experiment, ExperimentContext};
 use derive_debug::Dbg;
-use experiment::{py_run_experiment, ExperimentManager};
 use futures_lite::{future::block_on, Future};
 use pyo3::{prelude::*, py_run};
 use renderer::wgpu_renderer;
@@ -32,7 +32,7 @@ pub mod time;
 pub mod utils;
 pub mod visual;
 
-pub mod experiment;
+pub mod context;
 
 // re-export wgpu
 pub use wgpu;
@@ -66,7 +66,7 @@ macro_rules! new_submodule {
 #[pymodule]
 fn psydk(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(py_run_experiment, m)?);
-    m.add_class::<ExperimentManager>()?;
+    m.add_class::<ExperimentContext>()?;
 
     let m_visual = {
         let m = new_submodule!(m, "psydk", "visual");
@@ -76,7 +76,6 @@ fn psydk(m: &Bound<'_, PyModule>) -> PyResult<()> {
             m.add_class::<visual::stimuli::PyStimulus>()?;
             m.add_class::<visual::stimuli::gabor::PyGaborStimulus>()?;
             m.add_class::<visual::stimuli::image::PyImageStimulus>()?;
-            m.add_class::<visual::stimuli::shape::PyShapeStimulus>()?;
             m.add_class::<visual::stimuli::pattern::PyPatternStimulus>()?;
             m.add_class::<visual::stimuli::text::PyTextStimulus>()?;
             m

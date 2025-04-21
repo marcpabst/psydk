@@ -4,9 +4,9 @@ use super::helpers;
 use super::{
     animations::Animation, impl_pystimulus_for_wrapper, PyStimulus, Stimulus, StimulusParamValue, StimulusParams,
 };
+use crate::context::ExperimentContext;
 use crate::visual::geometry::Transformation2D;
 use crate::visual::geometry::{Anchor, Size};
-use cosmic_text::Attrs as ComsicAttrs;
 use cosmic_text::Buffer as CosmicBuffer;
 use cosmic_text::Family as CosmicFamily;
 use cosmic_text::FontSystem as CosmicFontSystem;
@@ -14,6 +14,7 @@ use cosmic_text::Metrics as CosmicMetrics;
 use cosmic_text::Stretch as CosmicStretch;
 use cosmic_text::Style as CosmicStyle;
 use cosmic_text::Weight as CosmicWeight;
+use cosmic_text::{Attrs as ComsicAttrs, CacheKeyFlags};
 
 use psydk_proc::{FromPyStr, StimulusParams};
 use renderer::DynamicScene;
@@ -96,7 +97,7 @@ impl TextStimulus {
         fill_color: LinRgba,
         alpha: f64,
         transform: Transformation2D,
-        experiment_manager: &crate::experiment::ExperimentManager,
+        context: &ExperimentContext,
     ) -> Self {
         // Attributes indicate what font to choose
         let attrs = ComsicAttrs::new();
@@ -112,24 +113,26 @@ impl TextStimulus {
             style: attrs.style,
         };
 
-        let font_manager_clone = experiment_manager.font_manager().clone();
+        let font_manager_clone = context.font_manager().clone();
 
-        let renderer_factory = experiment_manager.renderer_factory();
-        let mut font_manager = experiment_manager.font_manager().lock().unwrap();
+        let renderer_factory = context.renderer_factory();
+        let mut font_manager = context.font_manager().lock().unwrap();
 
         let cosmic_font_id = font_manager.db().query(&query).unwrap();
         let cosmic_font = font_manager.get_font(cosmic_font_id).unwrap();
+
         let comic_metrics = CosmicMetrics::new(10.0, 10.0);
         // let comic_metrics = CosmicMetrics::new(14.0, 20.0);
 
         let face_info = font_manager.db().face(cosmic_font_id).unwrap();
-        let font_data = cosmic_font.data();
+        assert!(attrs.matches(&face_info));
         let font_index = face_info.index;
 
-        assert!(attrs.matches(&face_info));
+        let font_data = cosmic_font.data();
 
         let font = renderer_factory.create_font_face(font_data, font_index);
         let mut cosmic_buffer = CosmicBuffer::new(&mut font_manager, comic_metrics);
+        let owned_attrs = attrs.into();
 
         Self {
             id: Uuid::new_v4(),
@@ -142,7 +145,7 @@ impl TextStimulus {
                 alpha,
             },
             buffer: cosmic_buffer,
-            attrs: attrs.into(),
+            attrs: owned_attrs,
             font,
             alignment,
             anchor,
@@ -172,7 +175,8 @@ impl PyTextStimulus {
         x = IntoSize(Size::Pixels(0.0)),
         y = IntoSize(Size::Pixels(0.0)),
         fill_color = IntoLinRgba::new(0.0, 0.0, 0.0, 1.0),
-        transform = Transformation2D::Identity()
+        transform = Transformation2D::Identity(),
+        context = None,
     ))]
     fn __new__(
         py: Python,
@@ -187,8 +191,9 @@ impl PyTextStimulus {
         y: IntoSize,
         fill_color: IntoLinRgba,
         transform: Transformation2D,
+        context: Option<ExperimentContext>,
     ) -> (Self, PyStimulus) {
-        let experiment_manager = helpers::get_experiment_manager(py).unwrap();
+        let context = helpers::get_experiment_context(context, py).unwrap();
         (
             Self(),
             PyStimulus::new(TextStimulus::new(
@@ -203,7 +208,7 @@ impl PyTextStimulus {
                 fill_color.into(),
                 alpha,
                 transform,
-                &experiment_manager,
+                &context,
             )),
         )
     }
@@ -336,15 +341,18 @@ impl From<FontWeight> for CosmicWeight {
     }
 }
 
-// convert OwnedCosmicAttrs to CosmicAttrs
-impl From<&OwnedCosmicAttrs> for ComsicAttrs<'_> {
-    fn from(attrs: &OwnedCosmicAttrs) -> Self {
-        let mut cosmic_attrs = ComsicAttrs::new();
-        cosmic_attrs.family(CosmicFamily::Name(&attrs.family));
-        cosmic_attrs.weight(attrs.weight);
-        cosmic_attrs.stretch(attrs.stretch);
-        cosmic_attrs.style(attrs.style);
-        cosmic_attrs
+impl<'a> From<&'a OwnedCosmicAttrs> for ComsicAttrs<'a> {
+    fn from(attrs: &'a OwnedCosmicAttrs) -> Self {
+        ComsicAttrs {
+            family: CosmicFamily::Name(&attrs.family),
+            stretch: attrs.stretch,
+            style: attrs.style,
+            weight: attrs.weight,
+            color_opt: None,
+            metadata: 0,
+            cache_key_flags: CacheKeyFlags::empty(),
+            metrics_opt: None,
+        }
     }
 }
 

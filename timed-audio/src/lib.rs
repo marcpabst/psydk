@@ -1,4 +1,6 @@
 use std::{
+    fs::File,
+    path::Path,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
     usize,
@@ -14,6 +16,7 @@ use cpal::{
 use ndarray::{Array, Axis};
 use rand::SeedableRng;
 use rand_distr::Distribution;
+use symphonia::core::{io::MediaSourceStream, probe::Hint};
 
 #[derive(Debug, Clone)]
 pub enum AudioObject {
@@ -40,6 +43,29 @@ impl AudioObject {
     pub fn from_data(data: Array<f32, ndarray::IxDyn>, sample_rate: u32) -> Self {
         Self::Buffer { data, sample_rate }
     }
+
+    // pub fn from_file(path: &str, track: Option<u16>) -> Result<Self, std::io::Error> {
+    //     // Open the media source.
+    //     let path = Path::new(&path);
+    //     let src = File::open(path)?;
+
+    //     // Create the media source stream.
+    //     let mss = MediaSourceStream::new(Box::new(src), Default::default());
+
+    //     // Create a probe hint using the file's extension. [Optional]
+    //     let mut hint = Hint::new();
+    //     if let Some(extension) = path.extension() {
+    //         hint.with_extension(&extension.to_string_lossy());
+    //     };
+
+    //     // Probe the media source.
+    //     let probed = symphonia::default::get_probe()
+    //         .format(&hint, mss, &Default::default(), &Default::default())
+    //         .expect("unsupported format");
+
+    //     // Get the instantiated format reader.
+    //     let mut format = probed.format;
+    // }
 
     pub fn sine_wave(frequency: f32, amplitude: f32, duration: Duration) -> Self {
         Self::SineWave {
@@ -90,11 +116,7 @@ impl AudioObject {
         }
     }
 
-    pub fn into_writer(
-        self,
-        stream_sample_rate: u32,
-        stream_channels: usize,
-    ) -> AudioObjectDataWriter {
+    pub fn into_writer(self, stream_sample_rate: u32, stream_channels: usize) -> AudioObjectDataWriter {
         let rng = match self {
             AudioObject::WhiteNoise { seed, .. } => {
                 if let Some(seed) = seed {
@@ -158,11 +180,7 @@ impl AudioObjectDataWriter {
                 let n_frames = n_output_frames.min(data.len_of(Axis(0)) - self.current_idx);
 
                 // copy the data
-                for (i, frame) in output
-                    .chunks_mut(self.target_channels)
-                    .enumerate()
-                    .take(n_frames)
-                {
+                for (i, frame) in output.chunks_mut(self.target_channels).enumerate().take(n_frames) {
                     for (j, sample) in frame.iter_mut().enumerate() {
                         *sample = T::from_sample(data[[self.current_idx + i, j]]);
                     }
@@ -181,14 +199,9 @@ impl AudioObjectDataWriter {
                 let n_output_frames = output.len() / self.target_channels;
                 let sample_rate = self.target_sample_rate as f32;
                 let t = self.current_idx as f32 / sample_rate;
-                let n_frames = n_output_frames
-                    .min(((duration.as_secs_f32() - t) * sample_rate).round() as usize);
+                let n_frames = n_output_frames.min(((duration.as_secs_f32() - t) * sample_rate).round() as usize);
 
-                for (i, frame) in output
-                    .chunks_mut(self.target_channels)
-                    .enumerate()
-                    .take(n_frames)
-                {
+                for (i, frame) in output.chunks_mut(self.target_channels).enumerate().take(n_frames) {
                     let t = t + i as f32 / sample_rate;
                     let value = amplitude * (2.0 * std::f32::consts::PI * frequency * t).sin();
                     for sample in frame.iter_mut() {
@@ -209,17 +222,12 @@ impl AudioObjectDataWriter {
                 let n_output_frames = output.len() / self.target_channels;
                 let sample_rate = self.target_sample_rate as f32;
                 let t = self.current_idx as f32 / sample_rate;
-                let n_frames = n_output_frames
-                    .min(((duration.as_secs_f32() - t) * sample_rate).round() as usize);
+                let n_frames = n_output_frames.min(((duration.as_secs_f32() - t) * sample_rate).round() as usize);
 
                 let normal = rand_distr::Normal::new(0.0, 1.0).unwrap();
                 let mut rng = self.rng.as_mut().unwrap();
 
-                for (_, frame) in output
-                    .chunks_mut(self.target_channels)
-                    .enumerate()
-                    .take(n_frames)
-                {
+                for (_, frame) in output.chunks_mut(self.target_channels).enumerate().take(n_frames) {
                     for sample in frame.iter_mut() {
                         let random_f: f32 = normal.sample(&mut rng);
                         *sample = T::from_sample(amplitude * (2.0 * random_f - 1.0));
@@ -273,11 +281,7 @@ pub struct Stream {
 }
 
 impl Stream {
-    pub fn new(
-        device: &cpal::Device,
-        config: &cpal::StreamConfig,
-        sample_format: cpal::SampleFormat,
-    ) -> Self {
+    pub fn new(device: &cpal::Device, config: &cpal::StreamConfig, sample_format: cpal::SampleFormat) -> Self {
         match sample_format {
             cpal::SampleFormat::I16 => Stream::new_typed::<i16>(device, config),
             // cpal::SampleFormat::I24 => run::<I24>(&device, &stream_config),
@@ -326,9 +330,7 @@ impl Stream {
                         // check if there is a new command
                         match callback_receiver.try_recv() {
                             Ok(CallbackCommand::SetAudioObject(audio_object, delay)) => {
-                                ao_writer = Some(
-                                    audio_object.into_writer(_config.sample_rate.0, _channels),
-                                );
+                                ao_writer = Some(audio_object.into_writer(_config.sample_rate.0, _channels));
                                 ao_writer.as_mut().unwrap().move_by(delay as usize);
                                 _current_sample = 0;
                             }
@@ -358,8 +360,7 @@ impl Stream {
                 .unwrap();
             stream.play().unwrap();
 
-            let scheudled_aos: Arc<Mutex<Vec<(AudioObject, Instant)>>> =
-                Arc::new(Mutex::new(Vec::new()));
+            let scheudled_aos: Arc<Mutex<Vec<(AudioObject, Instant)>>> = Arc::new(Mutex::new(Vec::new()));
 
             // create another thread who's job is dispatching the audio objects at the right time
             // for this, it will iterate over the scheduled audio objects and check if they should be played
@@ -416,9 +417,7 @@ impl Stream {
                         scheudled_aos.push((audio_object, at));
                     }
                     StreamCommand::Stop => {
-                        callback_sender
-                            .send(CallbackCommand::RemoveAudioObject)
-                            .unwrap();
+                        callback_sender.send(CallbackCommand::RemoveAudioObject).unwrap();
                     }
                     StreamCommand::GetStatus(sender) => {
                         sender.send(Status::Playing).unwrap();
@@ -427,9 +426,7 @@ impl Stream {
                         sender.send(stream.latency()).unwrap();
                     }
                     StreamCommand::Close => {
-                        callback_sender
-                            .send(CallbackCommand::RemoveAudioObject)
-                            .unwrap();
+                        callback_sender.send(CallbackCommand::RemoveAudioObject).unwrap();
                         break;
                     }
                 }
@@ -459,9 +456,7 @@ impl Stream {
 
     pub fn latency_samples(&self) -> Option<u32> {
         let (sender, receiver) = std::sync::mpsc::channel();
-        self.command_sender
-            .send(StreamCommand::GetLatency(sender))
-            .unwrap();
+        self.command_sender.send(StreamCommand::GetLatency(sender)).unwrap();
         receiver.recv().unwrap()
     }
 

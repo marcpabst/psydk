@@ -18,10 +18,13 @@ use super::{
     animations::Animation, helpers, impl_pystimulus_for_wrapper, PyStimulus, Stimulus, StimulusParamValue,
     StimulusParams, StrokeStyle,
 };
-use crate::visual::{
-    color::{IntoLinRgba, LinRgba},
-    geometry::{Shape, Size, Transformation2D},
-    window::{Frame, WindowState},
+use crate::{
+    context::ExperimentContext,
+    visual::{
+        color::{IntoLinRgba, LinRgba},
+        geometry::{Shape, Size, Transformation2D},
+        window::{Frame, WindowState},
+    },
 };
 
 #[derive(EnumString, Debug, Clone, Copy, PartialEq, FromPyStr)]
@@ -81,7 +84,7 @@ impl PatternStimulus {
         alpha: Option<f64>,
 
         transform: Transformation2D,
-        renderer_factory: &dyn RendererFactory,
+        context: &ExperimentContext,
     ) -> Self {
         let mut stim = Self {
             id: Uuid::new_v4(),
@@ -126,8 +129,9 @@ impl PatternStimulus {
                 ];
                 let image_2x2 = renderer::image::RgbaImage::from_raw(2, 1, image_2x2_data).unwrap();
 
-                let pattern_image =
-                    renderer_factory.create_bitmap(renderer::image::DynamicImage::ImageRgba8(image_2x2));
+                let pattern_image = context
+                    .renderer_factory()
+                    .create_bitmap(renderer::image::DynamicImage::ImageRgba8(image_2x2));
                 stim.pattern_image = Some(pattern_image);
             }
             FillPattern::Sinosoidal => todo!(),
@@ -152,8 +156,9 @@ impl PatternStimulus {
                 ];
                 let image_2x2 = renderer::image::RgbaImage::from_raw(2, 2, image_2x2_data).unwrap();
 
-                let pattern_image =
-                    renderer_factory.create_bitmap(renderer::image::DynamicImage::ImageRgba8(image_2x2));
+                let pattern_image = context
+                    .renderer_factory()
+                    .create_bitmap(renderer::image::DynamicImage::ImageRgba8(image_2x2));
                 stim.pattern_image = Some(pattern_image);
             }
         }
@@ -206,7 +211,8 @@ impl PyPatternStimulus {
         stroke_color = IntoLinRgba(LinRgba::default()),
         stroke_width = IntoSize(Size::Pixels(0.0)),
         alpha = None,
-        transform = Transformation2D::Identity()
+        transform = Transformation2D::Identity(),
+        context = None,
     ))]
     /// A stimulus that displays a shape.
     ///
@@ -247,8 +253,9 @@ impl PyPatternStimulus {
         stroke_width: IntoSize,
         alpha: Option<f64>,
         transform: Transformation2D,
+        context: Option<ExperimentContext>,
     ) -> (Self, PyStimulus) {
-        let renderer_factory = helpers::get_renderer_factory(py).unwrap();
+        let context = helpers::get_experiment_context(context, py).unwrap();
         (
             Self(),
             PyStimulus::new(PatternStimulus::new(
@@ -267,7 +274,7 @@ impl PyPatternStimulus {
                 stroke_width.into(),
                 alpha,
                 transform,
-                renderer_factory.inner(),
+                &context,
             )),
         )
     }

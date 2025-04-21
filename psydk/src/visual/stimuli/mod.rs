@@ -26,7 +26,6 @@ pub mod gabor;
 // pub mod grid;
 pub mod image;
 pub mod pattern;
-pub mod shape;
 // pub mod sprite;
 pub mod text;
 // pub mod vector;

@@ -1,26 +1,24 @@
-"""
-My first application
-"""
-
 import toga
-from toga.style import Pack
-from toga.style.pack import COLUMN, ROW
 
 
-class HelloWorld(toga.App):
-    def startup(self):
-        """Construct and show the Toga application.
+def button_handler(widget):
+    run_experiment(my_experiment, subject="01", session="01", run="01", overwrite=True)
 
-        Usually, you would add your application to a main content box.
-        We then create a main window (with a name matching the app), and
-        show the main window.
-        """
-        main_box = toga.Box()
 
-        self.main_window = toga.MainWindow(title=self.formal_name)
-        self.main_window.content = main_box
-        self.main_window.show()
+def build(app):
+    box = toga.Box()
+
+    button = toga.Button("Hello world", on_press=button_handler)
+    button.style.margin = 50
+    button.style.flex = 1
+    box.add(button)
+
+    return box
 
 
 def main():
-    return HelloWorld()
+    return toga.App("First App", "org.beeware.toga.examples.tutorial", startup=build)
+
+
+if __name__ == "__main__":
+    main().main_loop()

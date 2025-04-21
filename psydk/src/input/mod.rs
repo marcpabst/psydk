@@ -1,6 +1,10 @@
-use std::{ops::Deref, str::FromStr, sync::Arc};
+use std::{convert::Infallible, ops::Deref, str::FromStr, sync::Arc};
 
-use pyo3::{pyclass, pymethods, types::PyAnyMethods, FromPyObject};
+use pyo3::{
+    pyclass, pymethods,
+    types::{PyAnyMethods, PyString},
+    Bound, FromPyObject, IntoPyObject, Python,
+};
 use strum::{EnumString, VariantArray, VariantNames};
 use web_time::SystemTime;
 #[cfg(any(
@@ -38,11 +42,11 @@ pub enum MouseButton {
 }
 
 #[derive(Debug, Clone, enum_fields::EnumFields, strum::EnumDiscriminants)]
-#[pyclass(unsendable)]
+#[pyclass]
 #[strum_discriminants(
     name(EventKind),
     strum(serialize_all = "snake_case"),
-    derive(EnumString, VariantNames)
+    derive(EnumString, VariantNames, strum::Display)
 )]
 pub enum Event {
     /// A keypress event. This is triggered when a key is pressed.
@@ -265,6 +269,30 @@ impl Event {
     #[pyo3(name = "id")]
     fn py_id(&self) -> Option<u64> {
         self.id().cloned().flatten()
+    }
+
+    #[getter]
+    #[pyo3(name = "pressure")]
+    fn py_pressure(&self) -> Option<f32> {
+        self.pressure().cloned()
+    }
+
+    #[getter]
+    #[pyo3(name = "stage")]
+    fn py_stage(&self) -> Option<i64> {
+        self.stage().cloned()
+    }
+
+    #[getter]
+    #[pyo3(name = "name")]
+    fn py_name(&self) -> Option<String> {
+        self.name().cloned()
+    }
+
+    #[getter]
+    #[pyo3(name = "kind")]
+    fn py_kind(&self) -> EventKind {
+        self.kind()
     }
 }
 
@@ -611,6 +639,19 @@ impl FromPyObject<'_> for EventKind {
             ))
         })?;
 
+        Ok(kind)
+    }
+}
+
+impl<'py> IntoPyObject<'py> for EventKind {
+    type Target = PyString;
+    type Output = Bound<'py, Self::Target>;
+    type Error = Infallible;
+
+    #[inline]
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        let kind = self.to_string();
+        let kind = PyString::new(py, &kind);
         Ok(kind)
     }
 }

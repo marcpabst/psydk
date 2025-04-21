@@ -152,7 +152,7 @@ impl WindowOptions {
 /// The ExperimentManager is available to the user in the experiment function.
 #[derive(Clone)]
 #[pyclass]
-pub struct ExperimentManager {
+pub struct ExperimentContext {
     event_loop_proxy: EventLoopProxy<()>,
     action_sender: Sender<EventLoopAction>,
     renderer_factory: Arc<dyn RendererFactory>,
@@ -161,7 +161,7 @@ pub struct ExperimentManager {
     config: Arc<Mutex<crate::config::ExperimentConfig>>,
 }
 
-impl ExperimentManager {
+impl ExperimentContext {
     pub fn new(
         event_loop_proxy: EventLoopProxy<()>,
         action_sender: Sender<EventLoopAction>,
@@ -188,6 +188,23 @@ impl ExperimentManager {
 
     pub fn font_manager(&self) -> &Arc<Mutex<cosmic_text::FontSystem>> {
         &self.font_manager
+    }
+
+    pub fn load_system_fonts(&self) {
+        let mut font_manager = self.font_manager.lock().unwrap();
+        font_manager.db_mut().load_system_fonts();
+    }
+
+    pub fn load_font_file(&self, path: &str) -> Result<(), errors::PsydkError> {
+        let mut font_manager = self.font_manager.lock().unwrap();
+        font_manager.db_mut().load_font_file(path)?;
+        Ok(())
+    }
+
+    pub fn load_font_directory(&self, path: &str) -> Result<(), errors::PsydkError> {
+        let mut font_manager = self.font_manager.lock().unwrap();
+        font_manager.db_mut().load_fonts_dir(path);
+        Ok(())
     }
 
     pub fn renderer_factory(&self) -> &Arc<dyn RendererFactory> {
@@ -282,7 +299,7 @@ impl ExperimentManager {
 }
 
 #[pymethods]
-impl ExperimentManager {
+impl ExperimentContext {
     #[pyo3(name = "create_default_window")]
     #[pyo3(signature = (fullscreen = false, monitor = None))]
     /// Create a new window. This is a convenience function that creates a
@@ -331,10 +348,23 @@ impl ExperimentManager {
         Ok(self.system_info())
     }
 
-    // #[pyo3(name = "exit")]
-    // fn py_exit(&self) {
-    //     self.exit();
-    // }
+    #[pyo3(name = "load_system_fonts")]
+    fn py_load_system_fonts(&self) -> PyResult<()> {
+        self.load_system_fonts();
+        Ok(())
+    }
+
+    #[pyo3(name = "load_font_file")]
+    fn py_load_font_file(&self, path: &str) -> PyResult<()> {
+        self.load_font_file(path)?;
+        Ok(())
+    }
+
+    #[pyo3(name = "load_font_directory")]
+    fn py_load_font_directory(&self, path: &str) -> PyResult<()> {
+        self.load_font_directory(path)?;
+        Ok(())
+    }
 }
 
 /// Runs your experiment function. This function will block the current thread
@@ -362,13 +392,7 @@ pub fn py_run_experiment(
     let globals = PyDict::new(py);
     let renderer_factory = PyRendererFactory(app.renderer_factory.cloned());
 
-    py_experiment_fn
-        .getattr(py, "__globals__")?
-        .bind(py)
-        .downcast::<PyDict>()?
-        .set_item("__renderer_factory", renderer_factory)?;
-
-    let rust_experiment_fn = move |em: ExperimentManager| -> Result<(), errors::PsydkError> {
+    let rust_experiment_fn = move |em: ExperimentContext| -> Result<(), errors::PsydkError> {
         Python::with_gil(|py| -> _ {
             // bind kwargs
             let kwargs = if let Some(kwargs) = kwargs {
@@ -381,14 +405,14 @@ pub fn py_run_experiment(
                 .getattr(py, "__globals__")?
                 .bind(py)
                 .downcast::<PyDict>()?
-                .set_item("__experiment_manager", em.clone())?;
+                .set_item("_experiment_context", em.clone())?;
 
             // TODO: There must be a better way to do this!
             let args = args.bind(py);
             let args_as_seq = args.to_list();
             let args_as_seq = args_as_seq.as_sequence();
             let em = em.into_py(py);
-            let em_as_seq = PyList::new_bound(py, vec![em]);
+            let em_as_seq = PyList::new(py, vec![em])?;
             let em_as_seq = em_as_seq.as_sequence();
 
             let args = em_as_seq.concat(args_as_seq).unwrap();

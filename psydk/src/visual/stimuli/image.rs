@@ -14,11 +14,12 @@ use renderer::{
 use uuid::Uuid;
 
 use super::{
-    animations::Animation, helpers, impl_pystimulus_for_wrapper, PyStimulus, Stimulus, StimulusParamValue,
-    StimulusParams,
+    animations::Animation,
+    helpers::{self, get_experiment_context},
+    impl_pystimulus_for_wrapper, PyStimulus, Stimulus, StimulusParamValue, StimulusParams,
 };
 use crate::{
-    experiment::PyRendererFactory,
+    context::{ExperimentContext, PyRendererFactory},
     visual::{
         geometry::{Anchor, Size, Transformation2D},
         window::{Frame, WindowState},
@@ -31,6 +32,7 @@ pub struct ImageParams {
     pub y: Size,
     pub width: Size,
     pub height: Size,
+    pub rotation: f64,
     pub opacity: f64,
     pub image_x: Size,
     pub image_y: Size,
@@ -83,10 +85,12 @@ impl PyImageStimulus {
         y,
         width,
         height,
+        rotation = 0.0,
         opacity = 1.0,
         anchor = Anchor::Center,
         transform = None,
-        srgb = true
+        srgb = true,
+        context = None,
     ))]
     fn __new__(
         py: Python,
@@ -95,16 +99,18 @@ impl PyImageStimulus {
         y: IntoSize,
         width: IntoSize,
         height: IntoSize,
+        rotation: f64,
         opacity: f64,
         anchor: Anchor,
         transform: Option<Transformation2D>,
         srgb: bool,
-    ) -> (Self, PyStimulus) {
-        let renderer_factory = helpers::get_renderer_factory(py).unwrap();
+        context: Option<ExperimentContext>,
+    ) -> PyResult<(Self, PyStimulus)> {
+        let ctx = get_experiment_context(context, py)?;
 
-        let bitmap = renderer_factory.create_bitmap_from_path(&src);
+        let bitmap = ctx.renderer_factory().create_bitmap_from_path(&src);
 
-        (
+        Ok((
             Self(),
             PyStimulus::new(ImageStimulus::from_image(
                 bitmap,
@@ -115,12 +121,13 @@ impl PyImageStimulus {
                     height: height.into(),
                     image_x: 0.0.into(),
                     image_y: 0.0.into(),
+                    rotation,
                     opacity,
                 },
                 transform,
                 anchor,
             )),
-        )
+        ))
     }
 }
 
@@ -151,7 +158,15 @@ impl Stimulus for ImageStimulus {
         let image_offset_x = self.params.image_x.eval(window_size, screen_props);
         let image_offset_y = self.params.image_y.eval(window_size, screen_props);
 
-        let trans_mat = self.transformation.eval(window_size, screen_props);
+        // rotate the transformation matrix around x,y
+        let trans_mat = self.transformation.clone()
+            * Transformation2D::RotationPoint(
+                self.params.rotation as f32,
+                self.params.x.clone(),
+                self.params.y.clone(),
+            );
+
+        let trans_mat = trans_mat.eval(window_size, screen_props);
 
         scene.draw_shape_fill(
             Shape::Rectangle {
@@ -168,7 +183,7 @@ impl Stimulus for ImageStimulus {
                 transform: None,
                 alpha: Some(self.params.opacity as f32),
             },
-            Some(self.transformation.eval(window_size, screen_props).into()),
+            Some(trans_mat.into()),
             None,
         );
     }

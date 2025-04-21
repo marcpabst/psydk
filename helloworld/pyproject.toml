@@ -21,7 +21,7 @@ test_requires = ["pytest"]
 
 [tool.briefcase.app.helloworld.macOS]
 universal_build = true
-requires = ["toga-cocoa~=0.4.7", "std-nslog~=1.0.3"]
+requires = ["toga-cocoa~=0.4.7", "std-nslog~=1.0.3", "numpy", "../psydk"]
 
 [tool.briefcase.app.helloworld.linux]
 requires = ["toga-gtk~=0.4.7"]
