@@ -32,7 +32,7 @@ use crate::{
     context::Monitor,
     errors::{PsydkError, PsydkResult},
     input::{Event, EventHandler, EventHandlerId, EventHandlingExt, EventKind, EventReceiver},
-    time::PyTimestamp,
+    time::Timestamp,
     RenderThreadChannelPayload,
 };
 
@@ -140,6 +140,7 @@ pub struct WindowState {
     /// Queue of frames that have been submitted.
     #[dbg(placeholder = "...")]
     pub frame_queue: Vec<FrameId>,
+    pub last_frame_id: FrameId,
 }
 
 unsafe impl Send for WindowState {}
@@ -252,6 +253,34 @@ impl Window {
 
         let config = win_state.config.clone();
 
+        // push frame id
+        let new_frame_id = win_state.last_frame_id + 1;
+        win_state.frame_queue.push(new_frame_id);
+
+        // find and take all onset events and copy them
+        let frame_onset_events = frame
+            .event_handlers
+            .iter()
+            .filter(|(_, (kind, _))| *kind == EventKind::Onset)
+            .map(|(id, (_, handler))| (*id, handler.clone()))
+            .collect::<Vec<_>>();
+
+        // push onset event from frame to the event queue
+        let onset_callback_fn = move || {
+            for (id, handler) in frame_onset_events.iter() {
+                // create a new event
+                let onset_event = Event::Onset {
+                    timestamp: Instant::now().into(),
+                };
+                // call the handler
+                handler(onset_event);
+            }
+        };
+
+        win_state
+            .frame_callbacks
+            .insert(new_frame_id, Box::new(onset_callback_fn));
+
         for i in 0..repeat_frames {
             let suface_texture = win_state
                 .surface
@@ -321,19 +350,25 @@ impl Window {
                         .as_hal::<wgpu::hal::api::Dx12, _, _>(|surface| surface.unwrap().waitable_handle().unwrap())
                 };
 
-                let frame_id = unsafe { swap_chain.GetLastPresentCount() }.unwrap();
-                win_state.frame_queue.push(frame_id.into());
+                // let frame_id = unsafe { swap_chain.GetLastPresentCount() }.expect("Failed to get frame id");
+                // win_state.frame_queue.push(frame_id.into());
                 // this is waiting for the frame latency waitable object to be signaled
                 unsafe { windows::Win32::System::Threading::WaitForSingleObject(waitable_handle, 10000) };
-                // timestamp frame presentation
-                let timestamp = Instant::now();
-                onset_time.lock().unwrap().replace(timestamp);
-                // get the frame id that was presented from the frame queue
-                let frame_id = win_state.frame_queue.remove(0);
-                // get the callback for the frame id
-                // let callback = win_state.frame_callbacks.remove(&frame_id).unwrap();
-                // // call the callback
-                // callback();
+
+                if i == 0 {
+                    // timestamp frame presentation
+                    let timestamp = Instant::now();
+                    onset_time.lock().unwrap().replace(timestamp);
+                    // get the frame id that was presented from the frame queue
+                    let frame_id = win_state.frame_queue.remove(0);
+                    // get the callback for the frame id
+                    let callback = win_state
+                        .frame_callbacks
+                        .remove(&frame_id)
+                        .expect("Failed to get callback for frame id");
+                    // // call the callback
+                    callback();
+                }
             }
         }
 
@@ -542,7 +577,7 @@ impl Window {
         repeat_update: bool,
         pedantic: Option<bool>,
         py: Python,
-    ) -> PyResult<Option<PyTimestamp>> {
+    ) -> PyResult<Option<Timestamp>> {
         let self_wrapper = SendWrapper::new(self.clone());
         let frame_wrapper = SendWrapper::new(frame);
         py.allow_threads(move || {
@@ -554,7 +589,7 @@ impl Window {
                     repeat_update,
                     pedantic,
                 )
-                .map(|x| x.map(|x| PyTimestamp { timestamp: x }))
+                .map(|x| x.map(|x| Timestamp { timestamp: x }))
         })
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
     }

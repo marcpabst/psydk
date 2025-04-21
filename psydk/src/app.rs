@@ -241,6 +241,7 @@ impl App {
             bg_color: LinRgba::new(0.5, 0.5, 0.5, 1.0),
             frame_callbacks: HashMap::new(),
             frame_queue: Vec::new(),
+            last_frame_id: 0,
         };
 
         // create channel for physical input
@@ -248,6 +249,24 @@ impl App {
         event_broadcast_sender.set_overflow(true);
         // deactivate the receiver
         let event_broadcast_receiver = physical_input_receiver.deactivate();
+
+        #[cfg(all(feature = "dx12", target_os = "windows"))]
+        {
+            let swap_chain = unsafe {
+                window_state
+                    .surface
+                    .as_hal::<wgpu::hal::api::Dx12, _, _>(|surface| surface.unwrap().swap_chain().unwrap())
+            };
+
+            let waitable_handle = unsafe {
+                window_state
+                    .surface
+                    .as_hal::<wgpu::hal::api::Dx12, _, _>(|surface| surface.unwrap().waitable_handle().unwrap())
+            };
+
+            // this is waiting for the frame latency waitable object to be signaled
+            unsafe { windows::Win32::System::Threading::WaitForSingleObject(waitable_handle, 10000) };
+        }
 
         // create handle
         let window = Window {

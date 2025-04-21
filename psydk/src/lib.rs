@@ -142,7 +142,7 @@ fn psydk(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     let m_time = {
         let m = new_submodule!(m, "psydk", "time");
-        m.add_class::<time::PyTimestamp>()?;
+        m.add_class::<time::Timestamp>()?;
         m.add_function(wrap_pyfunction!(time::py_now, &m)?)?;
         m
     };

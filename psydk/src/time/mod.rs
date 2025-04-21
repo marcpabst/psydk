@@ -13,15 +13,15 @@ use pyo3::{pyclass, pyfunction, pymethods, PyResult, Python};
 /// Timestamps are opaque and can only be compared to other timestamps or floats. This
 /// means that they can be compared to each other, added to or subtracted from, and used to
 /// calculate the time since another timestamp. However, they are not meaningful on their own.
-pub struct PyTimestamp {
+pub struct Timestamp {
     pub(crate) timestamp: Instant,
 }
 
 #[pymethods]
-impl PyTimestamp {
+impl Timestamp {
     #[new]
     fn new() -> Self {
-        PyTimestamp {
+        Timestamp {
             timestamp: Instant::now(),
         }
     }
@@ -31,15 +31,15 @@ impl PyTimestamp {
     }
 
     // allow subtracting a float from the timestamp
-    fn __sub__(&self, other: f64) -> PyResult<PyTimestamp> {
-        Ok(PyTimestamp {
+    fn __sub__(&self, other: f64) -> PyResult<Timestamp> {
+        Ok(Timestamp {
             timestamp: self.timestamp - Duration::from_secs_f64(other),
         })
     }
 
     // allow adding a float to the timestamp
-    fn __add__(&self, other: f64) -> PyResult<PyTimestamp> {
-        Ok(PyTimestamp {
+    fn __add__(&self, other: f64) -> PyResult<Timestamp> {
+        Ok(Timestamp {
             timestamp: self.timestamp + Duration::from_secs_f64(other),
         })
     }
@@ -56,7 +56,7 @@ impl PyTimestamp {
 
     /// Get the time since another timestamp in seconds.
     /// May be negative if the other timestamp is in the future.
-    fn seconds_since(&self, other: PyTimestamp) -> PyResult<f64> {
+    fn seconds_since(&self, other: Timestamp) -> PyResult<f64> {
         Ok(self.timestamp.duration_since(other.timestamp).as_secs_f64())
     }
 
@@ -68,8 +68,15 @@ impl PyTimestamp {
 
 #[pyfunction]
 #[pyo3(name = "now")]
-pub fn py_now() -> PyTimestamp {
-    PyTimestamp {
+pub fn py_now() -> Timestamp {
+    Timestamp {
         timestamp: Instant::now(),
+    }
+}
+
+// alow into() from Instant to Timestamp
+impl From<Instant> for Timestamp {
+    fn from(timestamp: Instant) -> Self {
+        Timestamp { timestamp }
     }
 }

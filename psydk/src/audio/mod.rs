@@ -8,7 +8,7 @@ use timed_audio::cpal::traits::{DeviceTrait, HostTrait};
 use timed_audio::cpal::{default_host, Device, Host};
 use timed_audio::{AudioObject, Stream};
 
-use crate::time::PyTimestamp;
+use crate::time::Timestamp;
 
 #[derive(Clone)]
 #[pyclass]
@@ -67,7 +67,7 @@ impl PyStream {
         self.stream.as_ref().unwrap().play_now(audio_object.audio_object);
     }
 
-    fn play_at(&self, audio_object: PyAudioObject, timestamp: PyTimestamp) {
+    fn play_at(&self, audio_object: PyAudioObject, timestamp: Timestamp) {
         self.stream
             .as_ref()
             .unwrap()
