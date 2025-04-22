@@ -9,7 +9,7 @@ use numpy::PyUntypedArrayMethods;
 use uuid::Uuid;
 
 use dyn_clone::DynClone;
-use pyo3::{exceptions::PyValueError, prelude::*};
+use pyo3::{exceptions::PyValueError, prelude::*, types::PyString};
 use renderer::{image::GenericImageView, DynamicScene};
 use strum_macros::{Display, EnumString};
 
@@ -56,9 +56,14 @@ pub enum StrokeStyle {
 }
 
 // implement IntoPy for StrokeStyle (by converting it to a string)
-impl IntoPy<PyObject> for StrokeStyle {
-    fn into_py(self, py: Python) -> PyObject {
-        self.to_string().into_py(py)
+impl<'py> IntoPyObject<'py> for StrokeStyle {
+    type Target = PyString;
+    type Output = Bound<'py, Self::Target>;
+    type Error = pyo3::PyErr;
+
+    #[inline]
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(self.to_string().into_pyobject(py)?)
     }
 }
 
@@ -359,6 +364,7 @@ macro_rules! impl_pystimulus_for_wrapper {
     ($wrapper:ident, $name:ident) => {
         use std::mem;
 
+        use pyo3::types::{PyAny, PyBool};
         use pyo3::{exceptions::PyValueError, prelude::*};
 
         use crate::visual::{
@@ -379,16 +385,21 @@ macro_rules! impl_pystimulus_for_wrapper {
 
                 // extract the value from the StimulusParam
                 match param {
-                    Some(StimulusParamValue::Size(val)) => Ok(val.into_py(py)),
-                    Some(StimulusParamValue::f64(val)) => Ok(val.into_py(py)),
-                    Some(StimulusParamValue::String(val)) => Ok(val.into_py(py)),
-                    Some(StimulusParamValue::bool(val)) => Ok(val.into_py(py)),
-                    Some(StimulusParamValue::i64(val)) => Ok(val.into_py(py)),
-                    Some(StimulusParamValue::LinRgba(val)) => Ok(val.into_py(py)),
-                    Some(StimulusParamValue::Shape(val)) => Ok(val.into_py(py)),
-                    Some(StimulusParamValue::StrokeStyle(val)) => Ok(val.into_py(py)),
-                    Some(StimulusParamValue::Shape(val)) => Ok(val.into_py(py)),
+                    Some(StimulusParamValue::Size(val)) => Ok(val.into_pyobject(py)?.unbind().into_any()),
+                    Some(StimulusParamValue::f64(val)) => Ok(val.into_pyobject(py)?.unbind().into_any()),
+                    Some(StimulusParamValue::String(val)) => Ok(val.into_pyobject(py)?.unbind().into_any()),
+                    Some(StimulusParamValue::bool(val)) => Ok(PyBool::new(py, val)
+                        .to_owned()
+                        .into_pyobject(py)?
+                        .unbind()
+                        .into_any()),
+                    Some(StimulusParamValue::i64(val)) => Ok(val.into_pyobject(py)?.unbind().into_any()),
+                    Some(StimulusParamValue::LinRgba(val)) => Ok(val.into_pyobject(py)?.unbind().into_any()),
+                    Some(StimulusParamValue::Shape(val)) => Ok(val.into_pyobject(py)?.unbind().into_any()),
+                    Some(StimulusParamValue::StrokeStyle(val)) => Ok(val.into_pyobject(py)?.unbind().into_any()),
+                    Some(StimulusParamValue::Shape(val)) => Ok(val.into_pyobject(py)?.unbind().into_any()),
                     None => Err(PyValueError::new_err("parameter not found")),
+                    _ => Err(PyValueError::new_err("parameter not supported")),
                 }
             }
 

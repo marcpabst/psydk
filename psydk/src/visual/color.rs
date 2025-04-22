@@ -1,9 +1,8 @@
 use csscolorparser;
-use pyo3::prelude::*;
+use pyo3::{prelude::*, types::PyTuple};
 
 use crate::visual::geometry::IntoSize;
 
-#[pyclass(name = "LinRgba")]
 #[derive(Debug, Clone, Copy)]
 /// Create a new linear RGBA color.
 /// The alpha channel defaults to 1.0.
@@ -119,66 +118,6 @@ impl From<LinRgba> for renderer::colors::RGBA {
     }
 }
 
-#[pymethods]
-impl LinRgba {
-    #[new]
-    #[pyo3(signature = (r, g, b, a = 1.0))]
-    fn __new__(r: f32, g: f32, b: f32, a: f32) -> Self {
-        Self::new(r, g, b, a)
-    }
-
-    #[staticmethod]
-    #[pyo3(name = "from_str")]
-    /// Create a new linear RGBA color from a CSS-style color string.
-    ///
-    /// Parameters
-    /// ----------
-    /// css_color_str : str
-    ///    The CSS-style color string.
-    ///
-    /// Returns
-    /// -------
-    /// LinRgba
-    ///   The linear RGBA color.
-    ///
-    /// Examples
-    /// --------
-    /// >>> black = LinRgba.from_str("black")
-    /// >>> blue = LinRgba.from_str("blue")
-    /// >>> dark_red = LinRgba.from_str("darkred")
-    fn py_from_str(css_color_str: &str) -> Self {
-        Self::from_str(css_color_str)
-    }
-
-    #[getter]
-    #[pyo3(name = "r")]
-    /// The red channel.
-    fn py_r(&self) -> f32 {
-        self.r
-    }
-
-    #[getter]
-    #[pyo3(name = "g")]
-    /// The green channel.
-    fn py_g(&self) -> f32 {
-        self.g
-    }
-
-    #[getter]
-    #[pyo3(name = "b")]
-    /// The blue channel.
-    fn py_b(&self) -> f32 {
-        self.b
-    }
-
-    #[getter]
-    #[pyo3(name = "a")]
-    /// The alpha channel.
-    fn py_a(&self) -> f32 {
-        self.a
-    }
-}
-
 #[derive(Debug, Clone, Copy)]
 pub struct IntoLinRgba(pub LinRgba);
 
@@ -248,4 +187,36 @@ pub fn py_linrgb(r: f32, g: f32, b: f32, a: f32) -> LinRgba {
 #[pyo3(signature = (r, g, b, a))]
 pub fn py_linrgba(r: f32, g: f32, b: f32, a: f32) -> LinRgba {
     LinRgba::new(r, g, b, a)
+}
+
+// implement IntoPyObject for LinRgba
+impl<'py> IntoPyObject<'py> for LinRgba {
+    type Target = PyTuple;
+    type Output = Bound<'py, Self::Target>;
+    type Error = pyo3::PyErr;
+
+    #[inline]
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        PyTuple::new(py, &[self.r, self.g, self.b, self.a])
+    }
+}
+
+// allow Python tuples to be converted to LinRgba
+impl<'py> FromPyObject<'py> for LinRgba {
+    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
+        // try to extract a tuple of 3 (alpha implicitly set to 1.0)
+        if let Ok((r, g, b)) = ob.extract() {
+            Ok(LinRgba::new(r, g, b, 1.0))
+        }
+        // try to extract a tuple of 4
+        else if let Ok((r, g, b, a)) = ob.extract() {
+            Ok(LinRgba::new(r, g, b, a))
+        }
+        // otherwise, raise an error
+        else {
+            Err(pyo3::exceptions::PyTypeError::new_err(
+                "Expected a tuple of 3 or 4 floats",
+            ))
+        }
+    }
 }

@@ -110,7 +110,6 @@ fn psydk(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
         let m_color = {
             let m = new_submodule!(m, "psydk.visual", "color");
-            m.add_class::<visual::color::LinRgba>()?;
             m.add_function(wrap_pyfunction!(visual::color::py_rgb, &m)?)?;
             m.add_function(wrap_pyfunction!(visual::color::py_rgba, &m)?)?;
             m.add_function(wrap_pyfunction!(visual::color::py_linrgb, &m)?)?;
