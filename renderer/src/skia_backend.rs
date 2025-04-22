@@ -586,7 +586,7 @@ impl From<&Brush<'_>> for skia_safe::Paint {
         match brush {
             Brush::Solid(color) => {
                 let skia_color: skia_safe::Color4f = color.into();
-                paint.set_color4f(skia_color, &skia_safe::ColorSpace::new_srgb());
+                paint.set_color4f(skia_color, &skia_safe::ColorSpace::new_srgb_linear());
                 paint
             }
             Brush::Gradient(Gradient { extend, kind, stops }) => {
@@ -887,7 +887,7 @@ fn skia_create_bitmap(img: image::DynamicImage) -> DynamicBitmap {
             (width as i32, height as i32),
             ColorType::RGBA8888,
             SkAlphaType::Unpremul,
-            Some(ColorSpace::new_srgb()),
+            Some(ColorSpace::new_srgb_linear()),
         ),
         &unsafe { skia_safe::Data::new_bytes(&boxed_buffer) },
         width as usize * 4,

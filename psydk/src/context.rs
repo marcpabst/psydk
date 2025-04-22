@@ -202,6 +202,7 @@ impl ExperimentContext {
     }
 
     pub fn load_font_directory(&self, path: &str) -> Result<(), errors::PsydkError> {
+        println!("Loading font directory: {}", path);
         let mut font_manager = self.font_manager.lock().unwrap();
         font_manager.db_mut().load_fonts_dir(path);
         Ok(())
