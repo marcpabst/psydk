@@ -628,9 +628,7 @@ impl Window {
 
     #[pyo3(name = "bg_color")]
     #[setter]
-    fn py_set_bg_color(&self, bg_color: PyRef<LinRgba>) {
-        let py = bg_color.py();
-        let bg_color = *bg_color;
+    fn py_set_bg_color(&self, py: Python, bg_color: LinRgba) {
         let self_wrapper = SendWrapper::new(self);
         py.allow_threads(move || {
             let mut state = self_wrapper.state.lock().unwrap();
