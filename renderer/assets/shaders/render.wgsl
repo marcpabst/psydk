@@ -56,6 +56,15 @@ fn polylog6(x: f32, params: P) -> f32 {
     return params.a + params.b * logx + params.c * npow(logx, 2.0) + params.d * npow(logx, 3.0) + params.e * npow(logx, 4.0) + params.f * npow(logx, 5.0) + params.g * npow(logx, 6.0);
 }
 
+// standard lin->sRGB conversion
+fn lin_to_srgb(value: f32) -> f32 {
+    if value <= 0.0031308 {
+        return 12.92 * value;
+    } else {
+        return 1.055 * npow(value, 1.0 / 2.4) - 0.055;
+    }
+}
+
 @vertex
 fn vs_main(@builtin(vertex_index) ix: u32) -> @builtin(position) vec4<f32> {
     // Generate a full screen quad in normalized device coordinates
@@ -126,6 +135,14 @@ fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
             polylog6(rgb_pm.r, params.b),
             polylog6(rgb_pm.g, params.g),
             polylog6(rgb_pm.b, params.b)
+        );
+        return vec4(rgb, rgba_sep.a);
+    }
+    if params.correction == 5 {
+        let rgb = vec3(
+            lin_to_srgb(rgb_pm.r),
+            lin_to_srgb(rgb_pm.g),
+            lin_to_srgb(rgb_pm.b)
         );
         return vec4(rgb, rgba_sep.a);
     }

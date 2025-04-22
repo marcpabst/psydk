@@ -887,7 +887,7 @@ fn skia_create_bitmap(img: image::DynamicImage) -> DynamicBitmap {
             (width as i32, height as i32),
             ColorType::RGBA8888,
             SkAlphaType::Unpremul,
-            Some(ColorSpace::new_srgb_linear()),
+            Some(ColorSpace::new_srgb()),
         ),
         &unsafe { skia_safe::Data::new_bytes(&boxed_buffer) },
         width as usize * 4,
