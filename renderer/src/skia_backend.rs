@@ -363,8 +363,6 @@ impl Renderer for SkiaRenderer {
 
         // try to downcast the scene to a SkiaScene
         let skia_scene = scene.as_any_mut().downcast_mut::<SkiaScene>().unwrap();
-        // set the background color
-        let bg_color: skia_safe::Color4f = skia_scene.bg_color.into();
 
         let picture = skia_scene.picture_recorder.finish_recording_as_picture(None).unwrap();
 
@@ -573,8 +571,8 @@ impl From<RGBA> for skia_safe::Color4f {
 }
 
 impl From<&RGBA> for skia_safe::Color4f {
-    fn from(color: &RGBA) -> Self {
-        let c = color.as_srgba();
+    fn from(c: &RGBA) -> Self {
+        // let c = color.as_srgba();
         skia_safe::Color4f::new(c.0, c.1, c.2, c.3)
     }
 }
