@@ -573,7 +573,7 @@ impl From<RGBA> for skia_safe::Color4f {
 impl From<&RGBA> for skia_safe::Color4f {
     fn from(c: &RGBA) -> Self {
         // let c = color.as_srgba();
-        skia_safe::Color4f::new(c.0, c.1, c.2, c.3)
+        skia_safe::Color4f::new(c.r, c.g, c.b, c.a)
     }
 }
 

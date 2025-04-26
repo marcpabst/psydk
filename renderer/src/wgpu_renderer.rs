@@ -158,7 +158,7 @@ impl WgpuRenderer {
                         buffer: &device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                             label: Some("Gamma Buffer"),
                             contents: bytemuck::cast_slice(&[GammaParams {
-                                correction: 0, // 0: none, 1: psychopy, 2: polylog4, 3: polylog5, 4: polylog6, 5: sRGB
+                                correction: 5, // 0: none, 1: psychopy, 2: polylog4, 3: polylog5, 4: polylog6, 5: sRGB
                                 r: [
                                     0.9972361456765942,
                                     0.5718201120693766,
