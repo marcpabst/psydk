@@ -164,28 +164,50 @@ impl<'py> FromPyObject<'py> for IntoLinRgba {
 #[pyfunction]
 #[pyo3(name = "rgb")]
 #[pyo3(signature = (r, g, b, a = 1.0))]
+/// Specify an RGB with all channels being sRGB encoded.
+/// This is the default color space for most colors.
+/// Note: The returned color is in linear RGB space.
+///
+/// Parameters
+/// ---------
+/// r : float
+///   The red channel (0.0 to 1.0).
+/// g : float
+///  The green channel (0.0 to 1.0).
+/// b : float
+///     The blue channel (0.0 to 1.0).
+/// a : float, optional
+///     The alpha channel (0.0 to 1.0).
+///
+/// Returns
+/// -------
+/// (r, g, b, a) : tuple
+///   The RGB color as a tuple of 4 floats.
 pub fn py_rgb(r: f32, g: f32, b: f32, a: f32) -> LinRgba {
-    LinRgba::from_srgba(r, g, b, a)
-}
-
-#[pyfunction]
-#[pyo3(name = "rgba")]
-#[pyo3(signature = (r, g, b, a))]
-pub fn py_rgba(r: f32, g: f32, b: f32, a: f32) -> LinRgba {
     LinRgba::from_srgba(r, g, b, a)
 }
 
 #[pyfunction]
 #[pyo3(name = "linrgb")]
 #[pyo3(signature = (r, g, b, a = 1.0))]
+/// Specify a color in linear RGB space.
+///
+/// Parameters
+/// ---------
+/// r : float
+///   The red channel (0.0 to 1.0).
+/// g : float
+///  The green channel (0.0 to 1.0).
+/// b : float
+///     The blue channel (0.0 to 1.0).
+/// a : float, optional
+///     The alpha channel (0.0 to 1.0).
+///
+/// Returns
+/// -------
+/// (r, g, b, a) : tuple
+///   The linear RGB color as a tuple of 4 floats.
 pub fn py_linrgb(r: f32, g: f32, b: f32, a: f32) -> LinRgba {
-    LinRgba::new(r, g, b, a)
-}
-
-#[pyfunction]
-#[pyo3(name = "linrgba")]
-#[pyo3(signature = (r, g, b, a))]
-pub fn py_linrgba(r: f32, g: f32, b: f32, a: f32) -> LinRgba {
     LinRgba::new(r, g, b, a)
 }
 

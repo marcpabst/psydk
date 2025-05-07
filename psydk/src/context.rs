@@ -27,7 +27,7 @@ use crate::{
 
 #[derive(Dbg)]
 pub enum EventLoopAction {
-    CreateNewWindow(WindowOptions, Sender<Window>),
+    CreateNewWindow(WindowOptions, GammaOptions, Sender<Window>),
     GetAvailableMonitors(Sender<Vec<Monitor>>),
     Exit(Option<errors::PsydkError>),
 }
@@ -99,6 +99,11 @@ impl Monitor {
             .map(|r| r as f64)
             .ok_or_else(|| PsydkError::MonitorError("Monitor does not have a refresh rate".to_string()).into())
     }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GammaOptions {
+    pub lut: Option<renderer::image::RgbImage>,
 }
 
 /// Options for creating a window. The ExperimentManager will try to find a
@@ -216,10 +221,10 @@ impl ExperimentContext {
     /// a new UserEvent to the event loop and wait until the winit window
     /// has been created. Then it will setup the wgpu device and surface and
     /// return a new Window object.
-    pub fn create_window(&self, window_options: &WindowOptions) -> Window {
+    pub fn create_window(&self, window_options: &WindowOptions, gamma_options: GammaOptions) -> Window {
         // set up window by dispatching a new CreateNewWindow action
         let (sender, receiver) = channel();
-        let action = EventLoopAction::CreateNewWindow(window_options.clone(), sender);
+        let action = EventLoopAction::CreateNewWindow(window_options.clone(), gamma_options, sender);
 
         // send action
         self.action_sender.send(action).unwrap();
@@ -237,7 +242,7 @@ impl ExperimentContext {
 
     /// Create a new window. This is a convenience function that creates a
     /// window with the default options.
-    pub fn create_default_window(&self, fullscreen: bool, monitor: Option<u32>) -> Window {
+    pub fn create_default_window(&self, fullscreen: bool, monitor: Option<u32>, gamma: Option<GammaOptions>) -> Window {
         // select monitor 1 if available
         // find all monitors available
 
@@ -247,10 +252,15 @@ impl ExperimentContext {
             .get(monitor.unwrap_or(0) as usize)
             .unwrap_or(monitors.first().expect("No monitor found - this should not happen"));
 
-        self.create_window(&WindowOptions::FullscreenHighestResolution {
-            monitor: Some(monitor.clone()),
-            refresh_rate: None,
-        })
+        let gamma_options = gamma.unwrap_or_else(|| GammaOptions { lut: None });
+
+        self.create_window(
+            &WindowOptions::FullscreenHighestResolution {
+                monitor: Some(monitor.clone()),
+                refresh_rate: None,
+            },
+            gamma_options,
+        )
     }
 
     /// Retrive available monitors.
@@ -302,7 +312,7 @@ impl ExperimentContext {
 #[pymethods]
 impl ExperimentContext {
     #[pyo3(name = "create_default_window")]
-    #[pyo3(signature = (fullscreen = false, monitor = None))]
+    #[pyo3(signature = (fullscreen = false, monitor = None, lut_img_path = None))]
     /// Create a new window. This is a convenience function that creates a
     /// window with the default options.
     ///
@@ -323,8 +333,19 @@ impl ExperimentContext {
     /// -------
     /// Window
     ///  The new window.
-    fn py_create_default_window(&self, fullscreen: bool, monitor: Option<u32>) -> Window {
-        self.create_default_window(fullscreen, monitor)
+    fn py_create_default_window(&self, fullscreen: bool, monitor: Option<u32>, lut_img_path: Option<String>) -> Window {
+        let gamma_options = if let Some(path) = lut_img_path {
+            let img = renderer::image::io::Reader::open(path)
+                .unwrap()
+                .decode()
+                .unwrap()
+                .into_rgb8();
+            GammaOptions { lut: Some(img) }
+        } else {
+            GammaOptions { lut: None }
+        };
+
+        self.create_default_window(fullscreen, monitor, Some(gamma_options))
     }
 
     // Create a new audio stream

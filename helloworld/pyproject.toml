@@ -144,7 +144,7 @@ requires = [
     "toga-iOS~=0.4.7",
     "std-nslog~=1.0.3",
     "numpy",
-    "../psydk/target/wheels/psydk-0.1.512-py3-none-any.whl",
+    "../psydk/target/wheels/psydk-0.1.513-py3-none-any.whl",
 ]
 
 [tool.briefcase.app.helloworld.android]

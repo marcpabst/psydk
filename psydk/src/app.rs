@@ -25,7 +25,7 @@ use winit::{
 
 use crate::{
     config::ExperimentConfig,
-    context::{EventLoopAction, ExperimentContext, Monitor, WindowOptions},
+    context::{EventLoopAction, ExperimentContext, GammaOptions, Monitor, WindowOptions},
     errors,
     input::Event,
     visual::{
@@ -145,7 +145,12 @@ impl App {
     }
 
     /// Create a new window with the given options.
-    pub fn create_window(&self, window_options: &WindowOptions, event_loop: &ActiveEventLoop) -> Window {
+    pub fn create_window(
+        &self,
+        window_options: &WindowOptions,
+        gamma_options: GammaOptions,
+        event_loop: &ActiveEventLoop,
+    ) -> Window {
         let window_attributes = WinitWindow::default_attributes()
             .with_title("Winit window")
             .with_transparent(false);
@@ -213,6 +218,7 @@ impl App {
             device,
             queue,
             swapchain_format,
+            gamma_options.lut,
         ));
 
         // create the renderer
@@ -369,8 +375,8 @@ impl ApplicationHandler<()> for App {
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: ()) {
         // check if we need to create a new window
         self.action_receiver.try_recv().map(|action| match action {
-            EventLoopAction::CreateNewWindow(options, sender) => {
-                let window = self.create_window(&options, event_loop);
+            EventLoopAction::CreateNewWindow(options, gamma_options, sender) => {
+                let window = self.create_window(&options, gamma_options, event_loop);
                 self.windows.push(window.clone());
                 sender.send(window).unwrap();
             }

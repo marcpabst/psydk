@@ -5,6 +5,7 @@ from psydk import run_experiment
 from psydk.visual.geometry import deg, circle, path
 from psydk.visual.stimuli import PatternStimulus, TextStimulus, ImageStimulus
 from psydk.visual.color import linrgb
+from psydk.utils import now
 
 def distance(p1, p2):
     """Calculate the distance between two points."""
@@ -31,7 +32,7 @@ def my_experiment(ctx, subject, session, run, overwrite=False, enable_feedback=F
     # register mali font
     ctx.load_font_directory(str(res_directory / "fonts/mali"))
 
-    with ctx.create_default_window(fullscreen=True, monitor=2) as window:
+    with ctx.create_default_window(fullscreen=True, monitor=0) as window:
         n_trials = 10
 
         start_text = TextStimulus(
@@ -50,26 +51,32 @@ def my_experiment(ctx, subject, session, run, overwrite=False, enable_feedback=F
             frame.add(start_text)
             window.present(frame)
 
+        target_distance = 700
+        n_locations = 4
+
+        # generate n evenly spaced angles
+        angles = np.linspace(0, 2 * np.pi, n_locations, endpoint=False)
+        locations = [(target_distance * np.cos(angle), target_distance * np.sin(angle)) for angle in angles]
+
         for trial in range(n_trials):
             # generate a random position for the target
             # target_x = np.random.uniform(-window.get_size()[0] / 2, window.get_size()[0] / 2)
             # target_y = np.random.uniform(-window.get_size()[1] / 2, window.get_size()[1] / 2)
 
-            # generate a random position for the target with the given distance
-            target_distance = 700
-            angle = np.random.uniform(0, 2 * np.pi)
-            target_x = target_distance * np.cos(angle)
-            target_y = target_distance * np.sin(angle)
+            # obtain a random position
+            target_x, target_y = locations[trial % n_locations]
+            angle = angles[trial % n_locations]
+
 
             # create a circle in the center of the screen
             circle_stim = PatternStimulus(
-                circle(50),
+                circle(150),
                 x=0,
                 y=0,
                 pattern="uniform",
                 pattern_size=deg(0.5),
                 pattern_rotation=0,
-                stroke_color=linrgb(0.1, 0.1, 0.1),
+                fill_color=linrgb(0.1, 1.0, 0.1),
                 stroke_width=5,
             )
 
@@ -114,21 +121,24 @@ def my_experiment(ctx, subject, session, run, overwrite=False, enable_feedback=F
 
             draw_state = {
                 "points": [],
+                "started": False,
+                "started_time": None,
                 "active": False,
                 "finished": False,
                 "correct": None,
             }
 
             def mouse_down_handler(event):
-                if not draw_state["active"]:
-                    # check if we are in the circle stimulus
-                    if distance(event.position, (0, 0)) < 100:
+                if distance(event.position, (0, 0)) < 100:
+                    if draw_state["started"] and not draw_state["active"]:
                         path_stim["stroke_color"] = linrgb(0.5, 0.5, 0.5)
                         draw_state["points"].clear()
-                        draw_state["active"] = True
+                    else:
+                        draw_state["started"] = True
+                    draw_state["started_time"] = now()
 
             def mouse_up_handler(event):
-                if draw_state["active"]:
+                if draw_state["started"] and draw_state["active"]:
                     # check if we are in the target circle
                     # if yes, make the path green
                     if distance(event.position, (target_x, target_y)) < 200:
@@ -141,8 +151,11 @@ def my_experiment(ctx, subject, session, run, overwrite=False, enable_feedback=F
                     draw_state["active"] = False
                     draw_state["finished"] = True
 
+                elif draw_state["started"]:
+                    draw_state["started"] = False
+
             def mouse_move_handler(event):
-                if draw_state["active"]:
+                if draw_state["started"] and draw_state["active"]:
                     draw_state["points"].append(event.position)
 
             h1 = window.add_event_handler("mouse_button_press", mouse_down_handler)
@@ -154,13 +167,25 @@ def my_experiment(ctx, subject, session, run, overwrite=False, enable_feedback=F
             h5 = window.add_event_handler("touch_end", mouse_up_handler)
             h6 = window.add_event_handler("touch_move", mouse_move_handler)
 
+            while not draw_state["active"]:
+                frame = window.get_frame()
+                # check if 1 s has elapsed since started_time
+                if draw_state["started"] and draw_state["started_time"] is not None and draw_state["started_time"].elapsed() > 1:
+                    draw_state["active"] = True
+
+                if draw_state["started"]:
+                    frame.add(circle_stim)
+
+                frame.add(mouse_stim)
+                window.present(frame)
+
             while True:
                 # draw the path
                 path_stim["shape"] = path(draw_state["points"])
 
                 frame = window.get_frame()
 
-                # frame.add(circle_stim)
+
                 frame.add(mouse_stim)
                 # frame.add(target_stim)
                 frame.add(cheese_stim)
@@ -191,7 +216,6 @@ def my_experiment(ctx, subject, session, run, overwrite=False, enable_feedback=F
                 mouse_stim.animate("y", target_y, 0.5)
 
             frame = window.get_frame()
-            frame.add(circle_stim)
             frame.add(target_stim)
             frame.add(cheese_stim)
             frame.add(path_stim)

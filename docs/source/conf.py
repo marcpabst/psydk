@@ -31,6 +31,9 @@ extensions = [
     'sphinx.ext.autosectionlabel',
     'sphinx.ext.napoleon',
     'pydata_sphinx_theme',
+    "sphinxcontrib.mermaid",
+    'myst_parser',
+    'sphinx_tabs.tabs'
 ]
 
 autosummary_generate = True
@@ -125,6 +128,9 @@ html_theme_options = {
 }
 
 
-html_css_files = [
-    'css/custom.css',
-]
+# html_css_files = [
+#     'css/custom.css',
+# ]
+
+add_module_names = True
+sphinx_tabs_disable_tab_closing = True

@@ -1,0 +1,6 @@
+# Visual
+
+```{toctree}
+colours
+stimuli
+```
