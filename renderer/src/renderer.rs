@@ -17,6 +17,11 @@ pub struct DynamicRenderer {
     backend: Box<dyn Renderer>,
 }
 
+pub enum ColorSpace {
+    LinearSrgb,
+    Srgb,
+}
+
 impl DynamicRenderer {
     pub(crate) fn new(backend_renderer: Box<dyn Renderer>) -> Self {
         DynamicRenderer {
@@ -45,8 +50,16 @@ impl DynamicRenderer {
         DynamicScene::new(scene)
     }
 
-    pub fn create_bitmap(&self, data: DynamicImage) -> DynamicBitmap {
-        self.backend.create_bitmap(data)
+    pub fn create_bitmap_u8(&self, data: image::RgbaImage, color_space: ColorSpace) -> DynamicBitmap {
+        self.backend.create_bitmap_u8(data, color_space)
+    }
+
+    pub fn create_bitmap_f32(
+        &self,
+        data: image::ImageBuffer<image::Rgba<f32>, Vec<f32>>,
+        color_space: ColorSpace,
+    ) -> DynamicBitmap {
+        self.backend.create_bitmap_f32(data, color_space)
     }
 
     pub fn create_bitmap_from_path(&self, path: &str) -> DynamicBitmap {
@@ -74,11 +87,16 @@ pub trait Renderer {
         index: usize,
     ) -> DynamicFontFace;
 
-    fn create_bitmap(&self, data: DynamicImage) -> DynamicBitmap;
+    fn create_bitmap_u8(&self, data: image::RgbaImage, color_space: ColorSpace) -> DynamicBitmap;
+    fn create_bitmap_f32(
+        &self,
+        data: image::ImageBuffer<image::Rgba<f32>, Vec<f32>>,
+        color_space: ColorSpace,
+    ) -> DynamicBitmap;
 
     fn create_bitmap_from_path(&self, path: &str) -> DynamicBitmap {
-        let image = image::open(path).unwrap();
-        self.create_bitmap(image)
+        let image = image::open(path).unwrap().to_rgba8();
+        self.create_bitmap_u8(image, ColorSpace::Srgb)
     }
 
     fn create_renderer_factory(&self) -> Box<dyn RendererFactory>;
@@ -95,11 +113,18 @@ pub trait RendererFactory: Send + Sync + std::fmt::Debug {
         height: u32,
     ) -> DynamicRenderer;
 
-    fn create_bitmap(&self, data: DynamicImage) -> DynamicBitmap;
+    fn create_bitmap_u8(&self, data: image::RgbaImage, color_space: ColorSpace) -> DynamicBitmap;
+    fn create_bitmap_f32(
+        &self,
+        data: image::ImageBuffer<image::Rgba<f32>, Vec<f32>>,
+        color_space: ColorSpace,
+    ) -> DynamicBitmap;
 
     fn create_bitmap_from_path(&self, path: &str) -> DynamicBitmap {
         let image = image::open(path).unwrap();
-        self.create_bitmap(image)
+        // convert to RGBA
+        let image = image.to_rgba8();
+        self.create_bitmap_u8(image, ColorSpace::Srgb)
     }
 
     fn create_font_face(&self, font_data: &[u8], index: u32) -> DynamicFontFace;

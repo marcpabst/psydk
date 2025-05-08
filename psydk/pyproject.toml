@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "psydk"
-version = "0.1.541"
+version = "0.1.546"
 authors = [{ name = "Marc Pabst", email = "mail@xxxxxxx.com" }]
 description = "Python bindings for psydk"
 license = "MPL-2.0"

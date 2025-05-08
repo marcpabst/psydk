@@ -117,48 +117,41 @@ impl PatternStimulus {
         match pattern {
             FillPattern::Uniform => {}
             FillPattern::Stripes => {
-                let image_2x2_data = vec![
-                    fg.r_u8(),
-                    fg.g_u8(),
-                    fg.b_u8(),
-                    fg.a_u8(),
-                    bg.r_u8(),
-                    bg.g_u8(),
-                    bg.b_u8(),
-                    bg.a_u8(),
-                ];
-                let image_2x2 = renderer::image::RgbaImage::from_raw(2, 1, image_2x2_data).unwrap();
+                let image_2x2_data = vec![fg.r(), fg.g(), fg.b(), fg.a(), bg.r(), bg.g(), bg.b(), bg.a()];
+                let image_2x2 = renderer::image::ImageBuffer::from_raw(2, 2, image_2x2_data)
+                    .expect("Failed to create image. This should never happen.");
 
                 let pattern_image = context
                     .renderer_factory()
-                    .create_bitmap(renderer::image::DynamicImage::ImageRgba8(image_2x2));
+                    .create_bitmap_f32(image_2x2, renderer::renderer::ColorSpace::LinearSrgb);
                 stim.pattern_image = Some(pattern_image);
             }
             FillPattern::Sinosoidal => todo!(),
             FillPattern::Checkerboard => {
                 let image_2x2_data = vec![
-                    fg.r_u8(),
-                    fg.g_u8(),
-                    fg.b_u8(),
-                    fg.a_u8(),
-                    bg.r_u8(),
-                    bg.g_u8(),
-                    bg.b_u8(),
-                    bg.a_u8(),
-                    bg.r_u8(),
-                    bg.g_u8(),
-                    bg.b_u8(),
-                    bg.a_u8(),
-                    fg.r_u8(),
-                    fg.g_u8(),
-                    fg.b_u8(),
-                    fg.a_u8(),
+                    fg.r(),
+                    fg.g(),
+                    fg.b(),
+                    fg.a(),
+                    bg.r(),
+                    bg.g(),
+                    bg.b(),
+                    bg.a(),
+                    bg.r(),
+                    bg.g(),
+                    bg.b(),
+                    bg.a(),
+                    fg.r(),
+                    fg.g(),
+                    fg.b(),
+                    fg.a(),
                 ];
-                let image_2x2 = renderer::image::RgbaImage::from_raw(2, 2, image_2x2_data).unwrap();
+                let image_2x2 = renderer::image::ImageBuffer::from_raw(2, 2, image_2x2_data)
+                    .expect("Failed to create image. This should never happen.");
 
                 let pattern_image = context
                     .renderer_factory()
-                    .create_bitmap(renderer::image::DynamicImage::ImageRgba8(image_2x2));
+                    .create_bitmap_f32(image_2x2, renderer::renderer::ColorSpace::LinearSrgb);
                 stim.pattern_image = Some(pattern_image);
             }
         }

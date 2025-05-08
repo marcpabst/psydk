@@ -387,12 +387,20 @@ impl Renderer for SkiaRenderer {
         return DynamicFontFace(Box::new(typeface));
     }
 
-    fn create_bitmap(&self, data: image::DynamicImage) -> DynamicBitmap {
-        skia_create_bitmap(data)
-    }
-
     fn create_renderer_factory(&self) -> Box<dyn RendererFactory> {
         Box::new(SkiaRendererFactory)
+    }
+
+    fn create_bitmap_u8(&self, rgba: image::RgbaImage, color_space: crate::renderer::ColorSpace) -> DynamicBitmap {
+        skia_create_bitmap_u8(rgba, color_space)
+    }
+
+    fn create_bitmap_f32(
+        &self,
+        rgba: image::ImageBuffer<image::Rgba<f32>, Vec<f32>>,
+        color_space: crate::renderer::ColorSpace,
+    ) -> DynamicBitmap {
+        skia_create_bitmap_f32(rgba, color_space)
     }
 }
 
@@ -840,10 +848,6 @@ impl SkiaRendererFactory {
 }
 
 impl RendererFactory for SkiaRendererFactory {
-    fn create_bitmap(&self, data: image::DynamicImage) -> DynamicBitmap {
-        skia_create_bitmap(data)
-    }
-
     fn create_renderer(
         &self,
         adapter: &wgpu::Adapter,
@@ -870,11 +874,21 @@ impl RendererFactory for SkiaRendererFactory {
         // let typeface = self.font_manager.n
         return DynamicFontFace(Box::new(typeface));
     }
+
+    fn create_bitmap_u8(&self, data: image::RgbaImage, color_space: crate::renderer::ColorSpace) -> DynamicBitmap {
+        skia_create_bitmap_u8(data, color_space)
+    }
+
+    fn create_bitmap_f32(
+        &self,
+        data: image::ImageBuffer<image::Rgba<f32>, Vec<f32>>,
+        color_space: crate::renderer::ColorSpace,
+    ) -> DynamicBitmap {
+        skia_create_bitmap_f32(data, color_space)
+    }
 }
 
-fn skia_create_bitmap(img: image::DynamicImage) -> DynamicBitmap {
-    // extract the image data as an rgba buffer
-    let rgba = img.to_rgba8();
+fn skia_create_bitmap_u8(rgba: image::RgbaImage, color_space: crate::renderer::ColorSpace) -> DynamicBitmap {
     let (width, height) = rgba.dimensions();
     let buffer = rgba.into_raw();
     let boxed_buffer = buffer.into_boxed_slice();
@@ -885,7 +899,7 @@ fn skia_create_bitmap(img: image::DynamicImage) -> DynamicBitmap {
             (width as i32, height as i32),
             ColorType::RGBA8888,
             SkAlphaType::Unpremul,
-            Some(ColorSpace::new_srgb()),
+            Some(color_space.into()),
         ),
         &unsafe { skia_safe::Data::new_bytes(&boxed_buffer) },
         width as usize * 4,
@@ -896,4 +910,44 @@ fn skia_create_bitmap(img: image::DynamicImage) -> DynamicBitmap {
         image,
         data: boxed_buffer,
     }))
+}
+
+fn skia_create_bitmap_f32(
+    rgba: image::ImageBuffer<image::Rgba<f32>, Vec<f32>>,
+    color_space: crate::renderer::ColorSpace,
+) -> DynamicBitmap {
+    let (width, height) = rgba.dimensions();
+    let buffer = rgba.into_raw();
+    // convert the buffer to bytes using bytemuck
+    let buffer = bytemuck::cast_slice::<f32, u8>(&buffer).to_vec();
+
+    let boxed_buffer = buffer.into_boxed_slice();
+
+    // create a new skia image
+    let image = sk_raster_from_data(
+        &skia_safe::ImageInfo::new(
+            (width as i32, height as i32),
+            ColorType::RGBAF32,
+            SkAlphaType::Unpremul,
+            Some(color_space.into()),
+        ),
+        &unsafe { skia_safe::Data::new_bytes(&boxed_buffer) },
+        width as usize * 4 * 4,
+    )
+    .expect("Failed to create skia image for f32 bitmap");
+
+    DynamicBitmap(Box::new(SkiaBitmap {
+        image,
+        data: boxed_buffer,
+    }))
+}
+
+// allow a colorpace to be converted to a skia color space
+impl From<crate::renderer::ColorSpace> for skia_safe::ColorSpace {
+    fn from(value: crate::renderer::ColorSpace) -> Self {
+        match value {
+            crate::renderer::ColorSpace::Srgb => skia_safe::ColorSpace::new_srgb(),
+            crate::renderer::ColorSpace::LinearSrgb => skia_safe::ColorSpace::new_srgb_linear(),
+        }
+    }
 }
