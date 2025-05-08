@@ -38,28 +38,23 @@ impl WgpuRenderer {
         // create a render pipeline
         let render_pipeline = Self::create_render_pipelie(&device, surface_format);
         let texture = Self::create_texture(&device, width, height);
-        let lut_texture_array = Self::create_lut_texture_array(&device, 128, 128);
+        let lut_texture_array = Self::create_lut_texture_array(&device, 256, 256);
 
         // if a LUT is provided, create a texture array and upload the LUT data
         let lut_texture_data = if let Some(lut) = lut {
             // make sure the LUT is 128x128
-            assert_eq!(lut.width(), 128);
-            assert_eq!(lut.height(), 128);
+            assert_eq!(lut.width(), 256);
+            assert_eq!(lut.height(), 256);
             // get u8 data from the LUT
             // the desired structure is 128x128 red, 128x128 green, 128x128 blue
             // the image however has rgb values interleaved
-            let mut lut_texture_data = Vec::with_capacity(128 * 128 * 3);
+            let mut lut_texture_data = Vec::with_capacity(256 * 256 * 3);
             for c in 0..3 {
-                for i in 0..(128 * 128) {
+                for i in 0..(256 * 256) {
                     // get the pixel value
-                    let pixel = lut.get_pixel(i % 128, i / 128);
+                    let pixel = lut.get_pixel(i % 256, i / 256);
                     // get the channel value
-                    let channel_value = match c {
-                        0 => pixel[0],
-                        1 => pixel[1],
-                        2 => pixel[2],
-                        _ => unreachable!(),
-                    };
+                    let channel_value = pixel[c];
                     // push the value to the texture data
                     lut_texture_data.push(channel_value);
                 }
@@ -68,14 +63,14 @@ impl WgpuRenderer {
             lut_texture_data
         } else {
             // create a default LUT based on the sRGB encoding function
-            // the LUT is 128x128 red, 128x128 green, 128x128 blue
-            let mut lut_texture_data = vec![0u8; 128 * 128 * 3];
-            for i in 0..(128 * 128) {
+            // the LUT is 256x256 red, 256x256 green, 256x256 blue
+            let mut lut_texture_data = vec![0u8; 256 * 256 * 3];
+            for i in 0..(256 * 256) {
                 for c in 0..3 {
-                    let x = i as f32 / (128.0 * 128.0);
+                    let x = i as f32 / (256.0 * 256.0);
                     let y = srgb_inverse_eotf(x);
                     let y = (y * 255.0).round() as u8;
-                    lut_texture_data[c * (128 * 128) + i] = y;
+                    lut_texture_data[c * (256 * 256) + i] = y;
                 }
             }
             lut_texture_data
@@ -94,13 +89,13 @@ impl WgpuRenderer {
             // The layout of the texture
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some(128),
-                rows_per_image: Some(128),
+                bytes_per_row: Some(256),
+                rows_per_image: Some(256),
             },
             // The size of the texture
             wgpu::Extent3d {
-                width: 128,
-                height: 128,
+                width: 256,
+                height: 256,
                 depth_or_array_layers: 3,
             },
         );
@@ -149,7 +144,7 @@ impl WgpuRenderer {
             width: self.size.width,
             height: self.size.height,
             desired_maximum_frame_latency: 1,
-            present_mode: wgpu::PresentMode::AutoVsync,
+            present_mode: wgpu::PresentMode::Fifo,
         };
         surface.configure(device, &surface_config);
     }
@@ -263,8 +258,8 @@ impl WgpuRenderer {
                             label: Some("Gamma Buffer"),
                             contents: bytemuck::cast_slice(&[GammaParams {
                                 correction: 1, // 0: none, 1: LUT
-                                texture_width: 128,
-                                texture_height: 128,
+                                texture_width: 256,
+                                texture_height: 256,
                             }]),
                             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                         }),
