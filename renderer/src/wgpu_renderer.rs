@@ -18,6 +18,7 @@ pub struct WgpuRenderer {
     render_pipeline: RenderPipeline,
     texture: Texture,
     lut_texture_array: Texture,
+    encode_gamma: bool,
     gamma_buffer: Buffer,
     bind_group: BindGroup,
     size: PhysicalSize<u32>,
@@ -31,6 +32,7 @@ impl WgpuRenderer {
         queue: &Queue,
         surface_format: TextureFormat,
         lut: Option<image::RgbImage>,
+        encode_gamma: bool,
     ) -> Self {
         let size = window.inner_size();
         let (width, height) = (size.width, size.height);
@@ -101,13 +103,14 @@ impl WgpuRenderer {
         );
 
         let gamma_buffer = Self::create_uniform_buffer(&device);
-        let bind_group = Self::create_bind_group(&device, &texture, &lut_texture_array);
+        let bind_group = Self::create_bind_group(&device, &texture, &lut_texture_array, encode_gamma);
 
         Self {
             surface_format,
             render_pipeline,
             texture,
             lut_texture_array,
+            encode_gamma,
             gamma_buffer,
             bind_group,
             size,
@@ -153,7 +156,7 @@ impl WgpuRenderer {
     pub fn resize(&mut self, width: u32, height: u32, surface: &Surface, device: &Device) {
         self.size = winit::dpi::PhysicalSize::new(width, height);
         self.texture = Self::create_texture(device, width, height);
-        self.bind_group = Self::create_bind_group(device, &self.texture, &self.lut_texture_array);
+        self.bind_group = Self::create_bind_group(device, &self.texture, &self.lut_texture_array, self.encode_gamma);
         self.configure_surface(surface, device);
     }
 
@@ -204,6 +207,7 @@ impl WgpuRenderer {
         device: &wgpu::Device,
         texture: &wgpu::Texture,
         lut_texture_array: &wgpu::Texture,
+        encode_gamma: bool,
     ) -> wgpu::BindGroup {
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Render Bind Group Layout"),
@@ -257,7 +261,7 @@ impl WgpuRenderer {
                         buffer: &device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                             label: Some("Gamma Buffer"),
                             contents: bytemuck::cast_slice(&[GammaParams {
-                                correction: 1, // 0: none, 1: LUT
+                                correction: if encode_gamma { 1 } else { 0 },
                                 texture_width: 256,
                                 texture_height: 256,
                             }]),

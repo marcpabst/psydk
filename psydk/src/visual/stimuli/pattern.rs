@@ -117,13 +117,13 @@ impl PatternStimulus {
         match pattern {
             FillPattern::Uniform => {}
             FillPattern::Stripes => {
-                let image_2x2_data = vec![fg.r(), fg.g(), fg.b(), fg.a(), bg.r(), bg.g(), bg.b(), bg.a()];
-                let image_2x2 = renderer::image::ImageBuffer::from_raw(2, 2, image_2x2_data)
+                let image_2x1_data = vec![fg.r(), fg.g(), fg.b(), fg.a(), bg.r(), bg.g(), bg.b(), bg.a()];
+                let image_2x1 = renderer::image::ImageBuffer::from_raw(2, 1, image_2x1_data)
                     .expect("Failed to create image. This should never happen.");
 
                 let pattern_image = context
                     .renderer_factory()
-                    .create_bitmap_f32(image_2x2, renderer::renderer::ColorSpace::LinearSrgb);
+                    .create_bitmap_f32(image_2x1, renderer::renderer::ColorSpace::LinearSrgb);
                 stim.pattern_image = Some(pattern_image);
             }
             FillPattern::Sinosoidal => todo!(),

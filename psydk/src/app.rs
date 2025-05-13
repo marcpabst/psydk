@@ -219,6 +219,7 @@ impl App {
             queue,
             swapchain_format,
             gamma_options.lut,
+            gamma_options.encode_gamma,
         ));
 
         // create the renderer

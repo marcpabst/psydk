@@ -103,6 +103,7 @@ impl Monitor {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct GammaOptions {
+    pub encode_gamma: bool,
     pub lut: Option<renderer::image::RgbImage>,
 }
 
@@ -252,7 +253,10 @@ impl ExperimentContext {
             .get(monitor.unwrap_or(0) as usize)
             .unwrap_or(monitors.first().expect("No monitor found - this should not happen"));
 
-        let gamma_options = gamma.unwrap_or_else(|| GammaOptions { lut: None });
+        let gamma_options = gamma.unwrap_or_else(|| GammaOptions {
+            encode_gamma: true,
+            lut: None,
+        });
 
         self.create_window(
             &WindowOptions::FullscreenHighestResolution {
@@ -312,7 +316,7 @@ impl ExperimentContext {
 #[pymethods]
 impl ExperimentContext {
     #[pyo3(name = "create_default_window")]
-    #[pyo3(signature = (fullscreen = false, monitor = None, lut_img_path = None))]
+    #[pyo3(signature = (fullscreen = false, monitor = None, encode_gamma=true, lut_img_path = None))]
     /// Create a new window. This is a convenience function that creates a
     /// window with the default options.
     ///
@@ -333,16 +337,28 @@ impl ExperimentContext {
     /// -------
     /// Window
     ///  The new window.
-    fn py_create_default_window(&self, fullscreen: bool, monitor: Option<u32>, lut_img_path: Option<String>) -> Window {
+    fn py_create_default_window(
+        &self,
+        fullscreen: bool,
+        monitor: Option<u32>,
+        encode_gamma: bool,
+        lut_img_path: Option<String>,
+    ) -> Window {
         let gamma_options = if let Some(path) = lut_img_path {
             let img = renderer::image::io::Reader::open(path)
                 .unwrap()
                 .decode()
                 .unwrap()
                 .into_rgb8();
-            GammaOptions { lut: Some(img) }
+            GammaOptions {
+                encode_gamma,
+                lut: Some(img),
+            }
         } else {
-            GammaOptions { lut: None }
+            GammaOptions {
+                encode_gamma: encode_gamma,
+                lut: None,
+            }
         };
 
         self.create_default_window(fullscreen, monitor, Some(gamma_options))
