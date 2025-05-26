@@ -17,6 +17,7 @@ use ndarray::{Array, Axis};
 use rand::SeedableRng;
 use rand_distr::Distribution;
 use symphonia::core::{io::MediaSourceStream, probe::Hint};
+use thread_priority::ThreadPriorityValue;
 
 #[derive(Debug, Clone)]
 pub enum AudioObject {
@@ -370,27 +371,44 @@ impl Stream {
             let _callback_sender = callback_sender.clone();
 
             std::thread::spawn(move || {
+                // ask for maximum process priority
+                thread_priority::set_current_thread_priority(thread_priority::ThreadPriority::Crossplatform(
+                    thread_priority::ThreadPriorityValue::try_from(thread_priority::ThreadPriorityValue::MAX)
+                        .expect("Failed to convert thread priority value"),
+                ))
+                .expect("Failed to set thread priority");
                 loop {
                     let mut scheudled_aos = _scheudled_aos_clone.lock().unwrap();
                     if scheudled_aos.is_empty() {
                         // nothing to do, sleep for a short time
-                        std::thread::sleep(Duration::from_millis(1));
+                        std::thread::yield_now();
                     } else {
                         // get the time of the next audio object
                         let next_time = scheudled_aos.iter().map(|(_, t)| *t).min().unwrap();
                         let now = Instant::now();
                         if next_time > now {
-                            // sleep until 2ms before the next audio object is scheduled to be played
-                            let next_check_time = next_time - Duration::from_millis(2);
-                            if next_check_time > now {
-                                std::thread::sleep(next_check_time - now);
-                            }
+                            // // sleep until 100ms before the next audio object is scheduled to be played
+                            // let next_check_time = next_time - Duration::from_millis(100);
+                            // if next_check_time > now {
+                            //     println!(
+                            //         "Sleeping for {:?} until next audio object at {:?}",
+                            //         next_check_time - now,
+                            //         next_time
+                            //     );
+                            //     // std::thread::sleep(next_check_time - now);
+                            // }
+                            //
+
+                            // hint spin loop to cpu
+                            // std::thread::
                         } else {
                             // get the audio objects that should be played now
                             let now = Instant::now();
 
                             scheudled_aos.retain(|(ao, t)| {
                                 if *t <= now {
+                                    let safe_diff = now.checked_duration_since(*t).unwrap_or(Duration::MAX);
+                                    println!("Playing audio object with latency of {:?}", safe_diff);
                                     _callback_sender
                                         .send(CallbackCommand::SetAudioObject(ao.clone(), 0))
                                         .unwrap();
@@ -413,6 +431,11 @@ impl Stream {
                             .unwrap();
                     }
                     StreamCommand::PlayAt(audio_object, at, _) => {
+                        println!(
+                            "Scheduling audio object to be played at {:?} (now: {:?})",
+                            at,
+                            Instant::now()
+                        );
                         let mut scheudled_aos = scheudled_aos.lock().unwrap();
                         scheudled_aos.push((audio_object, at));
                     }
