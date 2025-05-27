@@ -27,33 +27,48 @@ use crate::{
 };
 
 #[derive(StimulusParams, Clone, Debug)]
+/// Parameters for the ImageStimulus.
 pub struct ImageParams {
+    /// x position of the stimulus.
     pub x: Size,
+    /// y position of the stimulus.
     pub y: Size,
+    /// Width of the stimulus.
     pub width: Size,
+    /// Height of the stimulus.
     pub height: Size,
+    /// Rotation of the stimulus in degrees.
     pub rotation: f64,
+    /// Opacity of the stimulus, from 0.0 (transparent) to 1.0 (opaque).
     pub opacity: f64,
+    /// The x offset of the image within the stimulus.
     pub image_x: Size,
+    /// The y offset of the image within the stimulus.
     pub image_y: Size,
 }
 
 #[derive(Debug)]
 pub struct ImageStimulus {
+    /// Unique identifier for the stimulus.
     id: uuid::Uuid,
-
+    /// Parameters for the image stimulus.
     params: ImageParams,
-
+    /// The image to be displayed.
     image: DynamicBitmap,
+    /// The anchor point of the image stimulus for positioning.
     anchor: Anchor,
+    /// The transformation applied to the image stimulus.
     transformation: Transformation2D,
+    /// List of animations associated with the stimulus.
     animations: Vec<Animation>,
+    /// Whether the image stimulus is currently visible.
     visible: bool,
 }
 
 unsafe impl Send for ImageStimulus {}
 
 impl ImageStimulus {
+    /// Creates a new `ImageStimulus` from an image and parameters.
     pub fn from_image(
         image: DynamicBitmap,
         params: ImageParams,
@@ -92,6 +107,22 @@ impl PyImageStimulus {
         srgb = true,
         context = None,
     ))]
+    /// Creates a new `ImageStimulus` from a file path.
+    ///
+    /// Parameters
+    /// ----------
+    /// src : str
+    ///     The file path to the image.
+    /// x : Size, num, or str
+    ///     The x position of the stimulus.
+    /// y : Size, num, or str
+    ///     The y position of the stimulus.
+    /// width : Size, num, or str
+    ///     The width of the stimulus.
+    /// height : Size, num, or str
+    /// The height of the stimulus.
+    /// rotation : float, optional
+    ///
     fn __new__(
         py: Python,
         src: String,

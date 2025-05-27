@@ -29,7 +29,7 @@ pub mod pattern;
 // pub mod sprite;
 pub mod text;
 // pub mod vector;
-// pub mod video;
+pub mod video;
 
 #[allow(non_camel_case_types)]
 #[derive(Clone, Debug)]

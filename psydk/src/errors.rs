@@ -75,6 +75,21 @@ pub enum PsydkError {
     // presentation error
     #[error("Presentation error: {0}")]
     PresentationError(String),
+
+    #[cfg(feature = "gst")]
+    // a GStreamer error
+    #[error("Glib error: {0}")]
+    GLibrror(#[from] glib::Error),
+
+    #[cfg(feature = "gst")]
+    // a GStreamer boolen error
+    #[error("Glib error: {0}")]
+    GLibBoolError(#[from] glib::BoolError),
+
+    #[cfg(feature = "gst")]
+    // a PadLinkErro error
+    #[error("PadLinkError: {0}")]
+    PadLinkError(#[from] gstreamer::PadLinkError),
 }
 
 pub type PsydkResult<T> = std::result::Result<T, PsydkError>;

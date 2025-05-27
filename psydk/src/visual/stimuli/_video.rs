@@ -1,53 +1,32 @@
-use std::{
-    ops::Deref,
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 
-use crate::errors::PsydkError;
-
+use anyhow::Error;
 use byte_slice_cast::*;
 use gstreamer::{element_error, element_warning, prelude::*};
-use psydk_proc::StimulusParams;
-use pyo3::ffi::c_str;
-use renderer::{
-    brushes::{Brush, Extend, ImageSampling},
-    shapes::Shape,
-    styles::ImageFitMode,
-    DynamicBitmap, DynamicScene,
-};
-use uuid::Uuid;
 
 use super::{
-    animations::Animation,
-    helpers::{self, get_experiment_context},
-    impl_pystimulus_for_wrapper, PyStimulus, Stimulus, StimulusParamValue, StimulusParams,
+    animations::Animation, impl_pystimulus_for_wrapper, PyStimulus, Stimulus, StimulusParamValue, StimulusParams,
+    WrappedStimulus,
 };
 use crate::{
-    context::{ExperimentContext, PyRendererFactory},
-    visual::{
-        geometry::{Anchor, Size, Transformation2D},
-        window::{Frame, WindowState},
-    },
+    prelude::{Size, Transformation2D},
+    visual::window::psydkWindow,
 };
 
+use psydk_proc::StimulusParams;
+
+use pyo3::{exceptions::PyValueError, prelude::*};
+use renderer::prelude::*;
+use uuid::Uuid;
+
 #[derive(StimulusParams, Clone, Debug)]
-/// Parameters for the VideoStimulus.
 pub struct VideoParams {
-    /// x position of the stimulus.
     pub x: Size,
-    /// y position of the stimulus.
     pub y: Size,
-    /// Width of the stimulus.
     pub width: Size,
-    /// Height of the stimulus.
     pub height: Size,
-    /// Rotation of the stimulus in degrees.
-    pub rotation: f64,
-    /// Opacity of the stimulus, from 0.0 (transparent) to 1.0 (opaque).
     pub opacity: f64,
-    /// The x offset of the video within the stimulus.
     pub image_x: Size,
-    /// The y offset of the video within the stimulus.
     pub image_y: Size,
 }
 
@@ -62,51 +41,45 @@ pub enum VideoState {
 
 #[derive(Debug)]
 pub struct VideoStimulus {
-    /// Unique identifier for the stimulus.
     id: uuid::Uuid,
-    /// Parameters for the video stimulus.
+
     params: VideoParams,
-    /// The current frame image to be displayed.
-    current_frame: Option<DynamicBitmap>,
-    /// Buffer for receiving new frames from GStreamer.
+
+    image: Option<super::WrappedImage>,
+    image_fit_mode: ImageFitMode,
+    // TODO: find a more efficient way to update the image
     buffer: Arc<Mutex<Option<renderer::image::RgbImage>>>,
-    /// GStreamer pipeline for video decoding.
     pipeline: gstreamer::Pipeline,
-    /// Channel for receiving video state updates.
+
     status_rx: Arc<Mutex<std::sync::mpsc::Receiver<VideoState>>>,
-    /// Timestamp of the last displayed frame.
+
     last_frame_time: f64,
-    /// The anchor point of the video stimulus for positioning.
-    anchor: Anchor,
-    /// The transformation applied to the video stimulus.
+
     transformation: Transformation2D,
-    /// List of animations associated with the stimulus.
     animations: Vec<Animation>,
-    /// Whether the video stimulus is currently visible.
     visible: bool,
 }
 
-unsafe impl Send for VideoStimulus {}
-
 impl VideoStimulus {
-    /// Creates a new `VideoStimulus` from a file path.
-    pub fn from_path(path: &str, params: VideoParams, transform: Option<Transformation2D>, anchor: Anchor) -> Self {
+    pub fn from_path(path: &str, params: VideoParams) -> Self {
         let (status_tx, status_rx) = std::sync::mpsc::channel();
         let buffer = Arc::new(Mutex::new(None));
         let pipeline = Self::create_pipeline(path, status_tx, buffer.clone()).unwrap();
+        Self::start_pipeline(pipeline.clone());
 
         Self {
             id: Uuid::new_v4(),
-            params,
-            current_frame: None,
+            transformation: crate::visual::geometry::Transformation2D::Identity(),
+            animations: Vec::new(),
+            visible: true,
+            image: None,
+            image_fit_mode: ImageFitMode::Fill,
             buffer,
             pipeline,
             status_rx: Arc::new(Mutex::new(status_rx)),
             last_frame_time: -1.0,
-            anchor,
-            transformation: transform.unwrap_or_else(|| Transformation2D::Identity()),
-            animations: Vec::new(),
-            visible: true,
+
+            params,
         }
     }
 
@@ -122,11 +95,8 @@ impl VideoStimulus {
         self.pipeline.set_state(gstreamer::State::Paused).unwrap();
     }
 
-    pub fn stop(&self) {
-        self.pipeline.set_state(gstreamer::State::Ready).unwrap();
-    }
-
     pub fn seek(&self, to: f64, accurate: bool, flush: bool, block: bool) {
+        // combine the flags
         let mut flags = gstreamer::SeekFlags::empty();
         if accurate {
             flags |= gstreamer::SeekFlags::ACCURATE;
@@ -139,6 +109,7 @@ impl VideoStimulus {
             .seek_simple(flags, gstreamer::ClockTime::from_seconds(to as u64))
             .expect("Failed to seek in video pipeline");
 
+        // if block is true, block until the seek is done
         if block {
             self.pipeline
                 .state(gstreamer::ClockTime::from_seconds(5))
@@ -151,14 +122,13 @@ impl VideoStimulus {
         path: &str,
         status_tx: std::sync::mpsc::Sender<VideoState>,
         buffer: Arc<Mutex<Option<renderer::image::RgbImage>>>,
-    ) -> Result<gstreamer::Pipeline, PsydkError> {
+    ) -> Result<gstreamer::Pipeline, Error> {
         gstreamer::init()?;
 
         let pipeline = gstreamer::Pipeline::default();
         let src = gstreamer::ElementFactory::make("filesrc")
             .property("location", path)
-            .build()
-            .expect("Failed to create filesrc element");
+            .build()?;
 
         let decodebin = gstreamer::ElementFactory::make("decodebin").build()?;
 
@@ -172,7 +142,9 @@ impl VideoStimulus {
 
         appsink.set_callbacks(
             gstreamer_app::AppSinkCallbacks::builder()
+                // Add a handler to the "new-sample" signal.
                 .new_sample(move |appsink| {
+                    // Pull the sample in question out of the appsink's buffer.
                     let sample = appsink.pull_sample().map_err(|_| gstreamer::FlowError::Eos)?;
                     let gst_buffer = sample.buffer().ok_or_else(|| {
                         element_error!(
@@ -180,6 +152,7 @@ impl VideoStimulus {
                             gstreamer::ResourceError::Failed,
                             ("Failed to get buffer from appsink")
                         );
+
                         gstreamer::FlowError::Error
                     })?;
 
@@ -189,12 +162,20 @@ impl VideoStimulus {
                     let height = structure.get::<i32>("height").expect("height in caps");
                     let time = gst_buffer.pts().expect("timestamp").useconds() as f64 / 1_000_000.0;
 
+                    // At this point, buffer is only a reference to an existing memory region somewhere.
+                    // When we want to access its content, we have to map it while requesting the required
+                    // mode of access (read, read/write).
+                    // This type of abstraction is necessary, because the buffer in question might not be
+                    // on the machine's main memory itself, but rather in the GPU's memory.
+                    // So mapping the buffer makes the underlying memory region accessible to us.
+                    // See: https://gstreamer.freedesktop.org/documentation/plugin-development/advanced/allocation.html
                     let map = gst_buffer.map_readable().map_err(|_| {
                         element_error!(
                             appsink,
                             gstreamer::ResourceError::Failed,
                             ("Failed to map buffer readable")
                         );
+
                         gstreamer::FlowError::Error
                     })?;
 
@@ -204,15 +185,18 @@ impl VideoStimulus {
                             gstreamer::ResourceError::Failed,
                             ("Failed to interpret buffer as array of u8")
                         );
+
                         gstreamer::FlowError::Error
                     })?;
 
                     let new_buffer = renderer::image::RgbImage::from_raw(width as u32, height as u32, samples.to_vec())
                         .expect("Failed to create image buffer from raw data");
 
+                    // copy the new buffer into the existing buffer
                     let mut buffer = buffer.lock().unwrap();
                     *buffer = Some(new_buffer);
 
+                    // send the status (playing) to the channel
                     status_tx.send(VideoState::Playing(time)).unwrap();
 
                     Ok(gstreamer::FlowSuccess::Ok)
@@ -223,12 +207,29 @@ impl VideoStimulus {
         pipeline.add_many([&src, &decodebin])?;
         src.link(&decodebin)?;
 
+        // Need to move a new reference into the closure.
+        // !!ATTENTION!!:
+        // It might seem appealing to use pipeline.clone() here, because that greatly
+        // simplifies the code within the callback. What this actually does, however, is creating
+        // a memory leak. The clone of a pipeline is a new strong reference on the pipeline.
+        // Storing this strong reference of the pipeline within the callback (we are moving it in!),
+        // which is in turn stored in another strong reference on the pipeline is creating a
+        // reference cycle.
+        // DO NOT USE pipeline.clone() TO USE THE PIPELINE WITHIN A CALLBACK
         let pipeline_weak = pipeline.downgrade();
+        // Connect to decodebin's pad-added signal, that is emitted whenever
+        // it found another stream from the input file and found a way to decode it to its raw format.
+        // decodebin automatically adds a src-pad for this raw stream, which
+        // we can use to build the follow-up pipeline.
         decodebin.connect_pad_added(move |dbin, src_pad| {
+            // Here we temporarily retrieve a strong reference on the pipeline from the weak one
+            // we moved into this callback.
             let Some(pipeline) = pipeline_weak.upgrade() else {
                 return;
             };
 
+            // Try to detect whether the raw stream decodebin provided us with
+            // just now is either audio or video (or none of both, e.g. subtitles).
             let (is_audio, is_video) = {
                 let media_type = src_pad.current_caps().and_then(|caps| {
                     caps.structure(0).map(|s| {
@@ -244,14 +245,17 @@ impl VideoStimulus {
                             gstreamer::CoreError::Negotiation,
                             ("Failed to get media type from pad {}", src_pad.name())
                         );
+
                         return;
                     }
                     Some(media_type) => media_type,
                 }
             };
 
-            let insert_sink = |is_audio, is_video| -> Result<(), PsydkError> {
+            let insert_sink = |is_audio, is_video| -> Result<(), Error> {
                 if is_audio {
+                    // decodebin found a raw audiostream, so we build the follow-up pipeline to
+                    // play it on the default audio playback device (using autoaudiosink).
                     let queue = gstreamer::ElementFactory::make("queue").build()?;
                     let convert = gstreamer::ElementFactory::make("audioconvert").build()?;
                     let resample = gstreamer::ElementFactory::make("audioresample").build()?;
@@ -268,6 +272,8 @@ impl VideoStimulus {
                     let sink_pad = queue.static_pad("sink").expect("queue has no sinkpad");
                     src_pad.link(&sink_pad)?;
                 } else if is_video {
+                    // decodebin found a raw videostream, so we build the follow-up pipeline to
+                    // display it using the autovideosink.
                     let queue = gstreamer::ElementFactory::make("queue").build()?;
                     let convert = gstreamer::ElementFactory::make("videoconvert").build()?;
                     let scale = gstreamer::ElementFactory::make("videoscale").build()?;
@@ -277,9 +283,11 @@ impl VideoStimulus {
                     gstreamer::Element::link_many(elements)?;
 
                     for e in elements {
-                        e.sync_state_with_parent()?;
+                        e.sync_state_with_parent()?
                     }
 
+                    // Get the queue element's sink pad and link the decodebin's newly created
+                    // src pad for the video stream to it.
                     let sink_pad = queue.static_pad("sink").expect("queue has no sinkpad");
                     src_pad.link(&sink_pad)?;
                 }
@@ -288,15 +296,18 @@ impl VideoStimulus {
             };
 
             if let Err(err) = insert_sink(is_audio, is_video) {
+                // The following sends a message of type Error on the bus, containing our detailed
+                // error information.
                 println!("Error: {err}");
             }
         });
 
-        Self::start_pipeline(pipeline.clone());
         Ok(pipeline)
     }
 
     fn start_pipeline(pipeline: gstreamer::Pipeline) {
+        // pipeline.set_state(gstreamer::State::Playing).unwrap();
+
         let bus = pipeline.bus().expect("Pipeline without bus. Shouldn't happen!");
 
         std::thread::spawn(move || {
@@ -320,31 +331,6 @@ impl VideoStimulus {
             pipeline.set_state(gstreamer::State::Null).unwrap();
         });
     }
-
-    fn update_frame(&mut self) -> bool {
-        let status = self.status_rx.lock().unwrap().try_iter().last();
-
-        match status {
-            Some(VideoState::Playing(time)) | Some(VideoState::Paused(time)) | Some(VideoState::Stopped(time)) => {
-                if time > self.last_frame_time {
-                    self.last_frame_time = time;
-
-                    let buffer = self.buffer.lock().unwrap();
-                    if let Some(rgb_image) = buffer.as_ref() {
-                        let dynamic_image = renderer::image::DynamicImage::ImageRgb8(rgb_image.clone());
-                        println!("Todo: update current frame with new image at time: {}", time);
-                        return true;
-                    }
-                }
-            }
-            Some(VideoState::Errored(msg)) => {
-                eprintln!("Error in video stimulus: {}", msg);
-            }
-            _ => {}
-        }
-
-        false
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -355,60 +341,25 @@ pub struct PyVideoStimulus();
 impl PyVideoStimulus {
     #[new]
     #[pyo3(signature = (
-        src,
+        path,
         x,
         y,
         width,
         height,
-        rotation = 0.0,
-        opacity = 1.0,
-        anchor = Anchor::Center,
-        transform = None,
-        context = None,
+        opacity = 1.0
     ))]
-    /// Creates a new `VideoStimulus` from a file path.
-    ///
-    /// Parameters
-    /// ----------
-    /// src : str
-    ///     The file path to the video.
-    /// x : Size, num, or str
-    ///     The x position of the stimulus.
-    /// y : Size, num, or str
-    ///     The y position of the stimulus.
-    /// width : Size, num, or str
-    ///     The width of the stimulus.
-    /// height : Size, num, or str
-    ///     The height of the stimulus.
-    /// rotation : float, optional
-    ///     The rotation of the stimulus in degrees. Default is 0.0.
-    /// opacity : float, optional
-    ///     The opacity of the stimulus. Default is 1.0.
-    /// anchor : Anchor, optional
-    ///     The anchor point for positioning. Default is Center.
-    /// transform : Transformation2D, optional
-    ///     Additional transformation to apply.
-    /// context : ExperimentContext, optional
-    ///     The experiment context.
     fn __new__(
-        py: Python,
-        src: String,
+        path: &str,
         x: IntoSize,
         y: IntoSize,
         width: IntoSize,
         height: IntoSize,
-        rotation: f64,
         opacity: f64,
-        anchor: Anchor,
-        transform: Option<Transformation2D>,
-        context: Option<ExperimentContext>,
-    ) -> PyResult<(Self, PyStimulus)> {
-        let ctx = get_experiment_context(context, py)?;
-
-        Ok((
+    ) -> (Self, PyStimulus) {
+        (
             Self(),
-            PyStimulus::new(VideoStimulus::from_path(
-                &src,
+            PyStimulus(Arc::new(std::sync::Mutex::new(VideoStimulus::from_path(
+                path,
                 VideoParams {
                     x: x.into(),
                     y: y.into(),
@@ -416,62 +367,23 @@ impl PyVideoStimulus {
                     height: height.into(),
                     image_x: 0.0.into(),
                     image_y: 0.0.into(),
-                    rotation,
                     opacity,
                 },
-                transform,
-                anchor,
-            )),
-        ))
+            )))),
+        )
     }
 
-    /// Start playing the video.
-    fn play(slf: PyRef<'_, Self>) {
-        let mut stim = slf.as_ref().0.lock();
-        if let Some(video) = stim.downcast_mut::<VideoStimulus>() {
-            video.play();
-        }
+    fn play(mut slf: PyRef<'_, Self>) {
+        downcast_stimulus!(slf, VideoStimulus).play();
     }
 
-    /// Pause the video.
-    fn pause(slf: PyRef<'_, Self>) {
-        let mut stim = slf.as_ref().0.lock();
-        if let Some(video) = stim.downcast_mut::<VideoStimulus>() {
-            video.pause();
-        }
+    fn pause(mut slf: PyRef<'_, Self>) {
+        downcast_stimulus!(slf, VideoStimulus).pause();
     }
 
-    /// Stop the video.
-    fn stop(slf: PyRef<'_, Self>) {
-        let mut stim = slf.as_ref().0.lock();
-        if let Some(video) = stim.downcast_mut::<VideoStimulus>() {
-            video.stop();
-        }
-    }
-
-    /// Seek to a specific time in the video.
-    ///
-    /// Parameters
-    /// ----------
-    /// to : float
-    ///     The time to seek to in seconds.
-    /// accurate : bool, optional
-    ///     Whether to seek accurately. Default is True.
-    /// flush : bool, optional
-    ///     Whether to flush the pipeline. Default is True.
-    /// block : bool, optional
-    ///     Whether to block until the seek is complete. Default is True.
     #[pyo3(signature = (to, accurate = true, flush = true, block = true))]
-    fn seek(slf: PyRef<'_, Self>, to: f64, accurate: bool, flush: bool, block: bool) {
-        let mut stim = slf.as_ref().0.lock();
-        if let Some(video) = stim.downcast_mut::<VideoStimulus>() {
-            video.seek(to, accurate, flush, block);
-        }
-    }
-
-    /// Check if the video is currently playing.
-    fn is_playing(slf: PyRef<'_, Self>) -> bool {
-        todo!("Implement is_playing method for VideoStimulus")
+    fn seek(mut slf: PyRef<'_, Self>, to: f64, accurate: bool, flush: bool, block: bool) {
+        downcast_stimulus!(slf, VideoStimulus).seek(to, accurate, flush, block);
     }
 }
 
@@ -482,61 +394,79 @@ impl Stimulus for VideoStimulus {
         self.id
     }
 
-    fn draw(&mut self, scene: &mut DynamicScene, window_state: &WindowState) {
+    fn draw(&mut self, scene: &mut VelloScene, window: &psydkWindow) {
         if !self.visible {
             return;
         }
 
-        // Update frame if there's a new one available
-        self.update_frame();
+        // check if the video has a new frame
+        let status = self.status_rx.lock().unwrap().try_iter().last();
 
-        // If we don't have a frame yet, don't draw
-        let Some(ref frame) = self.current_frame else {
+        let mut new_frame = false;
+
+        match status {
+            Some(VideoState::NotReady) => {
+                return;
+            }
+            Some(VideoState::Playing(time)) => {
+                if time > self.last_frame_time {
+                    new_frame = true;
+                    self.last_frame_time = time;
+                }
+            }
+            Some(VideoState::Paused(time)) => {
+                if time > self.last_frame_time {
+                    new_frame = true;
+                    self.last_frame_time = time;
+                }
+            }
+            Some(VideoState::Stopped(time)) => {
+                if time > self.last_frame_time {
+                    new_frame = true;
+                    self.last_frame_time = time;
+                }
+            }
+            Some(VideoState::Errored(msg)) => {
+                eprintln!("Error in video stimulus: {}", msg);
+                return;
+            }
+            _ => {}
+        }
+
+        if new_frame {
+            let buffer = self.buffer.lock().unwrap();
+            let image = buffer.as_ref().unwrap();
+            let image = image.clone();
+            self.image = Some(super::WrappedImage::from_dynamic_image(
+                renderer::image::DynamicImage::ImageRgb8(image),
+            ));
+        } else if self.image.is_none() {
             return;
-        };
+        }
 
-        let window_size = window_state.size;
-        let screen_props = window_state.physical_screen;
+        // convert physical units to pixels
+        let x = self.params.x.eval(&window.physical_properties) as f64;
+        let y = self.params.y.eval(&window.physical_properties) as f64;
+        let width = self.params.width.eval(&window.physical_properties) as f64;
+        let height = self.params.height.eval(&window.physical_properties) as f64;
 
-        // Convert physical units to pixels
-        let x = self.params.x.eval(window_size, screen_props);
-        let y = self.params.y.eval(window_size, screen_props);
-        let width = self.params.width.eval(window_size, screen_props);
-        let height = self.params.height.eval(window_size, screen_props);
+        let image_offset_x = self.params.image_x.eval(&window.physical_properties) as f64;
+        let image_offset_y = self.params.image_y.eval(&window.physical_properties) as f64;
 
-        let (x, y) = self.anchor.to_top_left(x, y, width, height);
+        let trans_mat = self.transformation.eval(&window.physical_properties);
 
-        let image_offset_x = self.params.image_x.eval(window_size, screen_props);
-        let image_offset_y = self.params.image_y.eval(window_size, screen_props);
-
-        // Apply rotation transformation
-        let trans_mat = self.transformation.clone()
-            * Transformation2D::RotationPoint(
-                self.params.rotation as f32,
-                self.params.x.clone(),
-                self.params.y.clone(),
-            );
-
-        let trans_mat = trans_mat.eval(window_size, screen_props);
-
-        scene.draw_shape_fill(
-            Shape::Rectangle {
-                a: (x, y).into(),
-                w: width as f64,
-                h: height as f64,
-            },
-            Brush::Image {
-                image: frame,
-                start: (x + image_offset_x, y + image_offset_y).into(),
-                fit_mode: ImageFitMode::Exact { width, height },
-                sampling: ImageSampling::Linear,
-                edge_mode: (Extend::Pad, Extend::Pad),
-                transform: None,
-                alpha: Some(self.params.opacity as f32),
-            },
-            Some(trans_mat.into()),
-            None,
-        );
+        scene.draw(Geom::new_image(
+            self.image.as_ref().unwrap().inner().clone(),
+            x,
+            y,
+            width,
+            height,
+            trans_mat.into(),
+            image_offset_x,
+            image_offset_y,
+            ImageFitMode::Fill,
+            Extend::Pad,
+        ));
     }
 
     fn set_visible(&mut self, visible: bool) {
@@ -555,39 +485,35 @@ impl Stimulus for VideoStimulus {
         self.animations.push(animation);
     }
 
-    fn set_transformation(&mut self, transformation: Transformation2D) {
+    fn set_transformation(&mut self, transformation: crate::visual::geometry::Transformation2D) {
         self.transformation = transformation;
     }
 
-    fn add_transformation(&mut self, transformation: Transformation2D) {
+    fn add_transformation(&mut self, transformation: crate::visual::geometry::Transformation2D) {
         self.transformation = transformation * self.transformation.clone();
     }
 
-    fn transformation(&self) -> Transformation2D {
+    fn transformation(&self) -> crate::visual::geometry::Transformation2D {
         self.transformation.clone()
     }
 
-    fn contains(&self, x: Size, y: Size, window: &Window) -> bool {
-        let window_state = window.state.lock().unwrap();
-        let window_state = window_state.as_ref().unwrap();
-        let window_size = window_state.size;
-        let screen_props = window_state.physical_screen;
+    fn contains(&self, x: Size, y: Size, window: &WrappedWindow) -> bool {
+        let window = window.inner();
+        let ix = self.params.x.eval(&window.physical_properties);
+        let iy = self.params.y.eval(&window.physical_properties);
+        let width = self.params.width.eval(&window.physical_properties);
+        let height = self.params.height.eval(&window.physical_properties);
 
-        let ix = self.params.x.eval(window_size, screen_props);
-        let iy = self.params.y.eval(window_size, screen_props);
-        let width = self.params.width.eval(window_size, screen_props);
-        let height = self.params.height.eval(window_size, screen_props);
+        let trans_mat = self.transformation.eval(&window.physical_properties);
 
-        let trans_mat = self.transformation.eval(window_size, screen_props);
+        let x = x.eval(&window.physical_properties);
+        let y = y.eval(&window.physical_properties);
 
-        let x = x.eval(window_size, screen_props);
-        let y = y.eval(window_size, screen_props);
-
-        // Apply transformation by multiplying the point with the transformation matrix
+        // apply transformation by multiplying the point with the transformation matrix
         let p = nalgebra::Vector3::new(x, y, 1.0);
         let p_new = trans_mat * p;
 
-        // Check if the point is inside the rectangle
+        // check if the point is inside the rectangle
         p_new[0] >= ix && p_new[0] <= ix + width && p_new[1] >= iy && p_new[1] <= iy + height
     }
 
