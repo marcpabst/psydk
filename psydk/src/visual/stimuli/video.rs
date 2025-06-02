@@ -246,6 +246,15 @@ impl VideoStimulus {
         self.pipeline.set_state(gstreamer::State::Ready).unwrap();
     }
 
+    pub fn is_finished(&self) -> bool {
+        match *self.status.get() {
+            VideoState::Playing(_, _) | VideoState::Paused(_) | VideoState::Ready { .. } | VideoState::NotReady => {
+                self.current_progress() >= 1.0
+            }
+            VideoState::Stopped(_) | VideoState::Errored() => true, // Not ready or errored
+        }
+    }
+
     fn update_texture(&self, data: &[u8], queue: &wgpu::Queue) {
         let width = self.texture.size().width as u32;
         let height = self.texture.size().height as u32;
@@ -686,6 +695,16 @@ impl PyVideoStimulus {
         let mut stim = slf.as_ref().0.lock();
         if let Some(video) = stim.downcast_mut::<VideoStimulus>() {
             video.stop();
+        }
+    }
+
+    /// Check if the video is finished.
+    fn is_finished(slf: PyRef<'_, Self>) -> bool {
+        let stim = slf.as_ref().0.lock();
+        if let Some(video) = stim.downcast_ref::<VideoStimulus>() {
+            video.is_finished()
+        } else {
+            unreachable!()
         }
     }
 
