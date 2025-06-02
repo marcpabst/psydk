@@ -94,6 +94,8 @@ pub struct VideoStimulus {
     current_frame: DynamicBitmap,
     /// Buffer for receiving new frames from GStreamer.
     buffer: Arc<Mutex<Option<renderer::image::RgbaImage>>>,
+    /// A flag to indicate if the current frame is dirty and needs to be updated.
+    frame_dirty_flag: Arc<std::sync::atomic::AtomicBool>,
     /// GPU queue
     queue: wgpu::Queue,
     /// Texture for the video frame.
@@ -136,9 +138,10 @@ impl VideoStimulus {
         let queue = gpu_state.queue.clone();
 
         let status = SwappableValue::new(VideoState::NotReady);
+        let frame_dirty_flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
         let buffer = Arc::new(Mutex::new(None));
-        let pipeline = Self::create_pipeline(path, status.clone(), buffer.clone()).unwrap();
+        let pipeline = Self::create_pipeline(path, status.clone(), frame_dirty_flag.clone(), buffer.clone()).unwrap();
 
         // set the pipeline to paused state to prepare it for playback
         pipeline.set_state(gstreamer::State::Paused).unwrap();
@@ -194,6 +197,7 @@ impl VideoStimulus {
             params,
             current_frame: frame,
             buffer,
+            frame_dirty_flag,
             queue: queue.clone(),
             texture,
             pipeline,
@@ -343,6 +347,7 @@ impl VideoStimulus {
     fn create_pipeline(
         path: &str,
         status: SwappableValue<VideoState>,
+        frame_is_dirty: Arc<std::sync::atomic::AtomicBool>,
         buffer: Arc<Mutex<Option<renderer::image::RgbaImage>>>,
     ) -> Result<gstreamer::Pipeline, PsydkError> {
         gstreamer::init()?;
@@ -412,6 +417,9 @@ impl VideoStimulus {
 
                     let mut buffer = buffer.lock().unwrap();
                     *buffer = Some(new_buffer);
+
+                    // set frame_is_dirty flag to true
+                    frame_is_dirty.store(true, std::sync::atomic::Ordering::Relaxed);
 
                     r_status.swap(VideoState::Playing(frame_index as usize, time));
 
@@ -762,14 +770,17 @@ impl Stimulus for VideoStimulus {
             return;
         }
 
-        self.update_frame(&self.queue);
+        // check if we need to update the texture
+        if self.frame_dirty_flag.swap(false, std::sync::atomic::Ordering::Relaxed) {
+            self.update_frame(&self.queue);
 
-        // update current_frame_time
-        self.current_frame_time = match *self.status.get() {
-            VideoState::Playing(_, time) => time,
-            VideoState::Paused(time) | VideoState::Stopped(time) => time,
-            _ => -1.0, // Not ready or errored
-        };
+            // update current_frame_time
+            self.current_frame_time = match *self.status.get() {
+                VideoState::Playing(_, time) => time,
+                VideoState::Paused(time) | VideoState::Stopped(time) => time,
+                _ => -1.0, // Not ready or errored
+            };
+        }
 
         let frame = &self.current_frame;
 
