@@ -138,7 +138,6 @@ impl VideoStimulus {
         let status = SwappableValue::new(VideoState::NotReady);
 
         let buffer = Arc::new(Mutex::new(None));
-        println!("Creating video pipeline for path: {}", path);
         let pipeline = Self::create_pipeline(path, status.clone(), buffer.clone()).unwrap();
 
         // set the pipeline to paused state to prepare it for playback
@@ -151,10 +150,6 @@ impl VideoStimulus {
                     width,
                     height,
                 } => {
-                    println!(
-                        "Video is ready with duration: {} seconds, dimensions: {}x{}",
-                        duration, width, height
-                    );
                     break (duration, width, height);
                 }
                 VideoState::Errored() => {
@@ -192,11 +187,7 @@ impl VideoStimulus {
 
         let red_image_data = red_image.as_raw();
 
-        println!("Uploaded red image to texture for video stimulus");
-
         let frame = renderer_factory.create_bitmap_from_wgpu_texture(texture.clone(), ColorSpace::Srgb);
-
-        println!("Video pipeline created for path: {}", path);
 
         let slf = Self {
             id: Uuid::new_v4(),
@@ -393,7 +384,6 @@ impl VideoStimulus {
                     let height = structure.get::<i32>("height").expect("height in caps");
 
                     let u_time = gst_buffer.pts().expect("timestamp").useconds();
-                    println!("Received new sample with timestamp: {}", u_time);
                     let time = u_time as f64 / 1_000_000.0; // Convert microseconds to seconds
 
                     let frame_index = structure.get::<i64>("pos_frames").unwrap_or(-1);
@@ -494,8 +484,6 @@ impl VideoStimulus {
 
                     let sink_pad = queue.static_pad("sink").expect("queue has no sinkpad");
                     src_pad.link(&sink_pad)?;
-
-                    println!("Video pad linked successfully");
 
                     // get duration of the video
                     let duration = pipeline
