@@ -13,3 +13,11 @@ if platform.system() == 'Darwin':
     import sys
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".dylibs")
     os.environ["GST_PLUGIN_PATH"] = path + ":" + os.environ.get("GST_PLUGIN_PATH", "")
+
+# on windows, allow importing gstreamer dlls from PATH
+if platform.system() == 'Windows':
+    import os
+    import sys
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".dylibs")
+    os.environ["PATH"] = path + ";" + os.environ.get("PATH", "")
+    sys.path.append(path)

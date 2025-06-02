@@ -362,7 +362,14 @@ impl Renderer for SkiaRenderer {
 
         // create a new surface
         #[cfg(target_os = "windows")]
-        let mut surface = Self::create_surface_dx12(device, width, height, texture, &self.backend, &mut skia_context);
+        let mut surface = Self::create_surface_dx12(
+            device,
+            width,
+            height,
+            texture,
+            &self.shared_state.backend.borrow(),
+            &mut skia_context,
+        );
 
         #[cfg(any(target_os = "macos", target_os = "ios"))]
         let mut surface = Self::create_surface_metal(
@@ -853,8 +860,8 @@ unsafe impl Send for SkiaSharedRendererState {}
 unsafe impl Sync for SkiaSharedRendererState {}
 
 impl SkiaSharedRendererState {
-    pub fn new(_adapter: &Adapter, device: &Device, queue: &Queue) -> Self {
-        let backend_context = create_backend_context(device, queue);
+    pub fn new(adapter: &Adapter, device: &Device, queue: &Queue) -> Self {
+        let backend_context = create_backend_context(adapter, device, queue);
         let skia_context = create_context(&backend_context);
 
         // create a font manager
@@ -1002,7 +1009,35 @@ impl From<crate::renderer::ColorSpace> for skia_safe::ColorSpace {
 fn create_backend_texture(texture: &wgpu::Texture) -> skia_safe::gpu::BackendTexture {
     // windows/dx12 implementation
     #[cfg(target_os = "windows")]
-    {}
+    {
+        let raw_texture_ptr = unsafe {
+            texture.as_hal::<wgpu::hal::api::Dx12, _, _>(|texture| texture.map(|s| s.raw_resource().clone()))
+        }
+        .unwrap();
+
+        let backend_texture = skia_safe::gpu::BackendTexture::new_d3d(
+            (texture.width() as i32, texture.height() as i32),
+            &d3d::TextureResourceInfo {
+                resource: raw_texture_ptr,
+                alloc: None,
+                resource_state: windows::Win32::Graphics::Direct3D12::D3D12_RESOURCE_STATE_COMMON,
+                format: windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_R8G8B8A8_UNORM,
+                sample_count: 1,
+                level_count: 0,
+                sample_quality_pattern:
+                    windows::Win32::Graphics::Dxgi::Common::DXGI_STANDARD_MULTISAMPLE_QUALITY_PATTERN,
+                protected: Protected::No,
+            },
+        );
+
+        println!(
+            "Creating Skia backend texture for D3D with size: {}x{}",
+            texture.width(),
+            texture.height()
+        );
+
+        backend_texture
+    }
     // macos/metal implementation
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     {
@@ -1010,9 +1045,6 @@ fn create_backend_texture(texture: &wgpu::Texture) -> skia_safe::gpu::BackendTex
             texture
                 .as_hal::<wgpu::hal::api::Metal, _, _>(|texture| texture.unwrap().raw_handle().as_ptr() as mtl::Handle)
         };
-
-        // let texture_info = unsafe { mtl::TextureInfo::new(raw_texture_ptr) };
-        // .unwrap();
 
         let texture_info = unsafe { mtl::TextureInfo::new(raw_texture_ptr) };
 
@@ -1073,7 +1105,7 @@ fn create_bitmap_from_wgpu_texture(
     DynamicBitmap(Box::new(skia_texture))
 }
 
-fn create_backend_context(device: &Device, queue: &Queue) -> BackendContext {
+fn create_backend_context(adapter: &Adapter, device: &Device, queue: &Queue) -> BackendContext {
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     {
         let command_queue_ptr =
@@ -1094,6 +1126,32 @@ fn create_backend_context(device: &Device, queue: &Queue) -> BackendContext {
             panic!("Failed to create Skia backend context: command queue pointer is None");
         }
     }
+    #[cfg(target_os = "windows")]
+    {
+        let command_queue =
+            unsafe { queue.as_hal::<wgpu::hal::api::Dx12, _, _>(|queue| queue.map(|s| s.as_raw().clone())) };
+
+        if let Some(command_queue) = command_queue {
+            let raw_adapter = unsafe {
+                adapter.as_hal::<wgpu::hal::api::Dx12, _, _>(|adapter| adapter.map(|s| (**s.raw_adapter()).clone()))
+            }
+            .unwrap();
+
+            let raw_device =
+                unsafe { device.as_hal::<wgpu::hal::api::Dx12, _, _>(|device| device.map(|s| s.raw_device().clone())) }
+                    .unwrap();
+
+            d3d::BackendContext {
+                adapter: raw_adapter.into(),
+                device: raw_device,
+                queue: command_queue.clone(),
+                memory_allocator: None,
+                protected_context: Protected::No,
+            }
+        } else {
+            panic!("Failed to create Skia backend context: command queue is None");
+        }
+    }
 }
 
 fn create_context(backend: &BackendContext) -> gpu::DirectContext {
@@ -1103,6 +1161,6 @@ fn create_context(backend: &BackendContext) -> gpu::DirectContext {
     }
     #[cfg(target_os = "windows")]
     {
-        gpu::DirectContext::new_d3d(backend, None).expect("Failed to create Skia DirectContext")
+        unsafe { gpu::DirectContext::new_d3d(backend, None).expect("Failed to create Skia DirectContext") }
     }
 }
