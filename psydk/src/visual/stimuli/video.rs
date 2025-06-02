@@ -1,9 +1,10 @@
+use derive_debug::Dbg;
 use std::{
     ops::Deref,
     sync::{Arc, Mutex},
 };
 
-use crate::errors::PsydkError;
+use crate::{app::GPUState, errors::PsydkError};
 
 use byte_slice_cast::*;
 use gstreamer::{element_error, element_warning, prelude::*};
@@ -11,6 +12,7 @@ use psydk_proc::StimulusParams;
 use pyo3::ffi::c_str;
 use renderer::{
     brushes::{Brush, Extend, ImageSampling},
+    renderer::ColorSpace,
     shapes::Shape,
     styles::ImageFitMode,
     DynamicBitmap, DynamicScene,
@@ -52,30 +54,60 @@ pub struct VideoParams {
 }
 
 #[derive(Debug, Clone)]
-pub enum VideoState {
-    NotReady,
-    Playing(f64),
-    Paused(f64),
-    Stopped(f64),
-    Errored(String),
+struct SwappableValue<T> {
+    value: Arc<arc_swap::ArcSwap<T>>,
 }
 
-#[derive(Debug)]
+impl<T> SwappableValue<T> {
+    pub fn new(value: T) -> Self {
+        Self {
+            value: Arc::new(arc_swap::ArcSwap::from_pointee(value)),
+        }
+    }
+
+    pub fn swap(&self, new_value: T) {
+        self.value.swap(Arc::new(new_value));
+    }
+
+    pub fn get(&self) -> Arc<T> {
+        self.value.load_full()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum VideoState {
+    NotReady,
+    Ready { duration: f64, width: u32, height: u32 },
+    Playing(usize, f64),
+    Paused(f64),
+    Stopped(f64),
+    Errored(),
+}
+
+#[derive(Dbg)]
 pub struct VideoStimulus {
     /// Unique identifier for the stimulus.
     id: uuid::Uuid,
     /// Parameters for the video stimulus.
     params: VideoParams,
     /// The current frame image to be displayed.
-    current_frame: Option<DynamicBitmap>,
+    current_frame: DynamicBitmap,
     /// Buffer for receiving new frames from GStreamer.
-    buffer: Arc<Mutex<Option<renderer::image::RgbImage>>>,
+    buffer: Arc<Mutex<Option<renderer::image::RgbaImage>>>,
+    /// GPU queue
+    queue: wgpu::Queue,
+    /// Texture for the video frame.
+    texture: wgpu::Texture,
     /// GStreamer pipeline for video decoding.
     pipeline: gstreamer::Pipeline,
     /// Channel for receiving video state updates.
-    status_rx: Arc<Mutex<std::sync::mpsc::Receiver<VideoState>>>,
+    status: SwappableValue<VideoState>,
+    /// Index of the current frame in the video.
+    current_frame_index: usize,
     /// Timestamp of the last displayed frame.
-    last_frame_time: f64,
+    current_frame_time: f64,
+    /// The total duration as reported by GStreamer.
+    duration: f64,
     /// The anchor point of the video stimulus for positioning.
     anchor: Anchor,
     /// The transformation applied to the video stimulus.
@@ -90,24 +122,104 @@ unsafe impl Send for VideoStimulus {}
 
 impl VideoStimulus {
     /// Creates a new `VideoStimulus` from a file path.
-    pub fn from_path(path: &str, params: VideoParams, transform: Option<Transformation2D>, anchor: Anchor) -> Self {
-        let (status_tx, status_rx) = std::sync::mpsc::channel();
-        let buffer = Arc::new(Mutex::new(None));
-        let pipeline = Self::create_pipeline(path, status_tx, buffer.clone()).unwrap();
+    pub fn from_path(
+        path: &str,
+        params: VideoParams,
+        transform: Option<Transformation2D>,
+        anchor: Anchor,
+        context: ExperimentContext,
+    ) -> Self {
+        // get gpu_state
+        let gpu_state = context.gpu_state.lock().unwrap();
+        let renderer_factory = context.renderer_factory().deref();
+        let device = gpu_state.device.clone();
+        let queue = gpu_state.queue.clone();
 
-        Self {
+        let status = SwappableValue::new(VideoState::NotReady);
+
+        let buffer = Arc::new(Mutex::new(None));
+        println!("Creating video pipeline for path: {}", path);
+        let pipeline = Self::create_pipeline(path, status.clone(), buffer.clone()).unwrap();
+
+        // set the pipeline to paused state to prepare it for playback
+        pipeline.set_state(gstreamer::State::Paused).unwrap();
+
+        let (duration, width, height) = loop {
+            match *(status.get()) {
+                VideoState::Ready {
+                    duration,
+                    width,
+                    height,
+                } => {
+                    println!(
+                        "Video is ready with duration: {} seconds, dimensions: {}x{}",
+                        duration, width, height
+                    );
+                    break (duration, width, height);
+                }
+                VideoState::Errored() => {
+                    panic!("Video pipeline error.")
+                }
+                _ => continue,
+            }
+        };
+
+        // Create a new wgpu texture for the video frame
+        let texture_desc = wgpu::TextureDescriptor {
+            label: Some("VideoStimulus Texture"),
+            size: wgpu::Extent3d {
+                width: width,
+                height: height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[wgpu::TextureFormat::Rgba8Unorm],
+        };
+
+        let texture = device.create_texture(&texture_desc);
+
+        // upload a red image to the texture as a placeholder
+        let red_image = renderer::image::RgbaImage::from_raw(
+            width as u32,
+            height as u32,
+            [255, 255, 255, 0].repeat(width as usize * height as usize),
+        )
+        .expect("Failed to create red image buffer");
+
+        let red_image_data = red_image.as_raw();
+
+        println!("Uploaded red image to texture for video stimulus");
+
+        let frame = renderer_factory.create_bitmap_from_wgpu_texture(texture.clone(), ColorSpace::Srgb);
+
+        println!("Video pipeline created for path: {}", path);
+
+        let slf = Self {
             id: Uuid::new_v4(),
             params,
-            current_frame: None,
+            current_frame: frame,
             buffer,
+            queue: queue.clone(),
+            texture,
             pipeline,
-            status_rx: Arc::new(Mutex::new(status_rx)),
-            last_frame_time: -1.0,
+            status: status,
+            current_frame_index: 0,
+            current_frame_time: -1.0,
+            duration,
             anchor,
             transformation: transform.unwrap_or_else(|| Transformation2D::Identity()),
             animations: Vec::new(),
             visible: true,
-        }
+        };
+
+        // upload the red image to the texture
+        slf.update_texture(red_image_data, &queue);
+
+        slf
     }
 
     pub fn is_playing(&self) -> bool {
@@ -122,8 +234,64 @@ impl VideoStimulus {
         self.pipeline.set_state(gstreamer::State::Paused).unwrap();
     }
 
+    pub fn toggle(&self) {
+        if self.is_playing() {
+            self.pause();
+        } else {
+            self.play();
+        }
+    }
+
     pub fn stop(&self) {
         self.pipeline.set_state(gstreamer::State::Ready).unwrap();
+    }
+
+    fn update_texture(&self, data: &[u8], queue: &wgpu::Queue) {
+        let width = self.texture.size().width as u32;
+        let height = self.texture.size().height as u32;
+
+        // Create a new wgpu texture for the video frame
+        let texture_desc = wgpu::TextureDescriptor {
+            label: Some("VideoStimulus Texture"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[wgpu::TextureFormat::Rgba8Unorm],
+        };
+
+        let texture = self.texture.clone();
+        queue.write_texture(
+            // Tells wgpu where to copy the pixel data
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            // The actual pixel data
+            data,
+            // The layout of the texture
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(4 * width), // 4 bytes per pixel (RGBA)
+                rows_per_image: Some(height),
+            },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+        );
+
+        // submit the queue to ensure the texture is updated
+        queue.submit(std::iter::empty());
     }
 
     pub fn seek(&self, to: f64, accurate: bool, flush: bool, block: bool) {
@@ -147,10 +315,35 @@ impl VideoStimulus {
         }
     }
 
+    pub fn current_time(&self) -> f64 {
+        self.current_frame_time
+    }
+
+    pub fn current_frame(&self) -> i64 {
+        match *self.status.get() {
+            VideoState::Playing(frame_index, _) => frame_index as i64,
+            VideoState::Paused(frame_index) | VideoState::Stopped(frame_index) => frame_index as i64,
+            VideoState::Ready { .. } => 0,
+            VideoState::NotReady | VideoState::Errored() => -1, // Not ready or errored
+            _ => -1,                                            // Not playing or not ready
+        }
+    }
+
+    /// Returns the current progress of the video from 0.0 to 1.0.
+    pub fn current_progress(&self) -> f64 {
+        let time = self.current_time();
+        let durartion = self.duration;
+        if durartion > 0.0 {
+            (time / durartion).clamp(0.0, 1.0)
+        } else {
+            0.0
+        }
+    }
+
     fn create_pipeline(
         path: &str,
-        status_tx: std::sync::mpsc::Sender<VideoState>,
-        buffer: Arc<Mutex<Option<renderer::image::RgbImage>>>,
+        status: SwappableValue<VideoState>,
+        buffer: Arc<Mutex<Option<renderer::image::RgbaImage>>>,
     ) -> Result<gstreamer::Pipeline, PsydkError> {
         gstreamer::init()?;
 
@@ -165,10 +358,12 @@ impl VideoStimulus {
         let appsink = gstreamer_app::AppSink::builder()
             .caps(
                 &gstreamer_video::VideoCapsBuilder::new()
-                    .format(gstreamer_video::VideoFormat::Rgb)
+                    .format(gstreamer_video::VideoFormat::Rgba)
                     .build(),
             )
             .build();
+
+        let r_status = status.clone();
 
         appsink.set_callbacks(
             gstreamer_app::AppSinkCallbacks::builder()
@@ -187,7 +382,12 @@ impl VideoStimulus {
                     let structure = caps.structure(0).expect("structure in caps");
                     let width = structure.get::<i32>("width").expect("width in caps");
                     let height = structure.get::<i32>("height").expect("height in caps");
-                    let time = gst_buffer.pts().expect("timestamp").useconds() as f64 / 1_000_000.0;
+
+                    let u_time = gst_buffer.pts().expect("timestamp").useconds();
+                    println!("Received new sample with timestamp: {}", u_time);
+                    let time = u_time as f64 / 1_000_000.0; // Convert microseconds to seconds
+
+                    let frame_index = structure.get::<i64>("pos_frames").unwrap_or(-1);
 
                     let map = gst_buffer.map_readable().map_err(|_| {
                         element_error!(
@@ -207,13 +407,14 @@ impl VideoStimulus {
                         gstreamer::FlowError::Error
                     })?;
 
-                    let new_buffer = renderer::image::RgbImage::from_raw(width as u32, height as u32, samples.to_vec())
-                        .expect("Failed to create image buffer from raw data");
+                    let new_buffer =
+                        renderer::image::RgbaImage::from_raw(width as u32, height as u32, samples.to_vec())
+                            .expect("Failed to create image buffer from raw data");
 
                     let mut buffer = buffer.lock().unwrap();
                     *buffer = Some(new_buffer);
 
-                    status_tx.send(VideoState::Playing(time)).unwrap();
+                    r_status.swap(VideoState::Playing(frame_index as usize, time));
 
                     Ok(gstreamer::FlowSuccess::Ok)
                 })
@@ -222,6 +423,8 @@ impl VideoStimulus {
 
         pipeline.add_many([&src, &decodebin])?;
         src.link(&decodebin)?;
+
+        let status2 = status.clone();
 
         let pipeline_weak = pipeline.downgrade();
         decodebin.connect_pad_added(move |dbin, src_pad| {
@@ -282,6 +485,26 @@ impl VideoStimulus {
 
                     let sink_pad = queue.static_pad("sink").expect("queue has no sinkpad");
                     src_pad.link(&sink_pad)?;
+
+                    println!("Video pad linked successfully");
+
+                    // get duration of the video
+                    let duration = pipeline
+                        .query_duration::<gstreamer::ClockTime>()
+                        .expect("Failed to query duration")
+                        .seconds() as f64;
+
+                    // print dimensions of the video
+                    let caps = src_pad.current_caps().expect("src pad has caps");
+                    let structure = caps.structure(0).expect("structure in caps");
+                    let width = structure.get::<i32>("width").expect("width in caps");
+                    let height = structure.get::<i32>("height").expect("height in caps");
+
+                    status2.swap(VideoState::Ready {
+                        duration,
+                        width: width as u32,
+                        height: height as u32,
+                    });
                 }
 
                 Ok(())
@@ -292,16 +515,37 @@ impl VideoStimulus {
             }
         });
 
-        Self::start_pipeline(pipeline.clone());
+        Self::start_pipeline(pipeline.clone(), status.clone());
         Ok(pipeline)
     }
 
-    fn start_pipeline(pipeline: gstreamer::Pipeline) {
+    fn start_pipeline(pipeline: gstreamer::Pipeline, status: SwappableValue<VideoState>) {
         let bus = pipeline.bus().expect("Pipeline without bus. Shouldn't happen!");
 
         std::thread::spawn(move || {
             for msg in bus.iter_timed(gstreamer::ClockTime::NONE) {
                 use gstreamer::MessageView;
+
+                // get the status of the video
+                let pipeline_status = pipeline.current_state();
+
+                // // Update the status based on pipeline status
+                // if pipeline_status == gstreamer::State::Playing {
+                //     let res = pipeline.query_position::<gstreamer::ClockTime>();
+                //     let def = pipeline
+                //         .query_position_generic(gstreamer::Format::Default)
+                //         .expect("Failed to query position")
+                //         .value();
+                //     println!("Pipeline is playing at position: {:?}", def);
+
+                //     if let Some(position) = res {
+                //         let time = position.useconds() as f64 / 1_000_000.0;
+                //         let state = VideoState::Playing(def as usize, time);
+                //         // status.swap(state);
+                //     } else {
+                //         status.swap(VideoState::Errored());
+                //     }
+                // }
 
                 match msg.view() {
                     MessageView::Eos(..) => break,
@@ -321,26 +565,13 @@ impl VideoStimulus {
         });
     }
 
-    fn update_frame(&mut self) -> bool {
-        let status = self.status_rx.lock().unwrap().try_iter().last();
-
-        match status {
-            Some(VideoState::Playing(time)) | Some(VideoState::Paused(time)) | Some(VideoState::Stopped(time)) => {
-                if time > self.last_frame_time {
-                    self.last_frame_time = time;
-
-                    let buffer = self.buffer.lock().unwrap();
-                    if let Some(rgb_image) = buffer.as_ref() {
-                        let dynamic_image = renderer::image::DynamicImage::ImageRgb8(rgb_image.clone());
-                        println!("Todo: update current frame with new image at time: {}", time);
-                        return true;
-                    }
-                }
-            }
-            Some(VideoState::Errored(msg)) => {
-                eprintln!("Error in video stimulus: {}", msg);
-            }
-            _ => {}
+    fn update_frame(&self, queue: &wgpu::Queue) -> bool {
+        let buffer = self.buffer.lock().unwrap();
+        // get as slice of u8
+        if let Some(ref frame) = *buffer {
+            let data = frame.as_raw();
+            // update the texture with the new frame data
+            self.update_texture(data, queue);
         }
 
         false
@@ -421,6 +652,7 @@ impl PyVideoStimulus {
                 },
                 transform,
                 anchor,
+                ctx,
             )),
         ))
     }
@@ -438,6 +670,14 @@ impl PyVideoStimulus {
         let mut stim = slf.as_ref().0.lock();
         if let Some(video) = stim.downcast_mut::<VideoStimulus>() {
             video.pause();
+        }
+    }
+
+    /// Toggle the video playback state (play/pause).
+    fn toggle(slf: PyRef<'_, Self>) {
+        let mut stim = slf.as_ref().0.lock();
+        if let Some(video) = stim.downcast_mut::<VideoStimulus>() {
+            video.toggle();
         }
     }
 
@@ -473,6 +713,34 @@ impl PyVideoStimulus {
     fn is_playing(slf: PyRef<'_, Self>) -> bool {
         todo!("Implement is_playing method for VideoStimulus")
     }
+
+    /// Return the current time of the video.
+    fn get_current_time(slf: PyRef<'_, Self>) -> f64 {
+        let stim = slf.as_ref().0.lock();
+        if let Some(video) = stim.downcast_ref::<VideoStimulus>() {
+            video.current_time()
+        } else {
+            unreachable!()
+        }
+    }
+
+    fn get_current_frame(slf: PyRef<'_, Self>) -> i64 {
+        let stim = slf.as_ref().0.lock();
+        if let Some(video) = stim.downcast_ref::<VideoStimulus>() {
+            video.current_frame()
+        } else {
+            unreachable!()
+        }
+    }
+
+    fn get_current_progress(slf: PyRef<'_, Self>) -> f64 {
+        let stim = slf.as_ref().0.lock();
+        if let Some(video) = stim.downcast_ref::<VideoStimulus>() {
+            video.current_progress()
+        } else {
+            unreachable!()
+        }
+    }
 }
 
 impl_pystimulus_for_wrapper!(PyVideoStimulus, VideoStimulus);
@@ -487,13 +755,16 @@ impl Stimulus for VideoStimulus {
             return;
         }
 
-        // Update frame if there's a new one available
-        self.update_frame();
+        self.update_frame(&self.queue);
 
-        // If we don't have a frame yet, don't draw
-        let Some(ref frame) = self.current_frame else {
-            return;
+        // update current_frame_time
+        self.current_frame_time = match *self.status.get() {
+            VideoState::Playing(_, time) => time,
+            VideoState::Paused(time) | VideoState::Stopped(time) => time,
+            _ => -1.0, // Not ready or errored
         };
+
+        let frame = &self.current_frame;
 
         let window_size = window_state.size;
         let screen_props = window_state.physical_screen;

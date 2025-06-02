@@ -78,6 +78,7 @@ fn psydk(m: &Bound<'_, PyModule>) -> PyResult<()> {
             m.add_class::<visual::stimuli::image::PyImageStimulus>()?;
             m.add_class::<visual::stimuli::pattern::PyPatternStimulus>()?;
             m.add_class::<visual::stimuli::text::PyTextStimulus>()?;
+            m.add_class::<visual::stimuli::video::PyVideoStimulus>()?;
             m
         };
 

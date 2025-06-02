@@ -1,4 +1,4 @@
-use std::{any::Any, cell::RefCell};
+use std::{any::Any, cell::RefCell, sync::Arc};
 
 use cosmic_text::fontdb::FaceInfo;
 use foreign_types_shared::ForeignType;
@@ -13,7 +13,7 @@ use windows::Win32::Graphics::Dxgi::Common::{
 };
 
 use skia_safe::{
-    gpu::{self, SurfaceOrigin},
+    gpu::{self, backend_formats, DirectContext, SurfaceOrigin},
     gradient_shader::{
         linear as sk_linear, radial as sk_radial, sweep as sk_sweep, GradientShaderColors as SkGradientShaderColors,
     },
@@ -30,7 +30,7 @@ use crate::{
     brushes::{Brush, Extend, Gradient, GradientKind, ImageSampling},
     colors::RGBA,
     font::{DynamicFontFace, Glyph, Typeface},
-    renderer::{Renderer, RendererFactory},
+    renderer::{Renderer, SharedRendererState},
     scenes::Scene,
     shapes::{Point, Shape},
     styles::{BlendMode, ImageFitMode, StrokeStyle},
@@ -46,15 +46,21 @@ pub struct SkiaScene {
 }
 
 pub struct SkiaRenderer {
-    context: RefCell<gpu::DirectContext>,
-    backend: BackendContext,
-    font_manager: skia_safe::FontMgr,
+    shared_state: SkiaSharedRendererState,
 }
 
 #[derive(Debug)]
+/// A Bitmap that is backed by a Skia image.
 pub struct SkiaBitmap {
     image: SkImage,
     data: Box<[u8]>,
+}
+
+#[derive(Debug)]
+/// A Bitmap that is backed by a WGPU texture.
+pub struct SkiaTexture {
+    image: SkImage,
+    texture: wgpu::Texture,
 }
 
 impl Typeface for SkTypeface {
@@ -348,13 +354,25 @@ impl Renderer for SkiaRenderer {
         height: u32,
         scene: &mut dyn Scene,
     ) {
-        let mut skia_context = self.context.try_borrow_mut().expect("Failed to borrow skia context");
+        let mut skia_context = self
+            .shared_state
+            .context
+            .try_borrow_mut()
+            .expect("Failed to borrow skia context");
 
         // create a new surface
         #[cfg(target_os = "windows")]
         let mut surface = Self::create_surface_dx12(device, width, height, texture, &self.backend, &mut skia_context);
+
         #[cfg(any(target_os = "macos", target_os = "ios"))]
-        let mut surface = Self::create_surface_metal(device, width, height, texture, &self.backend, &mut skia_context);
+        let mut surface = Self::create_surface_metal(
+            device,
+            width,
+            height,
+            texture,
+            &self.shared_state.backend.borrow(),
+            &mut skia_context,
+        );
 
         let canvas = surface.canvas();
 
@@ -380,15 +398,12 @@ impl Renderer for SkiaRenderer {
     fn load_font_face(&mut self, face_info: &FaceInfo, font_data: &[u8], index: usize) -> DynamicFontFace {
         // load the font face using skia
         let typeface = self
+            .shared_state
             .font_manager
             .new_from_data(font_data, index)
             .expect("Failed to load font face");
         // let typeface = self.font_manager.n
         return DynamicFontFace(Box::new(typeface));
-    }
-
-    fn create_renderer_factory(&self) -> Box<dyn RendererFactory> {
-        Box::new(SkiaRendererFactory)
     }
 
     fn create_bitmap_u8(&self, rgba: image::RgbaImage, color_space: crate::renderer::ColorSpace) -> DynamicBitmap {
@@ -402,31 +417,25 @@ impl Renderer for SkiaRenderer {
     ) -> DynamicBitmap {
         skia_create_bitmap_f32(rgba, color_space)
     }
+
+    fn create_bitmap_from_wgpu_texture(
+        &self,
+        texture: wgpu::Texture,
+        color_space: crate::renderer::ColorSpace,
+    ) -> DynamicBitmap {
+        create_bitmap_from_wgpu_texture(&mut self.shared_state.context.borrow_mut(), texture, color_space)
+    }
 }
 
 impl SkiaRenderer {
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
-    fn try_create_backend_metal(device: &Device, queue: &Queue) -> Option<(mtl::BackendContext, gpu::DirectContext)> {
-        let command_queue_ptr =
-            unsafe { queue.as_hal::<wgpu::hal::api::Metal, _, _>(|queue| queue.map(|s| s.as_raw().lock().as_ptr())) };
+    // #[cfg(any(target_os = "macos", target_os = "ios"))]
+    // fn try_create_backend_metal(device: &Device, queue: &Queue) -> Option<(mtl::BackendContext, gpu::DirectContext)> {
+    //     let backend = create_backend_context(device, queue);
 
-        if let Some(command_queue_ptr) = command_queue_ptr {
-            let raw_device_ptr = unsafe {
-                device.as_hal::<wgpu::hal::api::Metal, _, _>(|device| {
-                    device.map(|s| s.raw_device().lock().as_ptr() as mtl::Handle)
-                })
-            };
+    //     let context = gpu::DirectContext::new_metal(&backend, None).unwrap();
 
-            let backend =
-                unsafe { mtl::BackendContext::new(raw_device_ptr.unwrap(), command_queue_ptr as mtl::Handle) };
-
-            let context = unsafe { gpu::DirectContext::new_metal(&backend, None).unwrap() };
-
-            Some((backend, context))
-        } else {
-            None
-        }
-    }
+    //     Some((backend, context))
+    // }
 
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     fn create_surface_metal(
@@ -543,25 +552,19 @@ impl SkiaRenderer {
             .unwrap()
         }
     }
-
-    pub fn new(width: u32, heigth: u32, adapter: &Adapter, device: &Device, queue: &Queue) -> Self {
-        #[cfg(target_os = "windows")]
-        let (backend, mut skia_context) = Self::try_create_backend_dx12(adapter, device, queue).unwrap();
-
-        #[cfg(any(target_os = "macos", target_os = "ios"))]
-        let (backend, mut skia_context) = Self::try_create_backend_metal(device, queue).unwrap();
-
-        let font_manager = skia_safe::FontMgr::new();
-
-        Self {
-            context: RefCell::new(skia_context),
-            backend,
-            font_manager,
-        }
-    }
 }
 
 impl Bitmap for SkiaBitmap {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+impl Bitmap for SkiaTexture {
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -652,8 +655,9 @@ impl From<&Brush<'_>> for skia_safe::Paint {
                 // downcast the image to a skia image
                 let skia_image = &image
                     .try_as::<SkiaBitmap>()
-                    .expect("You're trying to use a non-skia image with a skia renderer")
-                    .image;
+                    .map(|bitmap| &bitmap.image)
+                    .or_else(|| image.try_as::<SkiaTexture>().map(|texture| &texture.image))
+                    .expect("You're trying to use a non-skia image with a skia renderer");
 
                 let mut local_matrix = match fit_mode {
                     ImageFitMode::Original => Matrix::new_identity(),
@@ -838,32 +842,52 @@ impl From<Brush<'_>> for skia_safe::Paint {
     }
 }
 
-#[derive(Debug)]
-pub struct SkiaRendererFactory;
+#[derive(Clone, Debug)]
+pub struct SkiaSharedRendererState {
+    context: RefCell<gpu::DirectContext>,
+    backend: Arc<RefCell<BackendContext>>,
+    font_manager: skia_safe::FontMgr,
+}
 
-impl SkiaRendererFactory {
-    pub fn new() -> Self {
-        Self
+unsafe impl Send for SkiaSharedRendererState {}
+unsafe impl Sync for SkiaSharedRendererState {}
+
+impl SkiaSharedRendererState {
+    pub fn new(_adapter: &Adapter, device: &Device, queue: &Queue) -> Self {
+        let backend_context = create_backend_context(device, queue);
+        let skia_context = create_context(&backend_context);
+
+        // create a font manager
+        let font_manager = skia_safe::FontMgr::new();
+
+        Self {
+            context: RefCell::new(skia_context),
+            backend: Arc::new(RefCell::new(backend_context)),
+            font_manager,
+        }
     }
 }
 
-impl RendererFactory for SkiaRendererFactory {
+impl SharedRendererState for SkiaSharedRendererState {
     fn create_renderer(
         &self,
-        adapter: &wgpu::Adapter,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
         _surface_format: wgpu::TextureFormat,
-        width: u32,
-        height: u32,
+        _width: u32,
+        _height: u32,
     ) -> crate::DynamicRenderer {
-        let renderer = SkiaRenderer::new(width, height, adapter, device, queue);
+        let renderer = SkiaRenderer {
+            shared_state: self.clone(),
+        };
         let backend_render = Box::new(renderer) as Box<dyn Renderer>;
         crate::DynamicRenderer::new(backend_render)
     }
 
-    fn cloned(&self) -> Box<dyn RendererFactory> {
-        Box::new(Self::new())
+    fn cloned(&self) -> Box<dyn SharedRendererState> {
+        Box::new(SkiaSharedRendererState {
+            context: RefCell::new(self.context.borrow().clone()),
+            backend: self.backend.clone(),
+            font_manager: self.font_manager.clone(),
+        })
     }
 
     fn create_font_face(&self, font_data: &[u8], index: u32) -> DynamicFontFace {
@@ -885,6 +909,26 @@ impl RendererFactory for SkiaRendererFactory {
         color_space: crate::renderer::ColorSpace,
     ) -> DynamicBitmap {
         skia_create_bitmap_f32(data, color_space)
+    }
+
+    fn create_bitmap_from_wgpu_texture(
+        &self,
+        texture: wgpu::Texture,
+        color_space: crate::renderer::ColorSpace,
+    ) -> DynamicBitmap {
+        create_bitmap_from_wgpu_texture(&mut self.context.borrow_mut(), texture, color_space)
+    }
+
+    fn render_resources(&self) -> Option<crate::renderer::DynamicRenderResources> {
+        todo!()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        todo!()
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        todo!()
     }
 }
 
@@ -949,5 +993,116 @@ impl From<crate::renderer::ColorSpace> for skia_safe::ColorSpace {
             crate::renderer::ColorSpace::Srgb => skia_safe::ColorSpace::new_srgb(),
             crate::renderer::ColorSpace::LinearSrgb => skia_safe::ColorSpace::new_srgb_linear(),
         }
+    }
+}
+
+// Helper functions
+
+/// Create a Skia backend texture from a WGPU texture. Currently only supports Windows with Direct3D 12 and Metal on macOS/iOS.
+fn create_backend_texture(texture: &wgpu::Texture) -> skia_safe::gpu::BackendTexture {
+    // windows/dx12 implementation
+    #[cfg(target_os = "windows")]
+    {}
+    // macos/metal implementation
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    {
+        let raw_texture_ptr = unsafe {
+            texture
+                .as_hal::<wgpu::hal::api::Metal, _, _>(|texture| texture.unwrap().raw_handle().as_ptr() as mtl::Handle)
+        };
+
+        // let texture_info = unsafe { mtl::TextureInfo::new(raw_texture_ptr) };
+        // .unwrap();
+
+        let texture_info = unsafe { mtl::TextureInfo::new(raw_texture_ptr) };
+
+        println!(
+            "Creating Skia backend texture for Metal with size: {}x{}",
+            texture.width(),
+            texture.height()
+        );
+
+        unsafe {
+            skia_safe::gpu::backend_textures::make_mtl(
+                (texture.width() as i32, texture.height() as i32),
+                skia_safe::gpu::Mipmapped::No,
+                &texture_info,
+                "default",
+            )
+        }
+    }
+    // other platforms can be added here
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "ios")))]
+    {
+        panic!("Skia backend texture creation is not supported on this platform");
+    }
+}
+
+fn create_bitmap_from_wgpu_texture(
+    context: &mut DirectContext,
+    texture: wgpu::Texture,
+    color_space: crate::renderer::ColorSpace,
+) -> DynamicBitmap {
+    // create a skia backend context
+
+    // create a backend texture from the wgpu texture
+    let backend_texture = create_backend_texture(&texture);
+
+    // create a skia image from the backend texture (using adopt_backend_texture)
+    let skia_image = skia_safe::gpu::images::borrow_texture_from(
+        context,
+        &backend_texture,
+        SurfaceOrigin::TopLeft,
+        ColorType::RGBA8888,
+        SkAlphaType::Unpremul,
+        Some(color_space.into()),
+    )
+    .unwrap();
+
+    println!("Skia image: {:?}", skia_image);
+
+    context.flush_and_submit();
+    context.reset(None);
+
+    // create a bitmap from the skia image
+    let skia_texture = SkiaTexture {
+        image: skia_image,
+        texture,
+    };
+
+    DynamicBitmap(Box::new(skia_texture))
+}
+
+fn create_backend_context(device: &Device, queue: &Queue) -> BackendContext {
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    {
+        let command_queue_ptr =
+            unsafe { queue.as_hal::<wgpu::hal::api::Metal, _, _>(|queue| queue.map(|s| s.as_raw().lock().as_ptr())) };
+
+        if let Some(command_queue_ptr) = command_queue_ptr {
+            let raw_device_ptr = unsafe {
+                device.as_hal::<wgpu::hal::api::Metal, _, _>(|device| {
+                    device.map(|s| s.raw_device().lock().as_ptr() as mtl::Handle)
+                })
+            };
+
+            let backend =
+                unsafe { mtl::BackendContext::new(raw_device_ptr.unwrap(), command_queue_ptr as mtl::Handle) };
+
+            backend
+        } else {
+            panic!("Failed to create Skia backend context: command queue pointer is None");
+        }
+    }
+}
+
+fn create_context(backend: &BackendContext) -> gpu::DirectContext {
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    {
+        gpu::direct_contexts::make_metal(backend, None).expect("Failed to create Skia DirectContext")
+    }
+    #[cfg(target_os = "windows")]
+    {
+        gpu::DirectContext::new_d3d(backend, None).expect("Failed to create Skia DirectContext")
     }
 }

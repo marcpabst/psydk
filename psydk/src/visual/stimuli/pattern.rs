@@ -5,7 +5,7 @@ use renderer::{
     affine::Affine,
     brushes::{Brush, Extend, ImageSampling},
     colors::RGBA,
-    renderer::RendererFactory,
+    renderer::SharedRendererState,
     styles::ImageFitMode,
     DynamicBitmap, DynamicScene,
 };
@@ -296,7 +296,7 @@ impl Stimulus for PatternStimulus {
         let windows_size = window_state.size;
         let screen_props = window_state.physical_screen;
 
-        let renderer_factory = window_state.renderer.create_renderer_factory();
+        let renderer_factory = &window_state.shared_renderer_state;
 
         let x_origin = self.params.x.eval(windows_size, screen_props) as f64;
         let y_origin = self.params.y.eval(windows_size, screen_props) as f64;

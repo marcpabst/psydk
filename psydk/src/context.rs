@@ -14,11 +14,11 @@ use pyo3::{
     types::{PyAnyMethods, PyDict, PyList, PyListMethods, PySequenceMethods, PyTuple, PyTupleMethods},
     IntoPy, Py, PyAny, PyResult, Python,
 };
-use renderer::{cosmic_text, renderer::RendererFactory};
+use renderer::{cosmic_text, renderer::SharedRendererState};
 use winit::event_loop::EventLoopProxy;
 
 use crate::{
-    app::App,
+    app::{App, ArcMutex, GPUState},
     audio::{PyDevice, PyHost, PyStream},
     errors::{self, PsydkError, PsydkResult},
     git::PyRepository,
@@ -32,9 +32,8 @@ pub enum EventLoopAction {
     Exit(Option<errors::PsydkError>),
 }
 
-#[derive(Debug)]
 #[pyclass]
-pub struct PyRendererFactory(pub Box<dyn RendererFactory>);
+pub struct PyRendererFactory(pub Box<dyn SharedRendererState>);
 
 // impl Clone for PyRendererFactory
 impl Clone for PyRendererFactory {
@@ -45,7 +44,7 @@ impl Clone for PyRendererFactory {
 
 // deref for PyRendererFactory
 impl std::ops::Deref for PyRendererFactory {
-    type Target = dyn RendererFactory;
+    type Target = dyn SharedRendererState;
 
     fn deref(&self) -> &Self::Target {
         self.0.as_ref()
@@ -53,7 +52,7 @@ impl std::ops::Deref for PyRendererFactory {
 }
 
 impl PyRendererFactory {
-    pub fn inner(&self) -> &dyn RendererFactory {
+    pub fn inner(&self) -> &dyn SharedRendererState {
         self.0.as_ref()
     }
 }
@@ -159,9 +158,10 @@ impl WindowOptions {
 #[derive(Clone)]
 #[pyclass]
 pub struct ExperimentContext {
+    pub gpu_state: ArcMutex<GPUState>,
     event_loop_proxy: EventLoopProxy<()>,
     action_sender: Sender<EventLoopAction>,
-    renderer_factory: Arc<dyn RendererFactory>,
+    renderer_factory: Arc<dyn SharedRendererState>,
     audio_host: Arc<timed_audio::cpal::Host>,
     font_manager: Arc<Mutex<cosmic_text::FontSystem>>,
     config: Arc<Mutex<crate::config::ExperimentConfig>>,
@@ -169,13 +169,15 @@ pub struct ExperimentContext {
 
 impl ExperimentContext {
     pub fn new(
+        gpu_state: ArcMutex<GPUState>,
         event_loop_proxy: EventLoopProxy<()>,
         action_sender: Sender<EventLoopAction>,
-        renderer_factory: Arc<dyn RendererFactory>,
+        renderer_factory: Arc<dyn SharedRendererState>,
         audio_host: Arc<timed_audio::cpal::Host>,
         font_manager: Arc<Mutex<cosmic_text::FontSystem>>,
     ) -> Self {
         Self {
+            gpu_state,
             event_loop_proxy,
             action_sender,
             renderer_factory,
@@ -214,7 +216,7 @@ impl ExperimentContext {
         Ok(())
     }
 
-    pub fn renderer_factory(&self) -> &Arc<dyn RendererFactory> {
+    pub fn renderer_factory(&self) -> &Arc<dyn SharedRendererState> {
         &self.renderer_factory
     }
 
@@ -428,7 +430,7 @@ pub fn py_run_experiment(
     // without having to pass the renderer object around
 
     let globals = PyDict::new(py);
-    let renderer_factory = PyRendererFactory(app.renderer_factory.cloned());
+    let renderer_factory = PyRendererFactory(app.shared_renderer_state.cloned());
 
     let rust_experiment_fn = move |em: ExperimentContext| -> Result<(), errors::PsydkError> {
         Python::with_gil(|py| -> _ {

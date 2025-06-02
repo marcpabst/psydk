@@ -3,6 +3,8 @@ use std::{any::Any, fmt::Debug};
 pub use super::scenes::Scene;
 
 #[derive(Debug)]
+/// A dynamic bitmap type that can hold backend-specific bitmap implementations.
+/// A bitmap is usually immutable once created.
 pub struct DynamicBitmap(pub Box<dyn Bitmap>);
 
 impl DynamicBitmap {

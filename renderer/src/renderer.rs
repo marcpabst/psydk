@@ -1,4 +1,7 @@
-use std::sync::{Arc, Mutex};
+use std::{
+    any::Any,
+    sync::{Arc, Mutex},
+};
 
 use cosmic_text::{
     Attrs, Buffer as CosmicBuffer, Family as CosmicFamily, Metrics as CosmicMetrics, Stretch as CosmicStretch,
@@ -17,6 +20,11 @@ pub struct DynamicRenderer {
     backend: Box<dyn Renderer>,
 }
 
+pub struct DynamicRenderResources {
+    pub resources: Box<dyn SharedRendererState>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ColorSpace {
     LinearSrgb,
     Srgb,
@@ -41,10 +49,6 @@ impl DynamicRenderer {
             .render_to_texture(device, queue, texture, width, height, scene.inner().as_mut());
     }
 
-    pub fn create_renderer_factory(&self) -> Box<dyn RendererFactory> {
-        self.backend.create_renderer_factory()
-    }
-
     pub fn create_scene(&self, width: u32, heigth: u32) -> DynamicScene {
         let scene = self.backend.create_scene(width, heigth);
         DynamicScene::new(scene)
@@ -67,6 +71,7 @@ impl DynamicRenderer {
     }
 }
 
+/// A Renderer is responsible for rendering scenes to textures. There is one renderer per window or surface.
 pub trait Renderer {
     fn render_to_texture(
         &self,
@@ -99,21 +104,20 @@ pub trait Renderer {
         self.create_bitmap_u8(image, ColorSpace::Srgb)
     }
 
-    fn create_renderer_factory(&self) -> Box<dyn RendererFactory>;
+    fn create_bitmap_from_wgpu_texture(
+        &self,
+        texture: wgpu::Texture,
+        color_space: crate::renderer::ColorSpace,
+    ) -> DynamicBitmap;
 }
 
-pub trait RendererFactory: Send + Sync + std::fmt::Debug {
-    fn create_renderer(
-        &self,
-        adapter: &wgpu::Adapter,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        surface_format: wgpu::TextureFormat,
-        width: u32,
-        height: u32,
-    ) -> DynamicRenderer;
+/// A SharedRendererState is a trait that provides methods to create renderers, bitmaps, and font faces.
+/// Structs implementing this trait can implement caches and other shared resources that are used across multiple renderers.
+pub trait SharedRendererState: Send + Sync {
+    fn create_renderer(&self, surface_format: wgpu::TextureFormat, width: u32, height: u32) -> DynamicRenderer;
 
     fn create_bitmap_u8(&self, data: image::RgbaImage, color_space: ColorSpace) -> DynamicBitmap;
+
     fn create_bitmap_f32(
         &self,
         data: image::ImageBuffer<image::Rgba<f32>, Vec<f32>>,
@@ -129,76 +133,18 @@ pub trait RendererFactory: Send + Sync + std::fmt::Debug {
 
     fn create_font_face(&self, font_data: &[u8], index: u32) -> DynamicFontFace;
 
-    // fn create_formatted_text(
-    //     &mut self,
-    //     font_manager: Arc<Mutex<cosmic_text::FontSystem>>,
-    //     position: Point,
-    //     text: &str,
-    //     font_family: Option<&str>,
-    //     font_weight: Option<u16>,
-    //     font_stretch: Option<FontWidth>,
-    //     font_style: Option<FontStyle>,
-    //     font_size: f32,
-    // ) -> FormatedText {
-    //     let families = font_family
-    //         .map(|f| CosmicFamily::Name(f))
-    //         .unwrap_or(CosmicFamily::Name("Arial"));
+    fn as_any(&self) -> &dyn Any;
 
-    //     let weight = font_weight.map(|w| CosmicWeight(w)).unwrap_or(CosmicWeight(400));
-    //     // let stretch = font_stretch.unwrap_or(FontWidth::Normal);
-    //     // let style = font_style.unwrap_or(FontStyle::Normal);
+    fn as_any_mut(&mut self) -> &mut dyn Any;
 
-    //     // Attributes indicate what font to choose
-    //     let attrs = Attrs::new();
-    //     let attrs = attrs.family(families);
-    //     let attrs = attrs.weight(weight);
-    //     let attrs = attrs.stretch(CosmicStretch::Normal);
-    //     let attrs = attrs.style(CosmicStyle::Normal);
+    fn create_bitmap_from_wgpu_texture(
+        &self,
+        texture: wgpu::Texture,
+        color_space: crate::renderer::ColorSpace,
+    ) -> DynamicBitmap;
 
-    //     let query = cosmic_text::fontdb::Query {
-    //         families: &[families],
-    //         weight: weight,
-    //         stretch: CosmicStretch::Normal,
-    //         style: CosmicStyle::Normal,
-    //     };
+    // Returns the render resources
+    fn render_resources(&self) -> Option<DynamicRenderResources>;
 
-    //     let mut font_manager_mg = font_manager.lock().unwrap();
-
-    //     let cosmic_font_id = font_manager_mg.db().query(&query).unwrap();
-    //     let cosmic_font = font_manager_mg.get_font(cosmic_font_id).unwrap();
-    //     let comic_metrics = CosmicMetrics::new(font_size, font_size);
-    //     // let comic_metrics = CosmicMetrics::new(14.0, 20.0);
-
-    //     let face_info = font_manager_mg.db().face(cosmic_font_id).unwrap();
-    //     let font_data = cosmic_font.data();
-    //     let font_index = face_info.index;
-
-    //     assert!(attrs.matches(&face_info));
-
-    //     let font = self.create_font_face(font_data, font_index);
-    //     let mut cosmic_buffer = CosmicBuffer::new(&mut font_manager_mg, comic_metrics);
-
-    //     // Set a size for the text buffer, in pixels
-    //     cosmic_buffer.set_size(&mut font_manager_mg, None, None);
-
-    //     // Add some text!
-    //     cosmic_buffer.set_text(&mut font_manager_mg, text, attrs, cosmic_text::Shaping::Advanced);
-
-    //     // Perform shaping
-    //     cosmic_buffer.shape_until_scroll(&mut font_manager_mg, true);
-
-    //     // try to load the font
-    //     FormatedText {
-    //         cosmic_buffer: cosmic_buffer,
-    //         renderer_font: font,
-    //         cosmic_font: cosmic_font,
-    //         comic_metrics: comic_metrics,
-    //         position: position,
-    //         alignment: Alignment::Center,
-    //         vertical_alignment: VerticalAlignment::Middle,
-    //         font_manager: font_manager.clone(),
-    //     }
-    // }
-
-    fn cloned(&self) -> Box<dyn RendererFactory>;
+    fn cloned(&self) -> Box<dyn SharedRendererState>;
 }

@@ -16,7 +16,11 @@ use futures_lite::{future::block_on, Future};
 use nalgebra;
 use palette::IntoColor;
 use pyo3::prelude::*;
-use renderer::{renderer::RendererFactory, wgpu_renderer::WgpuRenderer, DynamicRenderer, DynamicScene};
+use renderer::{
+    renderer::{DynamicRenderResources, SharedRendererState},
+    wgpu_renderer::WgpuRenderer,
+    DynamicRenderer, DynamicScene,
+};
 use send_wrapper::SendWrapper;
 use uuid::Uuid;
 use wgpu::TextureFormat;
@@ -121,6 +125,9 @@ pub struct WindowState {
     pub wgpu_renderer: WgpuRenderer,
     #[dbg(placeholder = "[[ DynamicRenderer ]]")]
     pub renderer: DynamicRenderer,
+    /// The shared renderer state. This is used to share the renderer state
+    #[dbg(placeholder = "[[ DynamicRenderer ]]")]
+    pub shared_renderer_state: Arc<dyn SharedRendererState>,
     // The current mouse position. None if the mouse has left the window.
     pub mouse_position: Option<(f32, f32)>,
     /// Stores if the mouse cursor is currently visible.

@@ -13,7 +13,7 @@ use pyo3::{
     types::{PyDict, PyTuple},
     Py, PyAny, Python,
 };
-use renderer::{cosmic_text, renderer::RendererFactory, wgpu::TextureFormat};
+use renderer::{cosmic_text, renderer::SharedRendererState, wgpu::TextureFormat};
 use wgpu::MemoryHints;
 use winit::{
     application::ApplicationHandler,
@@ -35,7 +35,7 @@ use crate::{
     EventTryFrom,
 };
 
-type ArcMutex<T> = Arc<Mutex<T>>;
+pub type ArcMutex<T> = Arc<Mutex<T>>;
 
 #[derive(Debug)]
 pub struct GPUState {
@@ -53,7 +53,7 @@ pub struct App {
     pub action_sender: Sender<EventLoopAction>,
     pub dummy_window: Option<Window>,
     #[dbg(placeholder = "[[ RendererFactory ]]")]
-    pub renderer_factory: Arc<dyn RendererFactory>,
+    pub shared_renderer_state: Arc<dyn SharedRendererState>,
     pub font_manager: ArcMutex<renderer::cosmic_text::FontSystem>,
 }
 
@@ -133,13 +133,20 @@ impl App {
         let noto_sans_bold_italic = include_bytes!("../assets/fonts/NotoSans-BoldItalic.ttf");
         font_manager.db_mut().load_font_data(noto_sans_bold_italic.to_vec());
 
+        // create shared renderer state
+        let renderer = renderer::skia_backend::SkiaSharedRendererState::new(
+            &gpu_state.adapter,
+            &gpu_state.device,
+            &gpu_state.queue,
+        );
+
         Self {
             windows: vec![],
             gpu_state: Arc::new(Mutex::new(gpu_state)),
             action_receiver,
             action_sender,
             dummy_window: None,
-            renderer_factory: Arc::new(renderer::skia_backend::SkiaRendererFactory::new()),
+            shared_renderer_state: Arc::new(renderer),
             font_manager: Arc::new(Mutex::new(font_manager)),
         }
     }
@@ -223,9 +230,9 @@ impl App {
         ));
 
         // create the renderer
-        let mut renderer =
-            self.renderer_factory
-                .create_renderer(adapter, device, queue, swapchain_format, size.width, size.height);
+        let mut renderer = self
+            .shared_renderer_state
+            .create_renderer(swapchain_format, size.width, size.height);
 
         let winit_id = winit_window.id();
 
@@ -240,6 +247,7 @@ impl App {
             config,
             renderer,
             wgpu_renderer,
+            shared_renderer_state: self.shared_renderer_state.clone(),
             mouse_cursor_visible: true,
             mouse_position: None,
             size: size.into(),
@@ -325,9 +333,10 @@ impl App {
         let audio_host = timed_audio::cpal::default_host().into();
 
         let exp_manager = ExperimentContext::new(
+            self.gpu_state.clone(),
             event_loop_proxy,
             action_sender.clone(),
-            self.renderer_factory.clone(),
+            self.shared_renderer_state.clone(),
             audio_host,
             self.font_manager.clone(),
         );
