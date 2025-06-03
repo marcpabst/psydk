@@ -2,12 +2,12 @@ use std::sync::Arc;
 
 use psydk_proc::{FromPyStr, StimulusParams};
 use renderer::{
+    DynamicBitmap, DynamicScene,
     affine::Affine,
     brushes::{Brush, Extend, ImageSampling},
     colors::RGBA,
     renderer::SharedRendererState,
     styles::ImageFitMode,
-    DynamicBitmap, DynamicScene,
 };
 use strum::EnumString;
 use uuid::Uuid;
@@ -15,8 +15,8 @@ use uuid::Uuid;
 unsafe impl Send for PatternStimulus {}
 
 use super::{
-    animations::Animation, helpers, impl_pystimulus_for_wrapper, PyStimulus, Stimulus, StimulusParamValue,
-    StimulusParams, StrokeStyle,
+    PyStimulus, Stimulus, StimulusParamValue, StimulusParams, StrokeStyle, animations::Animation, helpers,
+    impl_pystimulus_for_wrapper,
 };
 use crate::{
     context::ExperimentContext,
@@ -82,7 +82,6 @@ impl PatternStimulus {
         stroke_color: LinRgba,
         stroke_width: Size,
         alpha: Option<f64>,
-
         transform: Transformation2D,
         context: &ExperimentContext,
     ) -> Self {
