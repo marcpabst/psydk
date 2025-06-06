@@ -146,6 +146,11 @@ impl VideoStimulus {
         // set the pipeline to paused state to prepare it for playback
         pipeline.set_state(gstreamer::State::Paused).unwrap();
 
+        // wait until the pipeline is actually in paused state
+        while pipeline.current_state() != gstreamer::State::Paused {
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+
         let (duration, width, height) = loop {
             match *(status.get()) {
                 VideoState::Ready {
@@ -323,6 +328,10 @@ impl VideoStimulus {
         self.current_frame_time
     }
 
+    pub fn duration(&self) -> f64 {
+        self.duration
+    }
+
     pub fn current_frame(&self) -> i64 {
         match *self.status.get() {
             VideoState::Playing(frame_index, _) => frame_index as i64,
@@ -366,6 +375,9 @@ impl VideoStimulus {
                     .format(gstreamer_video::VideoFormat::Rgba)
                     .build(),
             )
+            .max_buffers(1)
+            .drop(true)
+            .qos(true)
             .build();
 
         let r_status = status.clone();
@@ -373,6 +385,8 @@ impl VideoStimulus {
         appsink.set_callbacks(
             gstreamer_app::AppSinkCallbacks::builder()
                 .new_sample(move |appsink| {
+                    // take current time
+
                     let sample = appsink.pull_sample().map_err(|_| gstreamer::FlowError::Eos)?;
                     let gst_buffer = sample.buffer().ok_or_else(|| {
                         element_error!(
@@ -422,6 +436,8 @@ impl VideoStimulus {
                     frame_is_dirty.store(true, std::sync::atomic::Ordering::Relaxed);
 
                     r_status.swap(VideoState::Playing(frame_index as usize, time));
+
+                    // log the time taken to process the frame
 
                     Ok(gstreamer::FlowSuccess::Ok)
                 })
@@ -479,10 +495,12 @@ impl VideoStimulus {
                     src_pad.link(&sink_pad)?;
                 } else if is_video {
                     let queue = gstreamer::ElementFactory::make("queue").build()?;
-                    let convert = gstreamer::ElementFactory::make("videoconvert").build()?;
-                    let scale = gstreamer::ElementFactory::make("videoscale").build()?;
 
-                    let elements = &[&queue, &convert, &scale, &appsink.upcast_ref()];
+                    let convert = gstreamer::ElementFactory::make("videoconvert").build()?;
+                    let queue2 = gstreamer::ElementFactory::make("queue").build()?;
+                    // let scale = gstreamer::ElementFactory::make("videoscale").build()?;
+
+                    let elements = &[&queue, &convert, &queue2, &appsink.upcast_ref()];
                     pipeline.add_many(elements)?;
                     gstreamer::Element::link_many(elements)?;
 
@@ -734,6 +752,15 @@ impl PyVideoStimulus {
         let stim = slf.as_ref().0.lock();
         if let Some(video) = stim.downcast_ref::<VideoStimulus>() {
             video.current_time()
+        } else {
+            unreachable!()
+        }
+    }
+
+    fn get_duration(slf: PyRef<'_, Self>) -> f64 {
+        let stim = slf.as_ref().0.lock();
+        if let Some(video) = stim.downcast_ref::<VideoStimulus>() {
+            video.duration()
         } else {
             unreachable!()
         }

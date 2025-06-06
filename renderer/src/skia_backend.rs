@@ -517,29 +517,30 @@ impl SkiaRenderer {
 
     #[cfg(target_os = "windows")]
     fn create_surface_dx12(
-        device: &Device,
+        _device: &Device,
         width: u32,
         height: u32,
         texture: &Texture,
-        backend: &d3d::BackendContext,
+        _backend: &d3d::BackendContext,
         context: &mut gpu::DirectContext,
     ) -> skia_safe::Surface {
         use windows::Win32::Graphics::{
-            Direct3D12::D3D12_RESOURCE_STATE_COMMON, Dxgi::Common::DXGI_FORMAT_R16G16B16A16_FLOAT,
+            Direct3D12::D3D12_RESOURCE_STATE_RENDER_TARGET,
+            Dxgi::Common::{DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_R16G16B16A16_UNORM},
         };
 
         let raw_texture = unsafe {
             texture.as_hal::<wgpu::hal::api::Dx12, _, _>(|texture| texture.map(|s| s.raw_resource().clone()))
         }
-        .unwrap();
+        .expect("Failed to get raw texture from WGPU texture");
 
         let backend_render_target = skia_safe::gpu::BackendRenderTarget::new_d3d(
             (width as i32, height as i32),
             &d3d::TextureResourceInfo {
                 resource: raw_texture,
                 alloc: None,
-                resource_state: D3D12_RESOURCE_STATE_COMMON,
-                format: DXGI_FORMAT_R16G16B16A16_FLOAT,
+                resource_state: D3D12_RESOURCE_STATE_RENDER_TARGET,
+                format: DXGI_FORMAT_R16G16B16A16_UNORM,
                 sample_count: 1,
                 level_count: 0,
                 sample_quality_pattern: DXGI_STANDARD_MULTISAMPLE_QUALITY_PATTERN,
@@ -547,17 +548,20 @@ impl SkiaRenderer {
             },
         );
 
-        unsafe {
-            gpu::surfaces::wrap_backend_render_target(
-                &mut *context,
-                &backend_render_target,
-                SurfaceOrigin::TopLeft,
-                ColorType::RGBAF16,
-                ColorSpace::new_srgb_linear(),
-                None,
-            )
-            .unwrap()
-        }
+        println!(
+            "Cchecking backend render target validity: {}",
+            backend_render_target.is_valid()
+        );
+
+        gpu::surfaces::wrap_backend_render_target(
+            &mut *context,
+            &backend_render_target,
+            SurfaceOrigin::TopLeft,
+            ColorType::R16G16B16A16UNorm,
+            ColorSpace::new_srgb_linear(),
+            None,
+        )
+        .expect("Failed to create Skia surface from DX12 texture")
     }
 }
 

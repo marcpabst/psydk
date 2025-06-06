@@ -98,7 +98,8 @@ impl App {
         let mut limits = wgpu::Limits::downlevel_defaults();
         limits.max_storage_buffers_per_shader_stage = 16;
 
-        let features = wgpu::Features::TEXTURE_FORMAT_16BIT_NORM;
+        let features =
+            wgpu::Features::TEXTURE_FORMAT_16BIT_NORM | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES;
 
         // Create the logical device and command queue
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {

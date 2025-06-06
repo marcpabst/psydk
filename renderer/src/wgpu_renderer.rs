@@ -5,6 +5,8 @@ use wgpu::{
 };
 use winit::{dpi::PhysicalSize, window::Window};
 
+use crate::color_formats::ColorFormat;
+
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 #[repr(C)]
 pub struct GammaParams {
@@ -160,7 +162,7 @@ impl WgpuRenderer {
         self.configure_surface(surface, device);
     }
 
-    fn create_texture(device: &wgpu::Device, width: u32, height: u32) -> wgpu::Texture {
+    fn create_texture(device: &wgpu::Device, width: u32, height: u32, color_format: ColorFormat) -> wgpu::Texture {
         device.create_texture(&wgpu::TextureDescriptor {
             size: wgpu::Extent3d {
                 width,
@@ -170,10 +172,13 @@ impl WgpuRenderer {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba16Float,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::STORAGE_BINDING,
+            format: color_format.into(),
+            usage: wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::STORAGE_BINDING
+                | wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::COPY_DST,
             label: None,
-            view_formats: &[wgpu::TextureFormat::Rgba16Float],
+            view_formats: &[color_format.into()],
         })
     }
 
@@ -216,7 +221,7 @@ impl WgpuRenderer {
                     binding: 0,
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
                         view_dimension: wgpu::TextureViewDimension::D2,
                         multisampled: false,
                     },
@@ -299,7 +304,7 @@ impl WgpuRenderer {
                     binding: 0,
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
                         view_dimension: wgpu::TextureViewDimension::D2,
                         multisampled: false,
                     },
@@ -419,5 +424,17 @@ fn srgb_inverse_eotf(c: f32) -> f32 {
         12.92 * c
     } else {
         1.055 * c.powf(1.0 / 2.4) - 0.055
+    }
+}
+
+// allow color_formats::ColorFormat to be used in wgpu
+impl From<ColorFormat> for wgpu::TextureFormat {
+    fn from(format: ColorFormat) -> Self {
+        match format {
+            ColorFormat::UNorm8 => wgpu::TextureFormat::Bgra8Unorm,
+            ColorFormat::UNorm10 => wgpu::TextureFormat::Rgb10a2Unorm,
+            ColorFormat::UNorm16 => wgpu::TextureFormat::Rgba16Unorm,
+            ColorFormat::Float16 => wgpu::TextureFormat::Rgba16Float,
+        }
     }
 }

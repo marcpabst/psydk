@@ -1,6 +1,7 @@
 pub mod affine;
 pub mod bitmaps;
 pub mod brushes;
+pub mod color_formats;
 pub mod colors;
 pub mod effects;
 pub mod font;
