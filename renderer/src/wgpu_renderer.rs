@@ -41,7 +41,7 @@ impl WgpuRenderer {
 
         // create a render pipeline
         let render_pipeline = Self::create_render_pipelie(&device, surface_format);
-        let texture = Self::create_texture(&device, width, height);
+        let texture = Self::create_texture(&device, width, height, ColorFormat::Float16);
         let lut_texture_array = Self::create_lut_texture_array(&device, 256, 256);
 
         // if a LUT is provided, create a texture array and upload the LUT data
@@ -157,7 +157,7 @@ impl WgpuRenderer {
     /// Re-size the texture
     pub fn resize(&mut self, width: u32, height: u32, surface: &Surface, device: &Device) {
         self.size = winit::dpi::PhysicalSize::new(width, height);
-        self.texture = Self::create_texture(device, width, height);
+        self.texture = Self::create_texture(device, width, height, ColorFormat::Float16);
         self.bind_group = Self::create_bind_group(device, &self.texture, &self.lut_texture_array, self.encode_gamma);
         self.configure_surface(surface, device);
     }

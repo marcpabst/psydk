@@ -1,3 +1,5 @@
+use crate::color_formats::ColorEncoding;
+
 #[derive(Debug, Clone, Copy)]
 /// A color with red, green, blue, and alpha components.
 pub struct RGBA {
@@ -5,11 +7,12 @@ pub struct RGBA {
     pub g: f32,
     pub b: f32,
     pub a: f32,
+    encoding: ColorEncoding,
 }
 
 impl RGBA {
-    pub fn new(r: f32, g: f32, b: f32, a: f32) -> Self {
-        Self { r, g, b, a }
+    pub fn new(r: f32, g: f32, b: f32, a: f32, encoding: ColorEncoding) -> Self {
+        Self { r, g, b, a, encoding }
     }
 
     /// Convert to an RGBA color with sRGB encoding.
@@ -22,6 +25,7 @@ impl RGBA {
         g: 1.0,
         b: 1.0,
         a: 1.0,
+        encoding: ColorEncoding::Srgb,
     };
 
     pub const BLACK: Self = Self {
@@ -29,6 +33,7 @@ impl RGBA {
         g: 0.0,
         b: 0.0,
         a: 1.0,
+        encoding: ColorEncoding::Srgb,
     };
 
     pub const RED: Self = Self {
@@ -36,6 +41,7 @@ impl RGBA {
         g: 0.0,
         b: 0.0,
         a: 1.0,
+        encoding: ColorEncoding::Srgb,
     };
 
     pub const GREEN: Self = Self {
@@ -43,6 +49,7 @@ impl RGBA {
         g: 1.0,
         b: 0.0,
         a: 1.0,
+        encoding: ColorEncoding::Srgb,
     };
 
     pub const BLUE: Self = Self {
@@ -50,6 +57,7 @@ impl RGBA {
         g: 0.0,
         b: 1.0,
         a: 1.0,
+        encoding: ColorEncoding::Srgb,
     };
 
     pub const YELLOW: Self = Self {
@@ -57,6 +65,7 @@ impl RGBA {
         g: 1.0,
         b: 0.0,
         a: 1.0,
+        encoding: ColorEncoding::Srgb,
     };
 
     pub const CYAN: Self = Self {
@@ -64,6 +73,7 @@ impl RGBA {
         g: 1.0,
         b: 1.0,
         a: 1.0,
+        encoding: ColorEncoding::Srgb,
     };
 
     pub const MAGENTA: Self = Self {
@@ -71,6 +81,7 @@ impl RGBA {
         g: 0.0,
         b: 1.0,
         a: 1.0,
+        encoding: ColorEncoding::Srgb,
     };
 
     pub const TRANSPARENT: Self = Self {
@@ -78,6 +89,7 @@ impl RGBA {
         g: 0.0,
         b: 0.0,
         a: 0.0,
+        encoding: ColorEncoding::Srgb,
     };
 
     pub const GRAY: Self = Self {
@@ -85,6 +97,7 @@ impl RGBA {
         g: 0.5,
         b: 0.5,
         a: 1.0,
+        encoding: ColorEncoding::Srgb,
     };
 }
 

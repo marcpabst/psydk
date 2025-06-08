@@ -12,7 +12,7 @@ pub enum ColorFormat {
     Float16,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ColorEncoding {
     /// RGB color space without transfer function (linear).
     Linear,
