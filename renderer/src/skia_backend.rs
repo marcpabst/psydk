@@ -541,7 +541,7 @@ impl SkiaRenderer {
                 resource: raw_texture,
                 alloc: None,
                 resource_state: D3D12_RESOURCE_STATE_RENDER_TARGET,
-                format: DXGI_FORMAT_R16G16B16A16_UNORM,
+                format: DXGI_FORMAT_R16G16B16A16_FLOAT,
                 sample_count: 1,
                 level_count: 0,
                 sample_quality_pattern: DXGI_STANDARD_MULTISAMPLE_QUALITY_PATTERN,
@@ -558,7 +558,7 @@ impl SkiaRenderer {
             &mut *context,
             &backend_render_target,
             SurfaceOrigin::TopLeft,
-            ColorType::R16G16B16A16UNorm,
+            ColorType::RGBAF16,
             ColorSpace::new_srgb_linear(),
             None,
         )
