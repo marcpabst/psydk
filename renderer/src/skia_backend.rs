@@ -549,11 +549,6 @@ impl SkiaRenderer {
             },
         );
 
-        println!(
-            "Cchecking backend render target validity: {}",
-            backend_render_target.is_valid()
-        );
-
         gpu::surfaces::wrap_backend_render_target(
             &mut *context,
             &backend_render_target,
