@@ -11,6 +11,16 @@ pub struct RGBA {
 }
 
 impl RGBA {
+    pub fn new_linear(r: f32, g: f32, b: f32, a: f32) -> Self {
+        Self {
+            r,
+            g,
+            b,
+            a,
+            encoding: ColorEncoding::Linear,
+        }
+    }
+
     pub fn new(r: f32, g: f32, b: f32, a: f32, encoding: ColorEncoding) -> Self {
         Self { r, g, b, a, encoding }
     }
@@ -18,6 +28,10 @@ impl RGBA {
     /// Convert to an RGBA color with sRGB encoding.
     pub fn as_srgba(&self) -> (f32, f32, f32, f32) {
         (lin2srgb(self.r), lin2srgb(self.g), lin2srgb(self.b), self.a)
+    }
+
+    pub fn color_encoding(&self) -> ColorEncoding {
+        self.encoding
     }
 
     pub const WHITE: Self = Self {

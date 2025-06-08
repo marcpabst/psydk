@@ -92,12 +92,7 @@ impl GaborStimulus {
                 let x = (i as f32 / 128.0);
                 let t = (-x.powi(2) / (2.0 * sigma.powi(2))).exp();
 
-                RGBA {
-                    r: 0.0,
-                    g: 0.0,
-                    b: 0.0,
-                    a: t,
-                }
+                RGBA::new_linear(0.0, 0.0, 0.0, t)
             })
             .collect();
 
@@ -133,12 +128,7 @@ impl GaborStimulus {
             .map(|i| {
                 let x = i as f32 / 256.0 * 1.0 * std::f32::consts::PI;
                 let t = x.sin();
-                RGBA {
-                    r: t,
-                    g: t,
-                    b: t,
-                    a: 1.0,
-                }
+                RGBA::new_linear(t, t, t, 1.0)
             })
             .collect();
         sine_grating_colors
@@ -149,12 +139,7 @@ impl GaborStimulus {
         let square_grating_colors: Vec<RGBA> = (0..len)
             .map(|i| {
                 let t = if (i as f32) < f_len / 2.0 { 1.0 } else { 0.0 };
-                RGBA {
-                    r: t,
-                    g: t,
-                    b: t,
-                    a: 1.0,
-                }
+                RGBA::new_linear(t, t, t, 1.0)
             })
             .collect();
         square_grating_colors

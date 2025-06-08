@@ -109,12 +109,7 @@ impl LinRgba {
 
 impl From<LinRgba> for renderer::colors::RGBA {
     fn from(rgba: LinRgba) -> Self {
-        Self {
-            r: rgba.r,
-            g: rgba.g,
-            b: rgba.b,
-            a: rgba.a,
-        }
+        Self::new_linear(rgba.r, rgba.g, rgba.b, rgba.a)
     }
 }
 

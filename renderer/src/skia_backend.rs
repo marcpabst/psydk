@@ -28,6 +28,7 @@ use crate::{
     affine::Affine,
     bitmaps::{Bitmap, DynamicBitmap},
     brushes::{Brush, Extend, Gradient, GradientKind, ImageSampling},
+    color_formats::ColorEncoding,
     colors::RGBA,
     font::{DynamicFontFace, Glyph, Typeface},
     renderer::{Renderer, SharedRendererState},
@@ -606,7 +607,8 @@ impl From<&Brush<'_>> for skia_safe::Paint {
         match brush {
             Brush::Solid(color) => {
                 let skia_color: skia_safe::Color4f = color.into();
-                paint.set_color4f(skia_color, &skia_safe::ColorSpace::new_srgb_linear());
+                let skia_color_space: skia_safe::ColorSpace = color.color_encoding().into();
+                paint.set_color4f(skia_color, &skia_color_space);
                 paint
             }
             Brush::Gradient(Gradient { extend, kind, stops }) => {
@@ -1003,6 +1005,15 @@ impl From<crate::renderer::ColorSpace> for skia_safe::ColorSpace {
         match value {
             crate::renderer::ColorSpace::Srgb => skia_safe::ColorSpace::new_srgb(),
             crate::renderer::ColorSpace::LinearSrgb => skia_safe::ColorSpace::new_srgb_linear(),
+        }
+    }
+}
+
+impl From<ColorEncoding> for skia_safe::ColorSpace {
+    fn from(value: ColorEncoding) -> Self {
+        match value {
+            ColorEncoding::Srgb => skia_safe::ColorSpace::new_srgb(),
+            ColorEncoding::Linear => skia_safe::ColorSpace::new_srgb_linear(),
         }
     }
 }
