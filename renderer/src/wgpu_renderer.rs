@@ -41,7 +41,7 @@ impl WgpuRenderer {
 
         // create a render pipeline
         let render_pipeline = Self::create_render_pipelie(&device, surface_format);
-        let texture = Self::create_texture(&device, width, height, ColorFormat::Float16);
+        let texture = Self::create_texture(&device, width, height, ColorFormat::Rgba1010102);
         let lut_texture_array = Self::create_lut_texture_array(&device, 256, 256);
 
         // if a LUT is provided, create a texture array and upload the LUT data
@@ -72,7 +72,7 @@ impl WgpuRenderer {
             for i in 0..(256 * 256) {
                 for c in 0..3 {
                     let x = i as f32 / (256.0 * 256.0);
-                    let y = srgb_inverse_eotf(x);
+                    let y = gamma22_inverse_eotf(x);
                     let y = (y * 255.0).round() as u8;
                     lut_texture_data[c * (256 * 256) + i] = y;
                 }
@@ -157,7 +157,7 @@ impl WgpuRenderer {
     /// Re-size the texture
     pub fn resize(&mut self, width: u32, height: u32, surface: &Surface, device: &Device) {
         self.size = winit::dpi::PhysicalSize::new(width, height);
-        self.texture = Self::create_texture(device, width, height, ColorFormat::Float16);
+        self.texture = Self::create_texture(device, width, height, ColorFormat::Rgba1010102);
         self.bind_group = Self::create_bind_group(device, &self.texture, &self.lut_texture_array, self.encode_gamma);
         self.configure_surface(surface, device);
     }
@@ -427,14 +427,20 @@ fn srgb_inverse_eotf(c: f32) -> f32 {
     }
 }
 
+// gamma 2.2 inverse eotf
+// this is a simplified version of the gamma 2.2 inverse eotf
+// without the precise handling of the 0.04045 threshold
+fn gamma22_inverse_eotf(c: f32) -> f32 {
+    c.powf(1.0 / 2.2)
+}
+
 // allow color_formats::ColorFormat to be used in wgpu
 impl From<ColorFormat> for wgpu::TextureFormat {
     fn from(format: ColorFormat) -> Self {
         match format {
-            ColorFormat::UNorm8 => wgpu::TextureFormat::Bgra8Unorm,
-            ColorFormat::UNorm10 => wgpu::TextureFormat::Rgb10a2Unorm,
-            ColorFormat::UNorm16 => wgpu::TextureFormat::Rgba16Unorm,
-            ColorFormat::Float16 => wgpu::TextureFormat::Rgba16Float,
+            ColorFormat::Rgba8 => wgpu::TextureFormat::Bgra8Unorm,
+            ColorFormat::Rgba1010102 => wgpu::TextureFormat::Rgb10a2Unorm,
+            ColorFormat::RgbaF16 => wgpu::TextureFormat::Rgba16Float,
         }
     }
 }

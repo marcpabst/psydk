@@ -20,6 +20,7 @@ use winit::event_loop::EventLoopProxy;
 use crate::{
     app::{App, ArcMutex, GPUState},
     audio::{PyDevice, PyHost, PyStream},
+    config::ExperimentConfig,
     errors::{self, PsydkError, PsydkResult},
     git::PyRepository,
     visual::window::Window,
@@ -415,15 +416,16 @@ impl ExperimentContext {
 /// experiment_fn : callable
 ///    The function that runs your experiment. This function should take a single argument, an instance of `ExperimentManager`, and should not return nothing.
 #[pyfunction]
-#[pyo3(name = "run_experiment", signature = (py_experiment_fn, *args, **kwargs))]
+#[pyo3(name = "run_experiment", signature = (py_experiment_fn, options=None, *args, **kwargs))]
 pub fn py_run_experiment(
     py: Python,
     py_experiment_fn: Py<PyAny>,
+    options: Option<ExperimentConfig>,
     args: Py<PyTuple>,
     kwargs: Option<Py<PyDict>>,
 ) -> PyResult<()> {
     // create app
-    let mut app = App::new();
+    let mut app = App::new(options.unwrap_or_default());
 
     // set the __globals__ to make "_renderer_factory" available
     // this will allow functions to create renderer-specific objects

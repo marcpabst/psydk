@@ -12,7 +12,7 @@ use psydk_proc::StimulusParams;
 use pyo3::ffi::c_str;
 use renderer::{
     brushes::{Brush, Extend, ImageSampling},
-    renderer::ColorSpace,
+    color_formats::ColorEncoding,
     shapes::Shape,
     styles::ImageFitMode,
     DynamicBitmap, DynamicScene,
@@ -195,7 +195,7 @@ impl VideoStimulus {
 
         let red_image_data = red_image.as_raw();
 
-        let frame = renderer_factory.create_bitmap_from_wgpu_texture(texture.clone(), ColorSpace::Srgb);
+        let frame = renderer_factory.create_bitmap_from_wgpu_texture(texture.clone(), ColorEncoding::Srgb);
 
         let slf = Self {
             id: Uuid::new_v4(),

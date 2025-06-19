@@ -13,7 +13,12 @@ use pyo3::{
     types::{PyDict, PyTuple},
     Py, PyAny, Python,
 };
-use renderer::{cosmic_text, renderer::SharedRendererState, wgpu::TextureFormat};
+use renderer::{
+    color_formats::{ColorEncoding, ColorFormat},
+    cosmic_text,
+    renderer::SharedRendererState,
+    wgpu::TextureFormat,
+};
 use wgpu::MemoryHints;
 use winit::{
     application::ApplicationHandler,
@@ -57,14 +62,8 @@ pub struct App {
     pub font_manager: ArcMutex<renderer::cosmic_text::FontSystem>,
 }
 
-impl Default for App {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl App {
-    pub fn new() -> Self {
+    pub fn new(config: ExperimentConfig) -> Self {
         let (action_sender, action_receiver) = std::sync::mpsc::channel();
 
         let backend = wgpu::Backends::METAL | wgpu::Backends::DX12;
@@ -139,6 +138,8 @@ impl App {
             &gpu_state.adapter,
             &gpu_state.device,
             &gpu_state.queue,
+            config.internal_color_encoding.into(),
+            config.internal_color_depth.into(),
         );
 
         Self {
@@ -196,8 +197,8 @@ impl App {
         let _swapchain_formats = adapter.get_texture_format_features(TextureFormat::Bgra8Unorm);
 
         let swapchain_capabilities = surface.get_capabilities(adapter);
-        let swapchain_format = TextureFormat::Bgra8Unorm;
-        let swapchain_view_format = vec![TextureFormat::Bgra8Unorm];
+        let swapchain_format = TextureFormat::Rgb10a2Unorm;
+        let swapchain_view_format = vec![swapchain_format];
 
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,

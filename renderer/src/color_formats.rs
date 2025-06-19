@@ -3,13 +3,11 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ColorFormat {
     /// 8-bit unsigned integer per channel
-    UNorm8,
-    /// 10-bit unsigned integer per channel
-    UNorm10,
-    /// 16-bit unsigned integer per channel
-    UNorm16,
+    Rgba8,
+    /// 10-bit unsigned integer per channel + 2-bit alpha
+    Rgba1010102,
     /// 16-bit floating point per channel
-    Float16,
+    RgbaF16,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -18,4 +16,6 @@ pub enum ColorEncoding {
     Linear,
     /// RGB color space with sRGB transfer function.
     Srgb,
+    /// Not specified. Usually defaults to linear.
+    Unspecified,
 }

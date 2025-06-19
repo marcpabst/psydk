@@ -47,8 +47,6 @@ use pyo3::types::{PyDict, PyList, PyTuple, PyType};
 use crate::visual::window::Frame;
 
 // macro that adds a sub-module to the current module
-// example usage:
-//
 macro_rules! new_submodule {
     ($supermodule:ident, $supermodule_name:literal, $name:literal) => {{
         let m = PyModule::new($supermodule.py(), $name)?;
@@ -67,6 +65,7 @@ macro_rules! new_submodule {
 fn psydk(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(py_run_experiment, m)?);
     m.add_class::<ExperimentContext>()?;
+    m.add_class::<config::ExperimentConfig>()?;
 
     let m_visual = {
         let m = new_submodule!(m, "psydk", "visual");

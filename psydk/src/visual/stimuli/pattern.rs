@@ -122,7 +122,7 @@ impl PatternStimulus {
 
                 let pattern_image = context
                     .renderer_factory()
-                    .create_bitmap_f32(image_2x1, renderer::renderer::ColorSpace::LinearSrgb);
+                    .create_bitmap_f32(image_2x1, renderer::color_formats::ColorEncoding::Linear);
                 stim.pattern_image = Some(pattern_image);
             }
             FillPattern::Sinosoidal => todo!(),
@@ -150,7 +150,7 @@ impl PatternStimulus {
 
                 let pattern_image = context
                     .renderer_factory()
-                    .create_bitmap_f32(image_2x2, renderer::renderer::ColorSpace::LinearSrgb);
+                    .create_bitmap_f32(image_2x2, renderer::color_formats::ColorEncoding::Linear);
                 stim.pattern_image = Some(pattern_image);
             }
         }

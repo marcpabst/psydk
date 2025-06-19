@@ -13,22 +13,24 @@ use windows::Win32::Graphics::Dxgi::Common::{
 };
 
 use skia_safe::{
-    gpu::{self, backend_formats, DirectContext, SurfaceOrigin},
+    gpu::{self, backend_formats, d3d::DXGI_FORMAT, DirectContext, SurfaceOrigin},
     gradient_shader::{
         linear as sk_linear, radial as sk_radial, sweep as sk_sweep, GradientShaderColors as SkGradientShaderColors,
     },
     image::Image as SkImage,
     images::raster_from_data as sk_raster_from_data,
-    scalar, AlphaType as SkAlphaType, ColorSpace, ColorType, Font as SkFont, Matrix, PictureRecorder, SamplingOptions,
+    scalar, AlphaType as SkAlphaType, ColorType, Font as SkFont, Matrix, PictureRecorder, SamplingOptions,
     Typeface as SkTypeface,
 };
 use wgpu::{Adapter, Device, Queue, Texture};
 
+#[cfg(target_os = "windows")]
+use crate::color_formats;
 use crate::{
     affine::Affine,
     bitmaps::{Bitmap, DynamicBitmap},
     brushes::{Brush, Extend, Gradient, GradientKind, ImageSampling},
-    color_formats::ColorEncoding,
+    color_formats::{ColorEncoding, ColorFormat},
     colors::RGBA,
     font::{DynamicFontFace, Glyph, Typeface},
     renderer::{Renderer, SharedRendererState},
@@ -368,6 +370,8 @@ impl Renderer for SkiaRenderer {
             width,
             height,
             texture,
+            self.shared_state.internal_color_encoding,
+            self.shared_state.internal_color_format,
             &self.shared_state.backend.borrow(),
             &mut skia_context,
         );
@@ -414,24 +418,20 @@ impl Renderer for SkiaRenderer {
         return DynamicFontFace(Box::new(typeface));
     }
 
-    fn create_bitmap_u8(&self, rgba: image::RgbaImage, color_space: crate::renderer::ColorSpace) -> DynamicBitmap {
-        skia_create_bitmap_u8(rgba, color_space)
+    fn create_bitmap_u8(&self, rgba: image::RgbaImage, color_encoding: ColorEncoding) -> DynamicBitmap {
+        skia_create_bitmap_u8(rgba, color_encoding)
     }
 
     fn create_bitmap_f32(
         &self,
         rgba: image::ImageBuffer<image::Rgba<f32>, Vec<f32>>,
-        color_space: crate::renderer::ColorSpace,
+        color_encoding: ColorEncoding,
     ) -> DynamicBitmap {
-        skia_create_bitmap_f32(rgba, color_space)
+        skia_create_bitmap_f32(rgba, color_encoding)
     }
 
-    fn create_bitmap_from_wgpu_texture(
-        &self,
-        texture: wgpu::Texture,
-        color_space: crate::renderer::ColorSpace,
-    ) -> DynamicBitmap {
-        create_bitmap_from_wgpu_texture(&mut self.shared_state.context.borrow_mut(), texture, color_space)
+    fn create_bitmap_from_wgpu_texture(&self, texture: wgpu::Texture, color_encoding: ColorEncoding) -> DynamicBitmap {
+        create_bitmap_from_wgpu_texture(&mut self.shared_state.context.borrow_mut(), texture, color_encoding)
     }
 }
 
@@ -522,13 +522,12 @@ impl SkiaRenderer {
         width: u32,
         height: u32,
         texture: &Texture,
+        color_encoding: ColorEncoding,
+        color_format: ColorFormat,
         _backend: &d3d::BackendContext,
         context: &mut gpu::DirectContext,
     ) -> skia_safe::Surface {
-        use windows::Win32::Graphics::{
-            Direct3D12::D3D12_RESOURCE_STATE_RENDER_TARGET,
-            Dxgi::Common::{DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_R16G16B16A16_UNORM},
-        };
+        use windows::Win32::Graphics::Direct3D12::D3D12_RESOURCE_STATE_RENDER_TARGET;
 
         let raw_texture = unsafe {
             texture.as_hal::<wgpu::hal::api::Dx12, _, _>(|texture| texture.map(|s| s.raw_resource().clone()))
@@ -541,7 +540,7 @@ impl SkiaRenderer {
                 resource: raw_texture,
                 alloc: None,
                 resource_state: D3D12_RESOURCE_STATE_RENDER_TARGET,
-                format: DXGI_FORMAT_R16G16B16A16_FLOAT,
+                format: color_format.into(),
                 sample_count: 1,
                 level_count: 0,
                 sample_quality_pattern: DXGI_STANDARD_MULTISAMPLE_QUALITY_PATTERN,
@@ -553,11 +552,14 @@ impl SkiaRenderer {
             &mut *context,
             &backend_render_target,
             SurfaceOrigin::TopLeft,
-            ColorType::RGBAF16,
-            ColorSpace::new_srgb_linear(),
+            color_format.into(),
+            Some(color_encoding.into()),
             None,
         )
-        .expect("Failed to create Skia surface from DX12 texture")
+        .expect(&format!(
+            "Failed to create Skia surface from DX12 texture with color encoding {:?} and color format {:?}",
+            color_encoding, color_format
+        ))
     }
 }
 
@@ -855,13 +857,21 @@ pub struct SkiaSharedRendererState {
     context: RefCell<gpu::DirectContext>,
     backend: Arc<RefCell<BackendContext>>,
     font_manager: skia_safe::FontMgr,
+    internal_color_encoding: ColorEncoding,
+    internal_color_format: ColorFormat,
 }
 
 unsafe impl Send for SkiaSharedRendererState {}
 unsafe impl Sync for SkiaSharedRendererState {}
 
 impl SkiaSharedRendererState {
-    pub fn new(adapter: &Adapter, device: &Device, queue: &Queue) -> Self {
+    pub fn new(
+        adapter: &Adapter,
+        device: &Device,
+        queue: &Queue,
+        internal_color_encoding: ColorEncoding,
+        internal_color_format: ColorFormat,
+    ) -> Self {
         let backend_context = create_backend_context(adapter, device, queue);
         let skia_context = create_context(&backend_context);
 
@@ -872,6 +882,8 @@ impl SkiaSharedRendererState {
             context: RefCell::new(skia_context),
             backend: Arc::new(RefCell::new(backend_context)),
             font_manager,
+            internal_color_encoding: internal_color_encoding,
+            internal_color_format: internal_color_format,
         }
     }
 }
@@ -880,6 +892,7 @@ impl SharedRendererState for SkiaSharedRendererState {
     fn create_renderer(
         &self,
         _surface_format: wgpu::TextureFormat,
+
         _width: u32,
         _height: u32,
     ) -> crate::DynamicRenderer {
@@ -895,6 +908,8 @@ impl SharedRendererState for SkiaSharedRendererState {
             context: RefCell::new(self.context.borrow().clone()),
             backend: self.backend.clone(),
             font_manager: self.font_manager.clone(),
+            internal_color_encoding: self.internal_color_encoding,
+            internal_color_format: self.internal_color_format,
         })
     }
 
@@ -907,24 +922,20 @@ impl SharedRendererState for SkiaSharedRendererState {
         return DynamicFontFace(Box::new(typeface));
     }
 
-    fn create_bitmap_u8(&self, data: image::RgbaImage, color_space: crate::renderer::ColorSpace) -> DynamicBitmap {
-        skia_create_bitmap_u8(data, color_space)
+    fn create_bitmap_u8(&self, data: image::RgbaImage, color_encoding: ColorEncoding) -> DynamicBitmap {
+        skia_create_bitmap_u8(data, color_encoding)
     }
 
     fn create_bitmap_f32(
         &self,
         data: image::ImageBuffer<image::Rgba<f32>, Vec<f32>>,
-        color_space: crate::renderer::ColorSpace,
+        color_encoding: ColorEncoding,
     ) -> DynamicBitmap {
-        skia_create_bitmap_f32(data, color_space)
+        skia_create_bitmap_f32(data, color_encoding)
     }
 
-    fn create_bitmap_from_wgpu_texture(
-        &self,
-        texture: wgpu::Texture,
-        color_space: crate::renderer::ColorSpace,
-    ) -> DynamicBitmap {
-        create_bitmap_from_wgpu_texture(&mut self.context.borrow_mut(), texture, color_space)
+    fn create_bitmap_from_wgpu_texture(&self, texture: wgpu::Texture, color_encoding: ColorEncoding) -> DynamicBitmap {
+        create_bitmap_from_wgpu_texture(&mut self.context.borrow_mut(), texture, color_encoding)
     }
 
     fn render_resources(&self) -> Option<crate::renderer::DynamicRenderResources> {
@@ -940,7 +951,7 @@ impl SharedRendererState for SkiaSharedRendererState {
     }
 }
 
-fn skia_create_bitmap_u8(rgba: image::RgbaImage, color_space: crate::renderer::ColorSpace) -> DynamicBitmap {
+fn skia_create_bitmap_u8(rgba: image::RgbaImage, color_encoding: ColorEncoding) -> DynamicBitmap {
     let (width, height) = rgba.dimensions();
     let buffer = rgba.into_raw();
     let boxed_buffer = buffer.into_boxed_slice();
@@ -951,7 +962,7 @@ fn skia_create_bitmap_u8(rgba: image::RgbaImage, color_space: crate::renderer::C
             (width as i32, height as i32),
             ColorType::RGBA8888,
             SkAlphaType::Unpremul,
-            Some(color_space.into()),
+            Some(color_encoding.into()),
         ),
         &unsafe { skia_safe::Data::new_bytes(&boxed_buffer) },
         width as usize * 4,
@@ -966,7 +977,7 @@ fn skia_create_bitmap_u8(rgba: image::RgbaImage, color_space: crate::renderer::C
 
 fn skia_create_bitmap_f32(
     rgba: image::ImageBuffer<image::Rgba<f32>, Vec<f32>>,
-    color_space: crate::renderer::ColorSpace,
+    color_encoding: ColorEncoding,
 ) -> DynamicBitmap {
     let (width, height) = rgba.dimensions();
     let buffer = rgba.into_raw();
@@ -981,7 +992,7 @@ fn skia_create_bitmap_f32(
             (width as i32, height as i32),
             ColorType::RGBAF32,
             SkAlphaType::Unpremul,
-            Some(color_space.into()),
+            Some(color_encoding.into()),
         ),
         &unsafe { skia_safe::Data::new_bytes(&boxed_buffer) },
         width as usize * 4 * 4,
@@ -995,20 +1006,34 @@ fn skia_create_bitmap_f32(
 }
 
 // allow a colorpace to be converted to a skia color space
-impl From<crate::renderer::ColorSpace> for skia_safe::ColorSpace {
-    fn from(value: crate::renderer::ColorSpace) -> Self {
-        match value {
-            crate::renderer::ColorSpace::Srgb => skia_safe::ColorSpace::new_srgb(),
-            crate::renderer::ColorSpace::LinearSrgb => skia_safe::ColorSpace::new_srgb_linear(),
-        }
-    }
-}
-
 impl From<ColorEncoding> for skia_safe::ColorSpace {
     fn from(value: ColorEncoding) -> Self {
         match value {
             ColorEncoding::Srgb => skia_safe::ColorSpace::new_srgb(),
             ColorEncoding::Linear => skia_safe::ColorSpace::new_srgb_linear(),
+            ColorEncoding::Unspecified => skia_safe::ColorSpace::new_srgb_linear(),
+        }
+    }
+}
+
+impl From<ColorFormat> for skia_safe::ColorType {
+    fn from(value: ColorFormat) -> Self {
+        match value {
+            ColorFormat::Rgba8 => skia_safe::ColorType::RGBA8888,
+            ColorFormat::RgbaF16 => skia_safe::ColorType::RGBAF16,
+            ColorFormat::Rgba1010102 => skia_safe::ColorType::RGBA1010102,
+            _ => panic!("Unsupported color format for Skia renderer"),
+        }
+    }
+}
+
+impl From<ColorFormat> for DXGI_FORMAT {
+    fn from(value: ColorFormat) -> Self {
+        match value {
+            ColorFormat::Rgba8 => windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_R8G8B8A8_UNORM,
+            ColorFormat::RgbaF16 => windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_R16G16B16A16_FLOAT,
+            ColorFormat::Rgba1010102 => windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_R10G10B10A2_UNORM,
+            _ => panic!("Unsupported color format for Skia renderer"),
         }
     }
 }
@@ -1083,7 +1108,7 @@ fn create_backend_texture(texture: &wgpu::Texture) -> skia_safe::gpu::BackendTex
 fn create_bitmap_from_wgpu_texture(
     context: &mut DirectContext,
     texture: wgpu::Texture,
-    color_space: crate::renderer::ColorSpace,
+    color_encoding: ColorEncoding,
 ) -> DynamicBitmap {
     // create a skia backend context
 
@@ -1097,9 +1122,9 @@ fn create_bitmap_from_wgpu_texture(
         SurfaceOrigin::TopLeft,
         ColorType::RGBA8888,
         SkAlphaType::Unpremul,
-        Some(color_space.into()),
+        Some(color_encoding.into()),
     )
-    .unwrap();
+    .expect("Failed to create Skia image from WGPU texture");
 
     println!("Skia image: {:?}", skia_image);
 

@@ -12,6 +12,7 @@ use image::DynamicImage;
 use super::scenes::{DynamicScene, Scene};
 use crate::{
     bitmaps::DynamicBitmap,
+    color_formats::ColorEncoding,
     font::{DynamicFontFace, FontStyle, FontWidth},
     shapes::Point,
 };
@@ -22,12 +23,6 @@ pub struct DynamicRenderer {
 
 pub struct DynamicRenderResources {
     pub resources: Box<dyn SharedRendererState>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ColorSpace {
-    LinearSrgb,
-    Srgb,
 }
 
 impl DynamicRenderer {
@@ -54,16 +49,16 @@ impl DynamicRenderer {
         DynamicScene::new(scene)
     }
 
-    pub fn create_bitmap_u8(&self, data: image::RgbaImage, color_space: ColorSpace) -> DynamicBitmap {
-        self.backend.create_bitmap_u8(data, color_space)
+    pub fn create_bitmap_u8(&self, data: image::RgbaImage, color_encoding: ColorEncoding) -> DynamicBitmap {
+        self.backend.create_bitmap_u8(data, color_encoding)
     }
 
     pub fn create_bitmap_f32(
         &self,
         data: image::ImageBuffer<image::Rgba<f32>, Vec<f32>>,
-        color_space: ColorSpace,
+        color_encoding: ColorEncoding,
     ) -> DynamicBitmap {
-        self.backend.create_bitmap_f32(data, color_space)
+        self.backend.create_bitmap_f32(data, color_encoding)
     }
 
     pub fn create_bitmap_from_path(&self, path: &str) -> DynamicBitmap {
@@ -92,23 +87,19 @@ pub trait Renderer {
         index: usize,
     ) -> DynamicFontFace;
 
-    fn create_bitmap_u8(&self, data: image::RgbaImage, color_space: ColorSpace) -> DynamicBitmap;
+    fn create_bitmap_u8(&self, data: image::RgbaImage, color_encoding: ColorEncoding) -> DynamicBitmap;
     fn create_bitmap_f32(
         &self,
         data: image::ImageBuffer<image::Rgba<f32>, Vec<f32>>,
-        color_space: ColorSpace,
+        color_encoding: ColorEncoding,
     ) -> DynamicBitmap;
 
     fn create_bitmap_from_path(&self, path: &str) -> DynamicBitmap {
         let image = image::open(path).unwrap().to_rgba8();
-        self.create_bitmap_u8(image, ColorSpace::Srgb)
+        self.create_bitmap_u8(image, ColorEncoding::Srgb)
     }
 
-    fn create_bitmap_from_wgpu_texture(
-        &self,
-        texture: wgpu::Texture,
-        color_space: crate::renderer::ColorSpace,
-    ) -> DynamicBitmap;
+    fn create_bitmap_from_wgpu_texture(&self, texture: wgpu::Texture, color_encoding: ColorEncoding) -> DynamicBitmap;
 }
 
 /// A SharedRendererState is a trait that provides methods to create renderers, bitmaps, and font faces.
@@ -116,19 +107,19 @@ pub trait Renderer {
 pub trait SharedRendererState: Send + Sync {
     fn create_renderer(&self, surface_format: wgpu::TextureFormat, width: u32, height: u32) -> DynamicRenderer;
 
-    fn create_bitmap_u8(&self, data: image::RgbaImage, color_space: ColorSpace) -> DynamicBitmap;
+    fn create_bitmap_u8(&self, data: image::RgbaImage, color_encoding: ColorEncoding) -> DynamicBitmap;
 
     fn create_bitmap_f32(
         &self,
         data: image::ImageBuffer<image::Rgba<f32>, Vec<f32>>,
-        color_space: ColorSpace,
+        color_encoding: ColorEncoding,
     ) -> DynamicBitmap;
 
     fn create_bitmap_from_path(&self, path: &str) -> DynamicBitmap {
         let image = image::open(path).unwrap();
         // convert to RGBA
         let image = image.to_rgba8();
-        self.create_bitmap_u8(image, ColorSpace::Srgb)
+        self.create_bitmap_u8(image, ColorEncoding::Srgb)
     }
 
     fn create_font_face(&self, font_data: &[u8], index: u32) -> DynamicFontFace;
@@ -137,11 +128,7 @@ pub trait SharedRendererState: Send + Sync {
 
     fn as_any_mut(&mut self) -> &mut dyn Any;
 
-    fn create_bitmap_from_wgpu_texture(
-        &self,
-        texture: wgpu::Texture,
-        color_space: crate::renderer::ColorSpace,
-    ) -> DynamicBitmap;
+    fn create_bitmap_from_wgpu_texture(&self, texture: wgpu::Texture, color_encoding: ColorEncoding) -> DynamicBitmap;
 
     // Returns the render resources
     fn render_resources(&self) -> Option<DynamicRenderResources>;
