@@ -9,11 +9,11 @@ use skia_safe::gpu::{d3d, d3d::BackendContext, Protected};
 use skia_safe::gpu::{mtl, mtl::BackendContext};
 #[cfg(target_os = "windows")]
 use windows::Win32::Graphics::Dxgi::Common::{
-    DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_SAMPLE_DESC, DXGI_STANDARD_MULTISAMPLE_QUALITY_PATTERN,
+    DXGI_FORMAT, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_SAMPLE_DESC, DXGI_STANDARD_MULTISAMPLE_QUALITY_PATTERN,
 };
 
 use skia_safe::{
-    gpu::{self, backend_formats, d3d::DXGI_FORMAT, DirectContext, SurfaceOrigin},
+    gpu::{self, backend_formats, DirectContext, SurfaceOrigin},
     gradient_shader::{
         linear as sk_linear, radial as sk_radial, sweep as sk_sweep, GradientShaderColors as SkGradientShaderColors,
     },
@@ -152,6 +152,14 @@ impl SkiaScene {
                 for point in points.iter().skip(1) {
                     path.line_to(*point);
                 }
+                path.close();
+                skia_canvas.draw_path(&path, &skia_paint);
+            }
+            Shape::Triangle { a, b, c } => {
+                let mut path = skia_safe::path::Path::new();
+                path.move_to(a);
+                path.line_to(b);
+                path.line_to(c);
                 path.close();
                 skia_canvas.draw_path(&path, &skia_paint);
             }
@@ -371,7 +379,7 @@ impl Renderer for SkiaRenderer {
             height,
             texture,
             self.shared_state.internal_color_encoding,
-            self.shared_state.internal_color_format,
+            self.shared_state.output_color_format,
             &self.shared_state.backend.borrow(),
             &mut skia_context,
         );
@@ -382,6 +390,8 @@ impl Renderer for SkiaRenderer {
             width,
             height,
             texture,
+            self.shared_state.internal_color_encoding,
+            self.shared_state.internal_color_format,
             &self.shared_state.backend.borrow(),
             &mut skia_context,
         );
@@ -447,11 +457,13 @@ impl SkiaRenderer {
 
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     fn create_surface_metal(
-        device: &Device,
+        _device: &Device,
         width: u32,
         height: u32,
         texture: &Texture,
-        backend: &BackendContext,
+        color_encoding: ColorEncoding,
+        color_format: ColorFormat,
+        _backend: &mtl::BackendContext,
         context: &mut gpu::DirectContext,
     ) -> skia_safe::Surface {
         let raw_texture_ptr = unsafe {
@@ -466,13 +478,15 @@ impl SkiaRenderer {
             &texture_info,
         );
 
+        // panic!("Color format: {:?}, wgpu_texture: {:?}", color_format, texture);
+
         unsafe {
             gpu::surfaces::wrap_backend_render_target(
                 &mut *context,
                 &backend_render_target,
                 SurfaceOrigin::TopLeft,
-                ColorType::RGBAF16,
-                ColorSpace::new_srgb_linear(),
+                color_format.into(),
+                Some(color_encoding.into()),
                 None,
             )
             .unwrap()
@@ -826,6 +840,12 @@ impl From<&Shape> for skia_safe::Path {
                 }
                 path.close();
             }
+            Shape::Triangle { a, b, c } => {
+                path.move_to(*a);
+                path.line_to(*b);
+                path.line_to(*c);
+                path.close();
+            }
             Shape::Path { points } => {
                 if points.len() == 0 {
                     return path;
@@ -859,6 +879,7 @@ pub struct SkiaSharedRendererState {
     font_manager: skia_safe::FontMgr,
     internal_color_encoding: ColorEncoding,
     internal_color_format: ColorFormat,
+    output_color_format: ColorFormat,
 }
 
 unsafe impl Send for SkiaSharedRendererState {}
@@ -871,6 +892,7 @@ impl SkiaSharedRendererState {
         queue: &Queue,
         internal_color_encoding: ColorEncoding,
         internal_color_format: ColorFormat,
+        output_color_format: ColorFormat,
     ) -> Self {
         let backend_context = create_backend_context(adapter, device, queue);
         let skia_context = create_context(&backend_context);
@@ -884,6 +906,7 @@ impl SkiaSharedRendererState {
             font_manager,
             internal_color_encoding: internal_color_encoding,
             internal_color_format: internal_color_format,
+            output_color_format: output_color_format,
         }
     }
 }
@@ -910,6 +933,7 @@ impl SharedRendererState for SkiaSharedRendererState {
             font_manager: self.font_manager.clone(),
             internal_color_encoding: self.internal_color_encoding,
             internal_color_format: self.internal_color_format,
+            output_color_format: self.output_color_format,
         })
     }
 
@@ -1022,11 +1046,13 @@ impl From<ColorFormat> for skia_safe::ColorType {
             ColorFormat::Rgba8 => skia_safe::ColorType::RGBA8888,
             ColorFormat::RgbaF16 => skia_safe::ColorType::RGBAF16,
             ColorFormat::Rgba1010102 => skia_safe::ColorType::RGBA1010102,
+            ColorFormat::Bgra8 => skia_safe::ColorType::BGRA8888,
             _ => panic!("Unsupported color format for Skia renderer"),
         }
     }
 }
 
+#[cfg(target_os = "windows")]
 impl From<ColorFormat> for DXGI_FORMAT {
     fn from(value: ColorFormat) -> Self {
         match value {
@@ -1037,6 +1063,18 @@ impl From<ColorFormat> for DXGI_FORMAT {
         }
     }
 }
+
+// #[cfg(target_os = "macos")]
+// impl From<ColorFormat> for mtl::PixelFormat {
+//     fn from(value: ColorFormat) -> Self {
+//         match value {
+//             ColorFormat::Rgba8 =>
+//             ColorFormat::RgbaF16 => mtl::PixelFormat::RGBA16Float,
+//             ColorFormat::Rgba1010102 => mtl::PixelFormat::RGBA10Un
+//             _ => panic!("Unsupported color format for Skia renderer"),
+//         }
+//     }
+// }
 
 // Helper functions
 
@@ -1063,12 +1101,6 @@ fn create_backend_texture(texture: &wgpu::Texture) -> skia_safe::gpu::BackendTex
                     windows::Win32::Graphics::Dxgi::Common::DXGI_STANDARD_MULTISAMPLE_QUALITY_PATTERN,
                 protected: Protected::No,
             },
-        );
-
-        println!(
-            "Creating Skia backend texture for D3D with size: {}x{}",
-            texture.width(),
-            texture.height()
         );
 
         backend_texture
@@ -1140,6 +1172,7 @@ fn create_bitmap_from_wgpu_texture(
     DynamicBitmap(Box::new(skia_texture))
 }
 
+#[allow(rustc::unused_variables)]
 fn create_backend_context(adapter: &Adapter, device: &Device, queue: &Queue) -> BackendContext {
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     {

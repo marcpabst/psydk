@@ -6,6 +6,8 @@ use std::{
     usize,
 };
 
+mod file_loader;
+
 pub use cpal;
 pub use ndarray;
 
@@ -45,28 +47,31 @@ impl AudioObject {
         Self::Buffer { data, sample_rate }
     }
 
-    // pub fn from_file(path: &str, track: Option<u16>) -> Result<Self, std::io::Error> {
-    //     // Open the media source.
-    //     let path = Path::new(&path);
-    //     let src = File::open(path)?;
+    pub fn from_file(path: &str, track: Option<usize>, sampling_rate: Option<u32>) -> Result<Self, std::io::Error> {
+        let audio_data = file_loader::load_audio_file(path, track).map_err(|e| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Failed to load audio file: {}", e),
+            )
+        })?;
 
-    //     // Create the media source stream.
-    //     let mss = MediaSourceStream::new(Box::new(src), Default::default());
+        // If a sampling rate is provided, resample the audio data
+        let audio_data = if let Some(target_sample_rate) = sampling_rate {
+            file_loader::resample_audio(audio_data, target_sample_rate).map_err(|e| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("Failed to resample audio file: {}", e),
+                )
+            })?
+        } else {
+            audio_data
+        };
 
-    //     // Create a probe hint using the file's extension. [Optional]
-    //     let mut hint = Hint::new();
-    //     if let Some(extension) = path.extension() {
-    //         hint.with_extension(&extension.to_string_lossy());
-    //     };
+        let buffer = audio_data.samples;
+        let sample_rate = audio_data.sample_rate;
 
-    //     // Probe the media source.
-    //     let probed = symphonia::default::get_probe()
-    //         .format(&hint, mss, &Default::default(), &Default::default())
-    //         .expect("unsupported format");
-
-    //     // Get the instantiated format reader.
-    //     let mut format = probed.format;
-    // }
+        Ok(Self::from_samples(buffer, sample_rate))
+    }
 
     pub fn sine_wave(frequency: f32, amplitude: f32, duration: Duration) -> Self {
         Self::SineWave {

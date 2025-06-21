@@ -37,7 +37,6 @@ use crate::{
     errors::{PsydkError, PsydkResult},
     input::{Event, EventHandler, EventHandlerId, EventHandlingExt, EventKind, EventReceiver},
     time::Timestamp,
-    RenderThreadChannelPayload,
 };
 
 #[derive(Debug, Clone, Copy)]

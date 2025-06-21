@@ -5,7 +5,7 @@ use pyo3::ffi::c_str;
 use pyo3::types::PyAnyMethods;
 use pyo3::{pyclass, pyfunction, pymethods, Bound, PyAny, PyObject, PyRef, PyRefMut, PyResult, Python};
 use timed_audio::cpal::traits::{DeviceTrait, HostTrait};
-use timed_audio::cpal::{default_host, Device, Host};
+use timed_audio::cpal::{default_host, Device, Host, StreamConfig};
 use timed_audio::{AudioObject, Stream};
 
 use crate::time::Timestamp;
@@ -47,7 +47,7 @@ pub struct PyAudioObject {
 }
 
 impl PyStream {
-    pub fn new(host: &Host, device: Option<&PyDevice>) -> Self {
+    pub fn new(host: &Host, sampling_rate: Option<u32>, device: Option<&PyDevice>) -> Self {
         let device = match device {
             Some(device) => &device.device,
             None => &host.default_output_device().unwrap(),
@@ -55,8 +55,16 @@ impl PyStream {
 
         let config = device.default_output_config().unwrap();
         let sample_format = config.sample_format();
+
+        let mut config: StreamConfig = config.into();
+
+        // If a specific sample rate is requested, override the default
+        if let Some(rate) = sampling_rate {
+            config.sample_rate = timed_audio::cpal::SampleRate(rate);
+        }
+
         Self {
-            stream: Some(Stream::new(&device, &config.into(), sample_format)),
+            stream: Some(Stream::new(&device, &config, sample_format)),
         }
     }
 }
@@ -128,6 +136,14 @@ impl PyAudioObject {
             audio_object: AudioObject::from_samples(buffer, sample_rate),
         }
     }
+
+    #[staticmethod]
+    #[pyo3(signature = (path, track = None, sampling_rate = None))]
+    fn from_file(path: &str, track: Option<usize>, sampling_rate: Option<u32>) -> PyResult<Self> {
+        let audio_object = AudioObject::from_file(path, track, sampling_rate)
+            .map_err(|e| pyo3::exceptions::PyIOError::new_err(format!("Failed to load audio file: {}", e)))?;
+        Ok(Self { audio_object })
+    }
 }
 
 pub(crate) fn get_host(py: Python) -> PyResult<PyHost> {
@@ -164,4 +180,17 @@ pub fn py_create_sine_wave(py: Python, frequency: f32, volume: f32, duration: f3
 #[pyo3(name = "create_from_samples")]
 pub fn py_create_from_samples(py: Python, samples: PyReadonlyArrayDyn<'_, f32>, sample_rate: u32) -> PyAudioObject {
     PyAudioObject::from_samples(samples, sample_rate)
+}
+
+#[pyfunction]
+#[pyo3(name = "create_from_file")]
+#[pyo3(signature = (path, track = None, sampling_rate = None))]
+pub fn py_create_from_file(
+    py: Python,
+    path: &str,
+    track: Option<usize>,
+    sampling_rate: Option<u32>,
+) -> PyResult<PyAudioObject> {
+    PyAudioObject::from_file(path, track, sampling_rate)
+        .map_err(|e| pyo3::exceptions::PyIOError::new_err(format!("Failed to load audio file: {}", e)))
 }

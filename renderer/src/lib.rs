@@ -5,7 +5,6 @@ pub mod color_formats;
 pub mod colors;
 pub mod effects;
 pub mod font;
-pub mod prerenderd_scene;
 pub mod renderer;
 pub mod scenes;
 pub mod shapes;

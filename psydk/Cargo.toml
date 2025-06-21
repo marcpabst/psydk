@@ -92,13 +92,18 @@ arc-swap = "1.7.1"
 
 # MacOS dependencies
 [target.'cfg(target_os = "macos")'.dependencies]
-objc2 = "0.5.1"
-objc2-foundation = "0.2.0"
+objc2 = { version = "0.6.1" }
+objc2-app-kit = { version = "0.3.1" }
+objc2-foundation = "0.3.1"
+objc2-core-foundation = "0.3.1"
 
 # iOS dependencies
 [target.'cfg(target_os = "ios")'.dependencies]
-objc2 = "0.5.1"
-objc2-foundation = "0.2.0"
+objc2 = { version = "0.6.1" }
+objc2-ui-kit  = { version = "0.3.1" }
+objc2-foundation = "0.3.1"
+objc2-core-foundation = "0.3.1"
+block2 = "0.6.1"
 
 [features]
 default = ["metal", "dx12", "gst"]

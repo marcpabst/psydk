@@ -140,6 +140,17 @@ impl App {
             &gpu_state.queue,
             config.internal_color_encoding.into(),
             config.internal_color_depth.into(),
+            config.display_color_format.into(),
+        );
+
+        println!(
+            r"
+            Renderer created with
+            Display Color Format: {:?},
+            Internal Color Encoding: {:?},
+            Internal Color Depth: {:?}
+            ",
+            &config.display_color_format, &config.internal_color_encoding, &config.internal_color_depth,
         );
 
         Self {
@@ -158,6 +169,7 @@ impl App {
         &self,
         window_options: &WindowOptions,
         gamma_options: GammaOptions,
+        experiment_config: &ExperimentConfig,
         event_loop: &ActiveEventLoop,
     ) -> Window {
         let window_attributes = WinitWindow::default_attributes()
@@ -194,10 +206,10 @@ impl App {
 
         let size = winit_window.inner_size();
 
-        let _swapchain_formats = adapter.get_texture_format_features(TextureFormat::Bgra8Unorm);
+        // let _swapchain_formats = adapter.get_texture_format_features(TextureFormat::Bgra8Unorm);
 
         let swapchain_capabilities = surface.get_capabilities(adapter);
-        let swapchain_format = TextureFormat::Rgb10a2Unorm;
+        let swapchain_format = experiment_config.display_color_format.into();
         let swapchain_view_format = vec![swapchain_format];
 
         let config = wgpu::SurfaceConfiguration {
@@ -387,8 +399,8 @@ impl ApplicationHandler<()> for App {
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: ()) {
         // check if we need to create a new window
         self.action_receiver.try_recv().map(|action| match action {
-            EventLoopAction::CreateNewWindow(options, gamma_options, sender) => {
-                let window = self.create_window(&options, gamma_options, event_loop);
+            EventLoopAction::CreateNewWindow(options, experiment_config, gamma_options, sender) => {
+                let window = self.create_window(&options, gamma_options, &experiment_config, event_loop);
                 self.windows.push(window.clone());
                 sender.send(window).unwrap();
             }
@@ -402,6 +414,10 @@ impl ApplicationHandler<()> for App {
                     })
                     .collect();
                 sender.send(monitors).unwrap();
+            }
+            EventLoopAction::RunInEventLoop(task) => {
+                // run the task in the event loop
+                task();
             }
             EventLoopAction::Exit(..) => {
                 event_loop.exit();

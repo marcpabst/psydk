@@ -50,6 +50,11 @@ pub enum Shape {
     Polygon {
         points: Vec<Point>,
     },
+    Triangle {
+        a: Point,
+        b: Point,
+        c: Point,
+    },
     Path {
         points: Vec<Point>,
     },
@@ -100,6 +105,14 @@ impl Shape {
     pub fn polygon(points: Vec<impl Into<Point>>) -> Self {
         let points = points.into_iter().map(|p| p.into()).collect();
         Self::Polygon { points }
+    }
+
+    pub fn triangle(a: impl Into<Point>, b: impl Into<Point>, c: impl Into<Point>) -> Self {
+        Self::Triangle {
+            a: a.into(),
+            b: b.into(),
+            c: c.into(),
+        }
     }
 
     pub fn path(points: Vec<impl Into<Point>>) -> Self {

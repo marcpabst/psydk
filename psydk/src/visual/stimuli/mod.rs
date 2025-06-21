@@ -29,6 +29,7 @@ pub mod pattern;
 // pub mod sprite;
 pub mod text;
 // pub mod vector;
+#[cfg(feature = "gst")]
 pub mod video;
 
 #[allow(non_camel_case_types)]

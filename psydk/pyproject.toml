@@ -4,11 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "psydk"
-<<<<<<< Updated upstream
-version = "0.1.648"
-=======
-version = "0.1.630"
->>>>>>> Stashed changes
+version = "0.1.692"
 authors = [{ name = "Marc Pabst", email = "mail@xxxxxxx.com" }]
 description = "Python bindings for psydk"
 license = "MPL-2.0"

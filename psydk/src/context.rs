@@ -26,10 +26,10 @@ use crate::{
     visual::window::Window,
 };
 
-#[derive(Dbg)]
 pub enum EventLoopAction {
-    CreateNewWindow(WindowOptions, GammaOptions, Sender<Window>),
+    CreateNewWindow(WindowOptions, ExperimentConfig, GammaOptions, Sender<Window>),
     GetAvailableMonitors(Sender<Vec<Monitor>>),
+    RunInEventLoop(Box<dyn FnOnce() + Send>),
     Exit(Option<errors::PsydkError>),
 }
 
@@ -221,14 +221,315 @@ impl ExperimentContext {
         &self.renderer_factory
     }
 
+    /// Run some code in the event loop thread.
+    pub fn run_in_event_loop<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce() -> R + Send + 'static,
+        R: Send + 'static,
+    {
+        // create a channel to send the result back
+        let (sender, receiver) = channel();
+        // send the action to the event loop
+        self.action_sender
+            .send(EventLoopAction::RunInEventLoop(Box::new(move || {
+                let result = f();
+                sender.send(result).unwrap();
+            })))
+            .unwrap();
+        // wake up the event loop
+        self.event_loop_proxy.send_event(()).unwrap();
+        // wait for the result
+        receiver.recv().unwrap()
+    }
+
+    /// Get a writable directory. This is platform-specific and will return a
+    /// directory that is suitable for writing files. On dekstop platforms, this is just
+    /// the current working directory. On mobile platforms, this is the app's
+    /// sandboxed writable directory.
+    pub fn writable_directory(&self) -> String {
+        #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
+        {
+            std::env::current_dir().unwrap().to_str().unwrap().to_string()
+        }
+        #[cfg(target_os = "ios")]
+        {
+            use objc2::rc::Id;
+            use objc2::{msg_send, ClassType};
+            use objc2_foundation::{
+                NSArray, NSFileManager, NSSearchPathDirectory, NSSearchPathDomainMask, NSString, NSURL,
+            };
+
+            let path = unsafe {
+                let file_manager = NSFileManager::defaultManager();
+                let paths = file_manager.URLsForDirectory_inDomains(
+                    NSSearchPathDirectory::DocumentDirectory,
+                    NSSearchPathDomainMask::UserDomainMask,
+                );
+                let url = paths.firstObject().unwrap();
+                url.path().unwrap_or_default()
+            };
+
+            path.to_string()
+        }
+        #[cfg(target_os = "android")]
+        {
+            panic!("Android writable directory is not implemented yet");
+        }
+    }
+
+    /// Show an alert dialog with the given message.
+    ///
+    pub fn show_alert(&self, message: &str) {
+        #[cfg(target_os = "macos")]
+        {
+            // create a channel to send the result back
+            let (sender, receiver) = channel();
+            let message = message.to_string();
+            // the closure to run in the event loop (macos)
+            #[cfg(target_os = "macos")]
+            let closure = move || {
+                use objc2::MainThreadMarker;
+                #[cfg(target_os = "macos")]
+                use objc2_app_kit::NSAlert;
+                use objc2_foundation::{ns_string, NSString};
+                let main_thread = MainThreadMarker::new().unwrap();
+                let alert = unsafe { NSAlert::new(main_thread) };
+                unsafe { alert.setMessageText(&*NSString::from_str(&message)) };
+                unsafe { alert.runModal() };
+
+                sender.send(()).unwrap();
+            };
+
+            // send the action to the event loop
+            self.action_sender
+                .send(EventLoopAction::RunInEventLoop(Box::new(closure)))
+                .unwrap();
+            // wake up the event loop
+            self.event_loop_proxy.send_event(()).unwrap();
+
+            // wait for the result
+            receiver.recv().unwrap();
+        }
+        #[cfg(target_os = "ios")]
+        todo!();
+    }
+
+    /// Show an alert dialog with the given message.
+    pub fn show_prompt(
+        &self,
+        title: String,
+        subtitle: Option<String>,
+        show_text_input: bool,
+        text_input_placeholder: Option<String>,
+        text_input_value: Option<String>,
+        show_cancel_button: bool,
+    ) -> String {
+        // create a channel to send the result back
+        let (sender, receiver) = channel();
+        // the closure to run in the event loop (macos or ios)
+        #[cfg(target_os = "macos")]
+        let closure = move || {
+            use objc2::MainThreadMarker;
+            use objc2::MainThreadOnly;
+            use objc2_app_kit::{NSAlert, NSImage, NSTextField};
+            use objc2_core_foundation::{CGPoint, CGSize};
+            use objc2_foundation::{ns_string, NSRect, NSString};
+            let main_thread = MainThreadMarker::new().unwrap();
+            let alert = unsafe { NSAlert::new(main_thread) };
+            unsafe {
+                use objc2::AnyThread;
+
+                let icon = NSImage::alloc();
+                let icon = NSImage::initWithSize(icon, CGSize::new(1.0, 1.0));
+                alert.setIcon(Some(&*icon));
+            }
+            unsafe { alert.setMessageText(&*NSString::from_str(&title)) };
+            unsafe { alert.addButtonWithTitle(&*NSString::from_str("OK")) };
+
+            let text_field = if show_text_input {
+                unsafe {
+                    let frame = NSRect::new(CGPoint::new(0.0, 0.0), CGSize::new(300.0, 24.0));
+                    let text_field = NSTextField::alloc(main_thread);
+                    let text_field = NSTextField::initWithFrame(text_field, frame);
+
+                    if let Some(subtitle) = subtitle {
+                        alert.setInformativeText(&*NSString::from_str(&subtitle));
+                    }
+
+                    if let Some(placeholder) = text_input_placeholder {
+                        text_field.setPlaceholderString(Some(&*NSString::from_str(&placeholder)));
+                    }
+
+                    if let Some(value) = text_input_value {
+                        text_field.setStringValue(&*NSString::from_str(&value));
+                    }
+
+                    // text_field.setStringValue(&*NSString::from_str(""));
+                    alert.setAccessoryView(Some(&*text_field));
+
+                    Some(text_field)
+                }
+            } else {
+                None
+            };
+
+            if show_cancel_button {
+                unsafe { alert.addButtonWithTitle(&*NSString::from_str("Cancel")) };
+            }
+
+            let response = unsafe { alert.runModal() };
+
+            // get the text input if available
+            let text_input_value = if let Some(text_field) = text_field {
+                unsafe { text_field.stringValue().to_string() }
+            } else {
+                String::new()
+            };
+
+            if response == 1000 {
+                // NSAlertFirstButtonReturn
+                sender.send((text_input_value, true)).unwrap();
+            } else {
+                // NSAlertSecondButtonReturn or NSAlertThirdButtonReturn
+                sender.send((text_input_value, false)).unwrap();
+            }
+        };
+        #[cfg(target_os = "ios")]
+        let closure = move || {
+            use objc2::rc::Retained;
+            use objc2::MainThreadMarker;
+            use objc2_foundation::NSString;
+            use objc2_ui_kit::{
+                UIAlertAction, UIAlertActionStyle, UIAlertController, UIAlertControllerStyle, UIApplication,
+                UITextField,
+            };
+            use std::ptr::NonNull;
+
+            let main_thread = MainThreadMarker::new().unwrap();
+
+            let subtitle = subtitle.unwrap_or_else(|| "".to_string());
+
+            // Create alert controller
+            let alert = unsafe {
+                UIAlertController::alertControllerWithTitle_message_preferredStyle(
+                    Some(&*NSString::from_str(&title)),
+                    Some(&*NSString::from_str(&subtitle)),
+                    UIAlertControllerStyle::Alert,
+                    main_thread,
+                )
+            };
+
+            // Store text field reference
+            let text_field_ref: Option<Retained<UITextField>> = if show_text_input {
+                unsafe {
+                    alert.addTextFieldWithConfigurationHandler(Some(&block2::ConcreteBlock::new(
+                        move |text_field_ptr: NonNull<UITextField>| {
+                            let text_field = text_field_ptr.as_ref();
+
+                            if let Some(placeholder) = &text_input_placeholder {
+                                text_field.setPlaceholder(Some(&*NSString::from_str(placeholder)));
+                            }
+
+                            if let Some(value) = &text_input_value {
+                                text_field.setText(Some(&*NSString::from_str(value)));
+                            }
+                        },
+                    )));
+
+                    // Get reference to the text field we just added
+                    alert
+                        .textFields()
+                        .map(|fields| fields.firstObject().map(|tf| tf))
+                        .flatten()
+                }
+            } else {
+                None
+            };
+
+            // Add OK button
+            let sender_ok = sender.clone();
+            let text_field_ok = text_field_ref.clone();
+            unsafe {
+                let ok_action = UIAlertAction::actionWithTitle_style_handler(
+                    Some(&*NSString::from_str("OK")),
+                    UIAlertActionStyle::Default,
+                    Some(&block2::ConcreteBlock::new(move |_action: NonNull<UIAlertAction>| {
+                        let text_value = if let Some(ref tf) = text_field_ok {
+                            tf.text().map(|s| s.to_string()).unwrap_or_default()
+                        } else {
+                            String::new()
+                        };
+                        sender_ok.send((text_value, true)).unwrap();
+                    })),
+                    main_thread,
+                );
+                alert.addAction(&ok_action);
+            }
+
+            // Add Cancel button if requested
+            if show_cancel_button {
+                let sender_cancel = sender.clone();
+                let text_field_cancel = text_field_ref.clone();
+                unsafe {
+                    let cancel_action = UIAlertAction::actionWithTitle_style_handler(
+                        Some(&*NSString::from_str("Cancel")),
+                        UIAlertActionStyle::Cancel,
+                        Some(&block2::ConcreteBlock::new(move |_action: NonNull<UIAlertAction>| {
+                            let text_value = if let Some(ref tf) = text_field_cancel {
+                                tf.text().map(|s| s.to_string()).unwrap_or_default()
+                            } else {
+                                String::new()
+                            };
+                            sender_cancel.send((text_value, false)).unwrap();
+                        })),
+                        main_thread,
+                    );
+                    alert.addAction(&cancel_action);
+                }
+            }
+
+            // Present the alert
+            // Note: You'll need to get the root view controller to present from
+            // This is a simplified example - in practice you'd need the actual view controller
+            unsafe {
+                if let Some(window) = UIApplication::sharedApplication(main_thread).keyWindow() {
+                    if let Some(root_vc) = window.rootViewController() {
+                        root_vc.presentViewController_animated_completion(&alert, true, None);
+                    }
+                }
+            }
+        };
+
+        // send the action to the event loop
+        self.action_sender
+            .send(EventLoopAction::RunInEventLoop(Box::new(closure)))
+            .unwrap();
+        // wake up the event loop
+        self.event_loop_proxy.send_event(()).unwrap();
+
+        // wait for the result
+        let (text_input_value, confirmed) = receiver.recv().unwrap();
+        if confirmed {
+            text_input_value
+        } else {
+            // if the user cancelled, return an empty string
+            String::new()
+        }
+    }
+
     /// Create a new window with the given options. This function will dispatch
     /// a new UserEvent to the event loop and wait until the winit window
     /// has been created. Then it will setup the wgpu device and surface and
     /// return a new Window object.
-    pub fn create_window(&self, window_options: &WindowOptions, gamma_options: GammaOptions) -> Window {
+    pub fn create_window(
+        &self,
+        window_options: &WindowOptions,
+        experiment_config: ExperimentConfig,
+        gamma_options: GammaOptions,
+    ) -> Window {
         // set up window by dispatching a new CreateNewWindow action
         let (sender, receiver) = channel();
-        let action = EventLoopAction::CreateNewWindow(window_options.clone(), gamma_options, sender);
+        let action = EventLoopAction::CreateNewWindow(window_options.clone(), experiment_config, gamma_options, sender);
 
         // send action
         self.action_sender.send(action).unwrap();
@@ -266,6 +567,7 @@ impl ExperimentContext {
                 monitor: Some(monitor.clone()),
                 refresh_rate: None,
             },
+            self.config.lock().unwrap().clone(),
             gamma_options,
         )
     }
@@ -369,9 +671,9 @@ impl ExperimentContext {
 
     // Create a new audio stream
     #[pyo3(name = "create_audio_stream")]
-    #[pyo3(signature = (device = None))]
-    fn py_create_audio_stream(&self, device: Option<&PyDevice>) -> PyStream {
-        PyStream::new(&self.audio_host, device)
+    #[pyo3(signature = (sampling_rate=None, device=None))]
+    fn py_create_audio_stream(&self, sampling_rate: Option<u32>, device: Option<&PyDevice>) -> PyStream {
+        PyStream::new(&self.audio_host, sampling_rate, device)
     }
 
     #[pyo3(name = "get_available_monitors")]
@@ -405,6 +707,48 @@ impl ExperimentContext {
     fn py_load_font_directory(&self, path: &str) -> PyResult<()> {
         self.load_font_directory(path)?;
         Ok(())
+    }
+
+    #[pyo3(name = "get_writable_directory")]
+    /// Get a writable directory. This is platform-specific and will return a
+    /// directory that is suitable for writing files. On desktop platforms, this is just
+    // the current working directory. On mobile platforms, this is the app's
+    /// sandboxed writable directory.
+    fn py_get_writable_directory(&self) -> String {
+        self.writable_directory()
+    }
+
+    #[pyo3(name = "show_alert")]
+    fn py_show_alert(&self, message: &str, py: Python) -> PyResult<()> {
+        self.show_alert(message);
+        Ok(())
+    }
+
+    #[pyo3(name = "show_prompt")]
+    #[pyo3(signature = (title,
+        subtitle=None,
+        show_text_input=true,
+        text_input_placeholder=None,
+        text_input_value=None,
+        show_cancel_button=false))]
+    fn py_show_prompt(
+        &self,
+        title: String,
+        subtitle: Option<String>,
+        show_text_input: bool,
+        text_input_placeholder: Option<String>,
+        text_input_value: Option<String>,
+        show_cancel_button: bool,
+        py: Python,
+    ) -> PyResult<String> {
+        Ok(self.show_prompt(
+            title,
+            subtitle,
+            show_text_input,
+            text_input_placeholder,
+            text_input_value,
+            show_cancel_button,
+        ))
     }
 }
 

@@ -14,7 +14,7 @@ CARGO_TARGET_AARCH64_APPLE_IOS_RUSTFLAGS="-C link-arg=-isysroot -C link-arg=$IOS
 	-C link-arg=$PYTHONDIR \
 	-C link-arg=-undefined \
 	-C link-arg=dynamic_lookup" \
-	maturin build --target aarch64-apple-ios --release
+	maturin build --target aarch64-apple-ios --release --no-default-features --features "metal"
 
 
 # SDKROOT=$(xcrun --sdk iphoneos --show-sdk-path) \

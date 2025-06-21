@@ -406,6 +406,25 @@ impl Stimulus for PatternStimulus {
 
                 scene.draw_shape_stroke(shape, stroke_brush, stroke_options, None, None);
             }
+            Shape::Triangle { a, b, c } => {
+                let a = (
+                    a.0.eval(windows_size, screen_props) as f64 + x_origin,
+                    a.1.eval(windows_size, screen_props) as f64 + y_origin,
+                );
+                let b = (
+                    b.0.eval(windows_size, screen_props) as f64 + x_origin,
+                    b.1.eval(windows_size, screen_props) as f64 + y_origin,
+                );
+                let c = (
+                    c.0.eval(windows_size, screen_props) as f64 + x_origin,
+                    c.1.eval(windows_size, screen_props) as f64 + y_origin,
+                );
+                let shape = renderer::shapes::Shape::triangle(a, b, c);
+
+                scene.draw_shape_fill(shape.clone(), fill_brush.clone(), None, None);
+
+                scene.draw_shape_stroke(shape, stroke_brush, stroke_options, None, None);
+            }
             Shape::Path { points } => {
                 let points = points
                     .iter()

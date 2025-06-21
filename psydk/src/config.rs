@@ -11,6 +11,8 @@ pub struct ExperimentConfig {
     pub internal_color_depth: InternalColorDepth,
     /// internal color encoding
     pub internal_color_encoding: InternalColorEncoding,
+    // output color format
+    pub display_color_format: DisplayColorFormat,
 }
 
 impl ExperimentConfig {
@@ -20,6 +22,7 @@ impl ExperimentConfig {
         debug: bool,
         color_depth: &str,
         color_encoding: &str,
+        output_color_format: &str,
     ) -> Result<Self, String> {
         let internal_color_depth = match color_depth {
             "unorm8" => InternalColorDepth::UNorm8,
@@ -44,11 +47,24 @@ impl ExperimentConfig {
             }
         };
 
+        let output_color_format = match output_color_format {
+            "rgb888unorm" => DisplayColorFormat::Rgba8Unorm,
+            "bgra8888unorm" => DisplayColorFormat::Bgra8Unorm,
+            "rgb101010unorm" => DisplayColorFormat::Rgb101010Unorm,
+            _ => {
+                return Err(format!(
+                    "Unknown output color format: {}. Supported values are: rgb888unorm, rgb101010unorm",
+                    output_color_format
+                ))
+            }
+        };
+
         Ok(Self {
             pedantic,
             debug,
             internal_color_depth,
             internal_color_encoding,
+            display_color_format: output_color_format,
         })
     }
 }
@@ -61,9 +77,16 @@ impl ExperimentConfig {
         debug: bool,
         internal_color_depth: &str,
         internal_color_encoding: &str,
+        display_color_format: &str,
     ) -> PyResult<Self> {
-        Self::new_from_string(pedantic, debug, internal_color_depth, internal_color_encoding)
-            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e))
+        Self::new_from_string(
+            pedantic,
+            debug,
+            internal_color_depth,
+            internal_color_encoding,
+            display_color_format,
+        )
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e))
     }
 }
 
@@ -74,6 +97,7 @@ impl Default for ExperimentConfig {
             debug: false,
             internal_color_depth: InternalColorDepth::default(),
             internal_color_encoding: InternalColorEncoding::default(),
+            display_color_format: DisplayColorFormat::default(),
         }
     }
 }
@@ -92,14 +116,16 @@ pub enum InternalColorDepth {
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DisplayColorFormat {
-    #[default]
     /// 8-bit unsigned integer for red, green, blue.
-    Rgb888Unorm,
+    Rgba8Unorm,
+    #[default]
+    /// 8-bit unsigned integer in BGRA order.
+    Bgra8Unorm,
     /// 10-bit unsigned integer for red, green, blue.
     Rgb101010Unorm,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InternalColorEncoding {
     #[default]
     /// RGB color space without transfer function (linear).
@@ -142,6 +168,26 @@ impl Into<renderer::color_formats::ColorFormat> for InternalColorDepth {
             InternalColorDepth::UNorm8 => renderer::color_formats::ColorFormat::Rgba8,
             InternalColorDepth::UNorm10 => renderer::color_formats::ColorFormat::Rgba1010102,
             InternalColorDepth::F16 => renderer::color_formats::ColorFormat::RgbaF16,
+        }
+    }
+}
+
+impl Into<renderer::color_formats::ColorFormat> for DisplayColorFormat {
+    fn into(self) -> renderer::color_formats::ColorFormat {
+        match self {
+            DisplayColorFormat::Rgba8Unorm => renderer::color_formats::ColorFormat::Rgba8,
+            DisplayColorFormat::Bgra8Unorm => renderer::color_formats::ColorFormat::Bgra8,
+            DisplayColorFormat::Rgb101010Unorm => renderer::color_formats::ColorFormat::Rgba1010102,
+        }
+    }
+}
+
+impl Into<wgpu::TextureFormat> for DisplayColorFormat {
+    fn into(self) -> wgpu::TextureFormat {
+        match self {
+            DisplayColorFormat::Rgba8Unorm => wgpu::TextureFormat::Rgba8Unorm,
+            DisplayColorFormat::Bgra8Unorm => wgpu::TextureFormat::Bgra8Unorm,
+            DisplayColorFormat::Rgb101010Unorm => wgpu::TextureFormat::Rgb10a2Unorm,
         }
     }
 }

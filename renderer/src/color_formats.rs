@@ -4,6 +4,8 @@
 pub enum ColorFormat {
     /// 8-bit unsigned integer per channel
     Rgba8,
+    /// 8-bit unsigned integer per channel in brga order
+    Bgra8,
     /// 10-bit unsigned integer per channel + 2-bit alpha
     Rgba1010102,
     /// 16-bit floating point per channel

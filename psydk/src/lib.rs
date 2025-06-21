@@ -38,7 +38,7 @@ pub mod context;
 pub use wgpu;
 
 // types to make the code more readable
-pub(crate) type RenderThreadChannelPayload = Box<dyn FnOnce() -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>;
+// pub(crate) type RenderThreadChannelPayload = Box<dyn FnOnce() -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>;
 
 use std::thread;
 
@@ -77,6 +77,7 @@ fn psydk(m: &Bound<'_, PyModule>) -> PyResult<()> {
             m.add_class::<visual::stimuli::image::PyImageStimulus>()?;
             m.add_class::<visual::stimuli::pattern::PyPatternStimulus>()?;
             m.add_class::<visual::stimuli::text::PyTextStimulus>()?;
+            #[cfg(feature = "gst")]
             m.add_class::<visual::stimuli::video::PyVideoStimulus>()?;
             m
         };
@@ -101,6 +102,7 @@ fn psydk(m: &Bound<'_, PyModule>) -> PyResult<()> {
             m.add_function(wrap_pyfunction!(visual::geometry::ellipse, &m)?)?;
             m.add_function(wrap_pyfunction!(visual::geometry::line, &m)?)?;
             m.add_function(wrap_pyfunction!(visual::geometry::polygon, &m)?)?;
+            m.add_function(wrap_pyfunction!(visual::geometry::triangle, &m)?)?;
             m.add_function(wrap_pyfunction!(visual::geometry::path, &m)?)?;
 
             m
@@ -133,6 +135,7 @@ fn psydk(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m.add_function(wrap_pyfunction!(audio::py_create_sine_wave, &m)?)?;
         m.add_function(wrap_pyfunction!(audio::py_create_white_noise, &m)?)?;
         m.add_function(wrap_pyfunction!(audio::py_create_from_samples, &m)?)?;
+        m.add_function(wrap_pyfunction!(audio::py_create_from_file, &m)?)?;
         m
     };
 

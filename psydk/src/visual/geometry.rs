@@ -610,6 +610,13 @@ pub enum Shape {
 
     /// A path.
     Path { points: Vec<(Size, Size)> },
+
+    /// A Triangle.
+    Triangle {
+        a: (Size, Size),
+        b: (Size, Size),
+        c: (Size, Size),
+    },
 }
 
 #[pymethods]
@@ -717,6 +724,16 @@ impl Shape {
     fn polygon(points: Vec<(IntoSize, IntoSize)>) -> Shape {
         let points = points.into_iter().map(|(x, y)| (x.into(), y.into())).collect();
         Shape::Polygon { points }
+    }
+
+    #[staticmethod]
+    /// Create a new triangle.
+    fn triangle(a: (IntoSize, IntoSize), b: (IntoSize, IntoSize), c: (IntoSize, IntoSize)) -> Shape {
+        Shape::Triangle {
+            a: (a.0.into(), a.1.into()),
+            b: (b.0.into(), b.1.into()),
+            c: (c.0.into(), c.1.into()),
+        }
     }
 
     #[staticmethod]
@@ -910,6 +927,16 @@ pub fn ellipse(x: IntoSize, y: IntoSize, radius_x: IntoSize, radius_y: IntoSize)
 pub fn polygon(points: Vec<(IntoSize, IntoSize)>) -> Shape {
     Shape::Polygon {
         points: points.into_iter().map(|(x, y)| (x.into(), y.into())).collect(),
+    }
+}
+
+#[pyfunction]
+/// Create a new triangle.
+pub fn triangle(a: (IntoSize, IntoSize), b: (IntoSize, IntoSize), c: (IntoSize, IntoSize)) -> Shape {
+    Shape::Triangle {
+        a: (a.0.into(), a.1.into()),
+        b: (b.0.into(), b.1.into()),
+        c: (c.0.into(), c.1.into()),
     }
 }
 
