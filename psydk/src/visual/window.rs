@@ -147,6 +147,8 @@ pub struct WindowState {
     #[dbg(placeholder = "...")]
     pub frame_queue: Vec<FrameId>,
     pub last_frame_id: FrameId,
+    /// The frame currently being shown (used to dispatch events).
+    pub current_frame: Option<Frame>,
 }
 
 unsafe impl Send for WindowState {}
@@ -336,6 +338,10 @@ impl Window {
             //     //     };
             //     // }
             // }
+            //
+
+            // write frame to window_state
+            win_state.current_frame = Some(frame.clone());
 
             // present the frame
             suface_texture.present();
@@ -481,9 +487,7 @@ impl Window {
     pub fn get_frame(&self) -> Frame {
         let win_state = self.state.lock().unwrap();
         let win_state = win_state.as_ref().unwrap();
-        // let scene = win_state
-        //     .renderer
-        //     .create_scene(win_state.size.width, win_state.size.height);
+
         let mut frame = Frame {
             stimuli: Vec::new(),
             window: self.clone(),
@@ -527,6 +531,13 @@ impl Window {
             }
         }
 
+        // dispatch to frame
+        let state = self.state.lock().unwrap();
+        let state = state.as_ref().unwrap();
+
+        if let Some(frame) = &state.current_frame {
+            handled |= frame.dispatch_event_to_stimuli(&event, &state);
+        }
         handled
     }
 
@@ -741,7 +752,7 @@ impl FrameIterator {
     }
 }
 
-#[derive(Dbg)]
+#[derive(Dbg, Clone)]
 #[pyclass]
 pub struct Frame {
     #[dbg(placeholder = "...")]
@@ -796,6 +807,22 @@ impl Frame {
 
     pub fn window(&self) -> Window {
         self.window.clone()
+    }
+
+    /// Dispatch an even to the Frame's stimuli.
+    pub fn dispatch_event_to_stimuli(&self, event: &Event, window_state: &WindowState) -> bool {
+        let mut handled = false;
+
+        for stimulus in &self.stimuli {
+            // dispatch the event to the stimulus
+            handled |= stimulus.lock().dispatch_event(&event, window_state);
+            if handled {
+                // if the event was handled, we can stop dispatching it
+                break;
+            }
+        }
+
+        handled
     }
 }
 

@@ -271,6 +271,7 @@ impl App {
             frame_callbacks: HashMap::new(),
             frame_queue: Vec::new(),
             last_frame_id: 0,
+            current_frame: None,
         };
 
         // create channel for physical input

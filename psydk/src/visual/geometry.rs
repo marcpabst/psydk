@@ -362,6 +362,16 @@ impl Size {
         -self.clone()
     }
 
+    // multiplication
+    fn __mul__(&self, other: f32) -> Size {
+        self.clone() * other
+    }
+
+    // division
+    fn __truediv__(&self, other: f32) -> Size {
+        self.clone() * (1.0 / other)
+    }
+
     // evaluation
     #[pyo3(name = "eval")]
     fn py_eval(&self, window: &Window) -> f32 {
@@ -617,6 +627,107 @@ pub enum Shape {
         b: (Size, Size),
         c: (Size, Size),
     },
+}
+
+impl Shape {
+    /// Check if a point is inside the shape, given window_size and window_props
+    pub fn contains_point(&self, point: (Size, Size), window_size: PixelSize, window_props: PhysicalScreen) -> bool {
+        let (x, y) = (
+            point.0.eval(window_size, window_props),
+            point.1.eval(window_size, window_props),
+        );
+        match self {
+            Shape::Rectangle {
+                x: sx,
+                y: sy,
+                width,
+                height,
+            } => {
+                println!(
+                    "Checking rectangle at ({:?}, {:?}) with width {:?} and height {:?}",
+                    sx, sy, width, height
+                );
+                let sx = sx.eval(window_size, window_props);
+                let sy = sy.eval(window_size, window_props);
+                // check if the point is inside the rectangle
+                return (x >= sx && x <= sx + width.eval(window_size, window_props))
+                    && (y >= sy && y <= sy + height.eval(window_size, window_props));
+            }
+            Shape::Circle { x: cx, y: cy, radius } => {
+                let cx = cx.eval(window_size, window_props);
+                let cy = cy.eval(window_size, window_props);
+                let radius = radius.eval(window_size, window_props);
+                ((x - cx).powi(2) + (y - cy).powi(2)) <= radius.powi(2)
+            }
+            Shape::Line {
+                x1: x1s,
+                y1: y1s,
+                x2: x2s,
+                y2: y2s,
+            } => {
+                let x1 = x1s.eval(window_size, window_props);
+                let y1 = y1s.eval(window_size, window_props);
+                let x2 = x2s.eval(window_size, window_props);
+                let y2 = y2s.eval(window_size, window_props);
+
+                // check if the point is on the line segment
+                let cross_product = (y - y1) * (x2 - x1) - (x - x1) * (y2 - y1);
+                if cross_product.abs() > 0.01 {
+                    return false; // not on the line
+                }
+
+                // check if the point is within the bounds of the line segment
+                if (x < f32::min(x1, x2) || x > f32::max(x1, x2)) || (y < f32::min(y1, y2) || y > f32::max(y1, y2)) {
+                    return false;
+                }
+
+                true
+            }
+            Shape::Ellipse {
+                x: ex,
+                y: ey,
+                radius_x: rx,
+                radius_y: ry,
+            } => {
+                let ex = ex.eval(window_size, window_props);
+                let ey = ey.eval(window_size, window_props);
+                let rx = rx.eval(window_size, window_props);
+                let ry = ry.eval(window_size, window_props);
+                let dx = (x - ex) / rx;
+                let dy = (y - ey) / ry;
+                dx.powi(2) + dy.powi(2) <= 1.0
+            }
+            Shape::Polygon { points } => {
+                todo!("Implement point-in-polygon test for polygons")
+                // This is a complex algorithm, so we will leave it for later.
+                // A simple implementation would be to use the ray-casting algorithm,
+            }
+            Shape::Path { points } => {
+                // A path is not a closed shape, so we cannot check if a point is inside it.
+                return false;
+            }
+            Shape::Triangle { a, b, c } => {
+                let (ax, ay) = a;
+                let (bx, by) = b;
+                let (cx, cy) = c;
+                let ax = ax.eval(window_size, window_props);
+                let ay = ay.eval(window_size, window_props);
+                let bx = bx.eval(window_size, window_props);
+                let by = by.eval(window_size, window_props);
+                let cx = cx.eval(window_size, window_props);
+                let cy = cy.eval(window_size, window_props);
+                // Barycentric coordinates method to check if the point is inside the triangle
+
+                let area = 0.5 * (-by * cx + ax * (by - cy) + bx * (cy - ay) + cx * (ay - by));
+                let s = 1.0 / (2.0 * area) * (ay * cx - ax * cy + (cy - ay) * x + (ax - cx) * y);
+                let t = 1.0 / (2.0 * area) * (ax * by - ay * bx + (ay - by) * x + (bx - ax) * y);
+                if s < 0.0 || t < 0.0 || (s + t) > 1.0 {
+                    return false; // point is outside the triangle
+                }
+                true // point is inside the triangle
+            }
+        }
+    }
 }
 
 #[pymethods]

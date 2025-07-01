@@ -8,15 +8,6 @@ use std::{
 
 use sysinfo::System;
 
-use derive_debug::Dbg;
-use pyo3::{
-    pyclass, pyfunction, pymethods,
-    types::{PyAnyMethods, PyDict, PyList, PyListMethods, PySequenceMethods, PyTuple, PyTupleMethods},
-    IntoPy, Py, PyAny, PyResult, Python,
-};
-use renderer::{cosmic_text, renderer::SharedRendererState};
-use winit::event_loop::EventLoopProxy;
-
 use crate::{
     app::{App, ArcMutex, GPUState},
     audio::{PyDevice, PyHost, PyStream},
@@ -25,6 +16,15 @@ use crate::{
     git::PyRepository,
     visual::window::Window,
 };
+use derive_debug::Dbg;
+use pyo3::types::{PyModule, PyString};
+use pyo3::{
+    pyclass, pyfunction, pymethods,
+    types::{PyAnyMethods, PyDict, PyList, PyListMethods, PySequenceMethods, PyTuple, PyTupleMethods},
+    IntoPy, Py, PyAny, PyResult, Python,
+};
+use renderer::{cosmic_text, renderer::SharedRendererState};
+use winit::event_loop::EventLoopProxy;
 
 pub enum EventLoopAction {
     CreateNewWindow(WindowOptions, ExperimentConfig, GammaOptions, Sender<Window>),

@@ -17,13 +17,13 @@ use super::{
     geometry::{IntoSize, Size, Transformation2D},
     window::{Frame, Window, WindowState},
 };
-use crate::visual::color::LinRgba;
+use crate::{input::Event, visual::color::LinRgba};
 
 pub mod animations;
 mod helpers;
 
+pub mod button;
 pub mod gabor;
-// pub mod grid;
 pub mod image;
 pub mod pattern;
 // pub mod sprite;
@@ -281,6 +281,12 @@ pub trait Stimulus: downcast_rs::Downcast + std::fmt::Debug + Send {
 
     /// Set a parameter of the stimulus.
     fn set_param(&mut self, name: &str, value: StimulusParamValue);
+
+    /// Dispatch an event to the stimulus. Return true if the event was consumed.
+    fn dispatch_event(&mut self, event: &Event, window_state: &WindowState) -> bool {
+        // by default, stimuli will do nothing.
+        false
+    }
 }
 
 downcast_rs::impl_downcast!(Stimulus);
@@ -304,25 +310,6 @@ impl DynamicStimulus {
         self.0.lock().unwrap()
     }
 }
-
-// #[pymethods]
-// impl PyStimulus {
-
-//     fn new() -> Self {
-//         Self(DynamicStimulus::new(shape::ShapeStimulus::new(
-//             super::geometry::Shape::Rectangle,
-//             Size::new(0.0, 0.0),
-//             Size::new(0.0, 0.0),
-//             None,
-//             None,
-//             None,
-//             None,
-//             None,
-//             Transformation2D::default(),
-//         )))
-//     }
-
-// }
 
 impl PyStimulus {
     pub fn new(stimulus: impl Stimulus + 'static) -> Self {

@@ -232,7 +232,7 @@ impl Stimulus for TextStimulus {
 
         // convert physical units to pixels
         let pos_x = self.params.x.eval(window_size, screen_props) as f64;
-        let pos_y = self.params.y.eval(window_size, screen_props) as f64;
+        let pos_y = -self.params.y.eval(window_size, screen_props) as f64;
         let font_size = self.params.font_size.eval(window_size, screen_props) as f64;
 
         let trans_mat = self.transform.eval(window_size, screen_props);
