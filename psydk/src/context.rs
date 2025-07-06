@@ -324,197 +324,201 @@ impl ExperimentContext {
         text_input_value: Option<String>,
         show_cancel_button: bool,
     ) -> String {
-        // create a channel to send the result back
-        let (sender, receiver) = channel();
-        // the closure to run in the event loop (macos or ios)
-        #[cfg(target_os = "macos")]
-        let closure = move || {
-            use objc2::MainThreadMarker;
-            use objc2::MainThreadOnly;
-            use objc2_app_kit::{NSAlert, NSImage, NSTextField};
-            use objc2_core_foundation::{CGPoint, CGSize};
-            use objc2_foundation::{ns_string, NSRect, NSString};
-            let main_thread = MainThreadMarker::new().unwrap();
-            let alert = unsafe { NSAlert::new(main_thread) };
-            unsafe {
-                use objc2::AnyThread;
-
-                let icon = NSImage::alloc();
-                let icon = NSImage::initWithSize(icon, CGSize::new(1.0, 1.0));
-                alert.setIcon(Some(&*icon));
-            }
-            unsafe { alert.setMessageText(&*NSString::from_str(&title)) };
-            unsafe { alert.addButtonWithTitle(&*NSString::from_str("OK")) };
-
-            let text_field = if show_text_input {
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
+        {
+            // create a channel to send the result back
+            let (sender, receiver) = channel();
+            // the closure to run in the event loop (macos or ios)
+            #[cfg(target_os = "macos")]
+            let closure = move || {
+                use objc2::MainThreadMarker;
+                use objc2::MainThreadOnly;
+                use objc2_app_kit::{NSAlert, NSImage, NSTextField};
+                use objc2_core_foundation::{CGPoint, CGSize};
+                use objc2_foundation::{ns_string, NSRect, NSString};
+                let main_thread = MainThreadMarker::new().unwrap();
+                let alert = unsafe { NSAlert::new(main_thread) };
                 unsafe {
-                    let frame = NSRect::new(CGPoint::new(0.0, 0.0), CGSize::new(300.0, 24.0));
-                    let text_field = NSTextField::alloc(main_thread);
-                    let text_field = NSTextField::initWithFrame(text_field, frame);
+                    use objc2::AnyThread;
 
-                    if let Some(subtitle) = subtitle {
-                        alert.setInformativeText(&*NSString::from_str(&subtitle));
-                    }
-
-                    if let Some(placeholder) = text_input_placeholder {
-                        text_field.setPlaceholderString(Some(&*NSString::from_str(&placeholder)));
-                    }
-
-                    if let Some(value) = text_input_value {
-                        text_field.setStringValue(&*NSString::from_str(&value));
-                    }
-
-                    // text_field.setStringValue(&*NSString::from_str(""));
-                    alert.setAccessoryView(Some(&*text_field));
-
-                    Some(text_field)
+                    let icon = NSImage::alloc();
+                    let icon = NSImage::initWithSize(icon, CGSize::new(1.0, 1.0));
+                    alert.setIcon(Some(&*icon));
                 }
-            } else {
-                None
-            };
+                unsafe { alert.setMessageText(&*NSString::from_str(&title)) };
+                unsafe { alert.addButtonWithTitle(&*NSString::from_str("OK")) };
 
-            if show_cancel_button {
-                unsafe { alert.addButtonWithTitle(&*NSString::from_str("Cancel")) };
-            }
+                let text_field = if show_text_input {
+                    unsafe {
+                        let frame = NSRect::new(CGPoint::new(0.0, 0.0), CGSize::new(300.0, 24.0));
+                        let text_field = NSTextField::alloc(main_thread);
+                        let text_field = NSTextField::initWithFrame(text_field, frame);
 
-            let response = unsafe { alert.runModal() };
+                        if let Some(subtitle) = subtitle {
+                            alert.setInformativeText(&*NSString::from_str(&subtitle));
+                        }
 
-            // get the text input if available
-            let text_input_value = if let Some(text_field) = text_field {
-                unsafe { text_field.stringValue().to_string() }
-            } else {
-                String::new()
-            };
+                        if let Some(placeholder) = text_input_placeholder {
+                            text_field.setPlaceholderString(Some(&*NSString::from_str(&placeholder)));
+                        }
 
-            if response == 1000 {
-                // NSAlertFirstButtonReturn
-                sender.send((text_input_value, true)).unwrap();
-            } else {
-                // NSAlertSecondButtonReturn or NSAlertThirdButtonReturn
-                sender.send((text_input_value, false)).unwrap();
-            }
-        };
-        #[cfg(target_os = "ios")]
-        let closure = move || {
-            use objc2::rc::Retained;
-            use objc2::MainThreadMarker;
-            use objc2_foundation::NSString;
-            use objc2_ui_kit::{
-                UIAlertAction, UIAlertActionStyle, UIAlertController, UIAlertControllerStyle, UIApplication,
-                UITextField,
-            };
-            use std::ptr::NonNull;
+                        if let Some(value) = text_input_value {
+                            text_field.setStringValue(&*NSString::from_str(&value));
+                        }
 
-            let main_thread = MainThreadMarker::new().unwrap();
+                        // text_field.setStringValue(&*NSString::from_str(""));
+                        alert.setAccessoryView(Some(&*text_field));
 
-            let subtitle = subtitle.unwrap_or_else(|| "".to_string());
+                        Some(text_field)
+                    }
+                } else {
+                    None
+                };
 
-            // Create alert controller
-            let alert = unsafe {
-                UIAlertController::alertControllerWithTitle_message_preferredStyle(
-                    Some(&*NSString::from_str(&title)),
-                    Some(&*NSString::from_str(&subtitle)),
-                    UIAlertControllerStyle::Alert,
-                    main_thread,
-                )
-            };
-
-            // Store text field reference
-            let text_field_ref: Option<Retained<UITextField>> = if show_text_input {
-                unsafe {
-                    alert.addTextFieldWithConfigurationHandler(Some(&block2::ConcreteBlock::new(
-                        move |text_field_ptr: NonNull<UITextField>| {
-                            let text_field = text_field_ptr.as_ref();
-
-                            if let Some(placeholder) = &text_input_placeholder {
-                                text_field.setPlaceholder(Some(&*NSString::from_str(placeholder)));
-                            }
-
-                            if let Some(value) = &text_input_value {
-                                text_field.setText(Some(&*NSString::from_str(value)));
-                            }
-                        },
-                    )));
-
-                    // Get reference to the text field we just added
-                    alert
-                        .textFields()
-                        .map(|fields| fields.firstObject().map(|tf| tf))
-                        .flatten()
+                if show_cancel_button {
+                    unsafe { alert.addButtonWithTitle(&*NSString::from_str("Cancel")) };
                 }
-            } else {
-                None
+
+                let response = unsafe { alert.runModal() };
+
+                // get the text input if available
+                let text_input_value = if let Some(text_field) = text_field {
+                    unsafe { text_field.stringValue().to_string() }
+                } else {
+                    String::new()
+                };
+
+                if response == 1000 {
+                    // NSAlertFirstButtonReturn
+                    sender.send((text_input_value, true)).unwrap();
+                } else {
+                    // NSAlertSecondButtonReturn or NSAlertThirdButtonReturn
+                    sender.send((text_input_value, false)).unwrap();
+                }
             };
+            #[cfg(target_os = "ios")]
+            let closure = move || {
+                use objc2::rc::Retained;
+                use objc2::MainThreadMarker;
+                use objc2_foundation::NSString;
+                use objc2_ui_kit::{
+                    UIAlertAction, UIAlertActionStyle, UIAlertController, UIAlertControllerStyle, UIApplication,
+                    UITextField,
+                };
+                use std::ptr::NonNull;
 
-            // Add OK button
-            let sender_ok = sender.clone();
-            let text_field_ok = text_field_ref.clone();
-            unsafe {
-                let ok_action = UIAlertAction::actionWithTitle_style_handler(
-                    Some(&*NSString::from_str("OK")),
-                    UIAlertActionStyle::Default,
-                    Some(&block2::ConcreteBlock::new(move |_action: NonNull<UIAlertAction>| {
-                        let text_value = if let Some(ref tf) = text_field_ok {
-                            tf.text().map(|s| s.to_string()).unwrap_or_default()
-                        } else {
-                            String::new()
-                        };
-                        sender_ok.send((text_value, true)).unwrap();
-                    })),
-                    main_thread,
-                );
-                alert.addAction(&ok_action);
-            }
+                let main_thread = MainThreadMarker::new().unwrap();
 
-            // Add Cancel button if requested
-            if show_cancel_button {
-                let sender_cancel = sender.clone();
-                let text_field_cancel = text_field_ref.clone();
+                let subtitle = subtitle.unwrap_or_else(|| "".to_string());
+
+                // Create alert controller
+                let alert = unsafe {
+                    UIAlertController::alertControllerWithTitle_message_preferredStyle(
+                        Some(&*NSString::from_str(&title)),
+                        Some(&*NSString::from_str(&subtitle)),
+                        UIAlertControllerStyle::Alert,
+                        main_thread,
+                    )
+                };
+
+                // Store text field reference
+                let text_field_ref: Option<Retained<UITextField>> = if show_text_input {
+                    unsafe {
+                        alert.addTextFieldWithConfigurationHandler(Some(&block2::ConcreteBlock::new(
+                            move |text_field_ptr: NonNull<UITextField>| {
+                                let text_field = text_field_ptr.as_ref();
+
+                                if let Some(placeholder) = &text_input_placeholder {
+                                    text_field.setPlaceholder(Some(&*NSString::from_str(placeholder)));
+                                }
+
+                                if let Some(value) = &text_input_value {
+                                    text_field.setText(Some(&*NSString::from_str(value)));
+                                }
+                            },
+                        )));
+
+                        // Get reference to the text field we just added
+                        alert
+                            .textFields()
+                            .map(|fields| fields.firstObject().map(|tf| tf))
+                            .flatten()
+                    }
+                } else {
+                    None
+                };
+
+                // Add OK button
+                let sender_ok = sender.clone();
+                let text_field_ok = text_field_ref.clone();
                 unsafe {
-                    let cancel_action = UIAlertAction::actionWithTitle_style_handler(
-                        Some(&*NSString::from_str("Cancel")),
-                        UIAlertActionStyle::Cancel,
+                    let ok_action = UIAlertAction::actionWithTitle_style_handler(
+                        Some(&*NSString::from_str("OK")),
+                        UIAlertActionStyle::Default,
                         Some(&block2::ConcreteBlock::new(move |_action: NonNull<UIAlertAction>| {
-                            let text_value = if let Some(ref tf) = text_field_cancel {
+                            let text_value = if let Some(ref tf) = text_field_ok {
                                 tf.text().map(|s| s.to_string()).unwrap_or_default()
                             } else {
                                 String::new()
                             };
-                            sender_cancel.send((text_value, false)).unwrap();
+                            sender_ok.send((text_value, true)).unwrap();
                         })),
                         main_thread,
                     );
-                    alert.addAction(&cancel_action);
+                    alert.addAction(&ok_action);
                 }
-            }
 
-            // Present the alert
-            // Note: You'll need to get the root view controller to present from
-            // This is a simplified example - in practice you'd need the actual view controller
-            unsafe {
-                if let Some(window) = UIApplication::sharedApplication(main_thread).keyWindow() {
-                    if let Some(root_vc) = window.rootViewController() {
-                        root_vc.presentViewController_animated_completion(&alert, true, None);
+                // Add Cancel button if requested
+                if show_cancel_button {
+                    let sender_cancel = sender.clone();
+                    let text_field_cancel = text_field_ref.clone();
+                    unsafe {
+                        let cancel_action = UIAlertAction::actionWithTitle_style_handler(
+                            Some(&*NSString::from_str("Cancel")),
+                            UIAlertActionStyle::Cancel,
+                            Some(&block2::ConcreteBlock::new(move |_action: NonNull<UIAlertAction>| {
+                                let text_value = if let Some(ref tf) = text_field_cancel {
+                                    tf.text().map(|s| s.to_string()).unwrap_or_default()
+                                } else {
+                                    String::new()
+                                };
+                                sender_cancel.send((text_value, false)).unwrap();
+                            })),
+                            main_thread,
+                        );
+                        alert.addAction(&cancel_action);
                     }
                 }
+
+                // Present the alert
+                // Note: You'll need to get the root view controller to present from
+                // This is a simplified example - in practice you'd need the actual view controller
+                unsafe {
+                    if let Some(window) = UIApplication::sharedApplication(main_thread).keyWindow() {
+                        if let Some(root_vc) = window.rootViewController() {
+                            root_vc.presentViewController_animated_completion(&alert, true, None);
+                        }
+                    }
+                }
+            };
+
+            // send the action to the event loop
+            self.action_sender
+                .send(EventLoopAction::RunInEventLoop(Box::new(closure)))
+                .unwrap();
+            // wake up the event loop
+            self.event_loop_proxy.send_event(()).unwrap();
+
+            // wait for the result
+            let (text_input_value, confirmed) = receiver.recv().unwrap();
+            if confirmed {
+                text_input_value
+            } else {
+                // if the user cancelled, return an empty string
+                String::new()
             }
-        };
-
-        // send the action to the event loop
-        self.action_sender
-            .send(EventLoopAction::RunInEventLoop(Box::new(closure)))
-            .unwrap();
-        // wake up the event loop
-        self.event_loop_proxy.send_event(()).unwrap();
-
-        // wait for the result
-        let (text_input_value, confirmed) = receiver.recv().unwrap();
-        if confirmed {
-            text_input_value
-        } else {
-            // if the user cancelled, return an empty string
-            String::new()
         }
+        return String::new(); // fallback for unsupported platforms
     }
 
     /// Create a new window with the given options. This function will dispatch

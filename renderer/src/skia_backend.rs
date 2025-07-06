@@ -1059,6 +1059,7 @@ impl From<ColorFormat> for DXGI_FORMAT {
             ColorFormat::Rgba8 => windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_R8G8B8A8_UNORM,
             ColorFormat::RgbaF16 => windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_R16G16B16A16_FLOAT,
             ColorFormat::Rgba1010102 => windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_R10G10B10A2_UNORM,
+            ColorFormat::Bgra8 => windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM,
             _ => panic!("Unsupported color format for Skia renderer"),
         }
     }
