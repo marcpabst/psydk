@@ -3,10 +3,14 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use num_traits::Bounded;
+use numpy::{PyReadonlyArray2, PyReadonlyArray3, PyReadonlyArray4, PyUntypedArrayMethods};
 use psydk_proc::StimulusParams;
 use pyo3::ffi::c_str;
+use renderer::image::{ImageBuffer, Pixel, RgbImage, Rgba, RgbaImage};
 use renderer::{
     brushes::{Brush, Extend, ImageSampling},
+    image::Rgb,
     shapes::Shape,
     styles::ImageFitMode,
     DynamicBitmap, DynamicScene,
@@ -125,7 +129,7 @@ impl PyImageStimulus {
     ///
     fn __new__(
         py: Python,
-        src: String,
+        src: pyo3::PyObject,
         x: IntoSize,
         y: IntoSize,
         width: IntoSize,
@@ -139,7 +143,58 @@ impl PyImageStimulus {
     ) -> PyResult<(Self, PyStimulus)> {
         let ctx = get_experiment_context(context, py)?;
 
-        let bitmap = ctx.renderer_factory().create_bitmap_from_path(&src);
+        // try to extract a string from the src parameter
+        let bitmap = if let Ok(path) = src.extract::<String>(py) {
+            ctx.renderer_factory().create_bitmap_from_path(&path)
+        } else if let Ok(path) = src.extract::<&str>(py) {
+            ctx.renderer_factory().create_bitmap_from_path(path)
+        } else if let Ok(array) = src.extract::<PyReadonlyArray3<u8>>(py) {
+            // Convert the Numpy array to a image::RgbImageBuffer
+            let array = numpy3_to_image::<Rgba<u8>, u8>(array);
+
+            ctx.renderer_factory().create_bitmap_u8(
+                array,
+                if srgb {
+                    renderer::color_formats::ColorEncoding::Srgb
+                } else {
+                    renderer::color_formats::ColorEncoding::Linear
+                },
+            )
+        } else if let Ok(array) = src.extract::<PyReadonlyArray3<f32>>(py) {
+            let array = numpy3_to_image::<Rgba<f32>, f32>(array);
+            ctx.renderer_factory().create_bitmap_f32(
+                array,
+                if srgb {
+                    renderer::color_formats::ColorEncoding::Srgb
+                } else {
+                    renderer::color_formats::ColorEncoding::Linear
+                },
+            )
+        } else if let Ok(array) = src.extract::<PyReadonlyArray4<u8>>(py) {
+            let array = numpy4_to_image::<Rgba<u8>, u8>(array);
+            ctx.renderer_factory().create_bitmap_u8(
+                array,
+                if srgb {
+                    renderer::color_formats::ColorEncoding::Srgb
+                } else {
+                    renderer::color_formats::ColorEncoding::Linear
+                },
+            )
+        } else if let Ok(array) = src.extract::<PyReadonlyArray4<f32>>(py) {
+            let array = numpy4_to_image::<Rgba<f32>, f32>(array);
+            ctx.renderer_factory().create_bitmap_f32(
+                array,
+                if srgb {
+                    renderer::color_formats::ColorEncoding::Srgb
+                } else {
+                    renderer::color_formats::ColorEncoding::Linear
+                },
+            )
+        } else {
+            return Err(pyo3::exceptions::PyTypeError::new_err(
+                "src must be a string, PathBuf, or a Numpy array",
+            ));
+        };
 
         Ok((
             Self(),
@@ -160,6 +215,62 @@ impl PyImageStimulus {
             )),
         ))
     }
+
+    // Creates a new `ImageStimulus` from a Numpy array.
+    // #[pyo3(signature = (
+    //     array,
+    //     x,
+    //     y,
+    //     width,
+    //     height,
+    //     rotation = 0.0,
+    //     opacity = 1.0,
+    //     anchor = Anchor::Center,
+    //     transform = None,
+    //     context = None,
+    // ))]
+    // #[staticmethod]
+    // fn fromarray_u8(
+    //     py: Python,
+    //     array: PyReadonlyArray3<u8>,
+    //     x: IntoSize,
+    //     y: IntoSize,
+    //     width: IntoSize,
+    //     height: IntoSize,
+    //     rotation: f64,
+    //     opacity: f64,
+    //     anchor: Anchor,
+    //     transform: Option<Transformation2D>,
+    //     context: Option<ExperimentContext>,
+    // ) -> (Self, PyStimulus) {
+    //     let ctx = get_experiment_context(context, py)?;
+
+    //     // Convert the Numpy array to a image::RgbImageBuffer
+    //     let array = numpy_to_rgbimage(array);
+
+    //     let bitmap = ctx
+    //         .renderer_factory()
+    //         .create_bitmap_u8(array, renderer::color_formats::ColorEncoding::Srgb);
+
+    //     Ok((
+    //         Self(),
+    //         PyStimulus::new(ImageStimulus::from_image(
+    //             bitmap,
+    //             ImageParams {
+    //                 x: x.into(),
+    //                 y: y.into(),
+    //                 width: width.into(),
+    //                 height: height.into(),
+    //                 image_x: 0.0.into(),
+    //                 image_y: 0.0.into(),
+    //                 rotation,
+    //                 opacity,
+    //             },
+    //             transform,
+    //             anchor,
+    //         )),
+    //     ))
+    // }
 }
 
 impl_pystimulus_for_wrapper!(PyImageStimulus, ImageStimulus);
@@ -278,4 +389,82 @@ impl Stimulus for ImageStimulus {
     fn set_param(&mut self, name: &str, value: StimulusParamValue) {
         self.params.set_param(name, value)
     }
+}
+
+fn numpy3_to_image<P, S>(py_array: PyReadonlyArray3<S>) -> ImageBuffer<P, Vec<S>>
+where
+    P: Pixel<Subpixel = S> + 'static,
+    S: numpy::Element + Clone + Default + Bounded + 'static,
+    Vec<S>: std::ops::Deref<Target = [S]>,
+{
+    let shape = py_array.shape();
+    let (height, width, channels) = (shape[0], shape[1], shape[2]);
+
+    // Verify channel count matches pixel type
+    assert_eq!(
+        channels,
+        P::CHANNEL_COUNT as usize,
+        "Channel count mismatch: expected {}, got {}",
+        P::CHANNEL_COUNT,
+        channels
+    );
+
+    // Convert to ndarray and ensure contiguous layout
+    let py_array = py_array.as_array();
+    let py_array = py_array.as_standard_layout();
+    let data = py_array.as_slice().unwrap();
+
+    let mut img = ImageBuffer::new(width as u32, height as u32);
+
+    for y in 0..height {
+        for x in 0..width {
+            let idx = (y * width + x) * channels;
+            let pixel_data = &data[idx..idx + channels];
+
+            // Create pixel from slice
+            let pixel = *P::from_slice(pixel_data);
+            img.put_pixel(x as u32, y as u32, pixel);
+        }
+    }
+
+    img
+}
+
+fn numpy4_to_image<P, S>(py_array: PyReadonlyArray4<S>) -> ImageBuffer<P, Vec<S>>
+where
+    P: Pixel<Subpixel = S> + 'static,
+    S: numpy::Element + Clone + Default + Bounded + 'static,
+    Vec<S>: std::ops::Deref<Target = [S]>,
+{
+    let shape = py_array.shape();
+    let (height, width, channels) = (shape[0], shape[1], shape[2]);
+
+    // Verify channel count matches pixel type
+    assert_eq!(
+        channels,
+        P::CHANNEL_COUNT as usize,
+        "Channel count mismatch: expected {}, got {}",
+        P::CHANNEL_COUNT,
+        channels
+    );
+
+    // Convert to ndarray and ensure contiguous layout
+    let py_array = py_array.as_array();
+    let py_array = py_array.as_standard_layout();
+    let data = py_array.as_slice().unwrap();
+
+    let mut img = ImageBuffer::new(width as u32, height as u32);
+
+    for y in 0..height {
+        for x in 0..width {
+            let idx = (y * width + x) * channels;
+            let pixel_data = &data[idx..idx + channels];
+
+            // Create pixel from slice
+            let pixel = *P::from_slice(pixel_data);
+            img.put_pixel(x as u32, y as u32, pixel);
+        }
+    }
+
+    img
 }

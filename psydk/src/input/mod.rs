@@ -242,6 +242,50 @@ impl Event {
         matches!(&self, Self::MouseButtonRelease { button, .. } if button_a == *button)
     }
 
+    /// Returns true if this element represents a release of the left mouse button.
+    pub fn left_mouse_button_released(&self) -> bool {
+        matches!(
+            &self,
+            Self::MouseButtonRelease {
+                button: MouseButton::Left(),
+                ..
+            }
+        )
+    }
+
+    /// Returns true if this element represents a press of the left mouse button.
+    pub fn left_mouse_button_pressed(&self) -> bool {
+        matches!(
+            &self,
+            Self::MouseButtonPress {
+                button: MouseButton::Left(),
+                ..
+            }
+        )
+    }
+
+    /// Returns true if this element represents a press of the right mouse button.
+    pub fn right_mouse_button_pressed(&self) -> bool {
+        matches!(
+            &self,
+            Self::MouseButtonPress {
+                button: MouseButton::Right(),
+                ..
+            }
+        )
+    }
+
+    /// Returns true if this element represents a release of the right mouse button.
+    pub fn right_mouse_button_released(&self) -> bool {
+        matches!(
+            &self,
+            Self::MouseButtonRelease {
+                button: MouseButton::Right(),
+                ..
+            }
+        )
+    }
+
     /// Returns the kind of this event.
     pub fn kind(&self) -> EventKind {
         self.into()
@@ -509,16 +553,36 @@ pub struct EventVec(Vec<Event>);
 
 // convenience methods for KeyEventVec
 impl EventVec {
-    /// Check if the given KeyEventVec contains the provided key in the
+    /// Check if the given EventVec contains the provided key in the
     /// `Pressed` state (convenience method).
     pub fn key_pressed(&self, key: &str) -> bool {
         self.iter().any(|key_event| key_event.key_pressed(key))
     }
 
-    /// Check if the given KeyEventVec contains the provided key in the
+    /// Check if the given EventVec contains the provided key in the
     /// `Released` state (convenience method).
     pub fn key_released(&self, key: &str) -> bool {
         self.iter().any(|key_event| key_event.key_released(key))
+    }
+
+    /// Check if the given EventVec contains a released left mouse button.
+    pub fn left_mouse_button_released(&self) -> bool {
+        self.iter().any(Event::left_mouse_button_released)
+    }
+
+    /// Check if the given EventVec contains a pressed left mouse button.
+    pub fn left_mouse_button_pressed(&self) -> bool {
+        self.iter().any(Event::left_mouse_button_pressed)
+    }
+
+    /// Check if the given EventVec contains a pressed right mouse button.
+    pub fn right_mouse_button_pressed(&self) -> bool {
+        self.iter().any(Event::right_mouse_button_pressed)
+    }
+
+    /// Check if the given EventVec contains a released right mouse button.
+    pub fn right_mouse_button_released(&self) -> bool {
+        self.iter().any(Event::right_mouse_button_released)
     }
 }
 
@@ -536,6 +600,30 @@ impl EventVec {
     #[pyo3(name = "key_released")]
     pub fn py_key_released(&self, key: &str) -> bool {
         self.key_released(key)
+    }
+
+    /// Check if the given KeyEventVec contains a released left mouse button.
+    #[pyo3(name = "left_mouse_button_released")]
+    pub fn py_left_mouse_button_released(&self) -> bool {
+        self.left_mouse_button_released()
+    }
+
+    /// Check if the given KeyEventVec contains a pressed left mouse button.
+    #[pyo3(name = "left_mouse_button_pressed")]
+    pub fn py_left_mouse_button_pressed(&self) -> bool {
+        self.left_mouse_button_pressed()
+    }
+
+    /// Check if the given KeyEventVec contains a pressed right mouse button.
+    #[pyo3(name = "right_mouse_button_pressed")]
+    pub fn py_right_mouse_button_pressed(&self) -> bool {
+        self.right_mouse_button_pressed()
+    }
+
+    /// Check if the given KeyEventVec contains a released right mouse button.
+    #[pyo3(name = "right_mouse_button_released")]
+    pub fn py_right_mouse_button_released(&self) -> bool {
+        self.right_mouse_button_released()
     }
 
     /// Returns all pressed keys in the KeyEventVec.

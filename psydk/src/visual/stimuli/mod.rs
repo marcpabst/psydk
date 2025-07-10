@@ -570,6 +570,11 @@ macro_rules! impl_pystimulus_for_wrapper {
                     StimulusParamValue::i64(_) => {
                         StimulusParamValue::i64(to.extract::<i64>(slf.py()).expect("invalid value"))
                     }
+                    StimulusParamValue::LinRgba(_) => StimulusParamValue::LinRgba(
+                        to.extract::<crate::visual::color::IntoLinRgba>(slf.py())
+                            .expect("invalid value")
+                            .into(),
+                    ),
                     _ => return Err(PyValueError::new_err("invalid value type for animation")),
                 };
 

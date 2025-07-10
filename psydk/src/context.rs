@@ -512,10 +512,10 @@ impl ExperimentContext {
             // wait for the result
             let (text_input_value, confirmed) = receiver.recv().unwrap();
             if confirmed {
-                text_input_value
+                return text_input_value;
             } else {
                 // if the user cancelled, return an empty string
-                String::new()
+                return String::new();
             }
         }
         return String::new(); // fallback for unsupported platforms

@@ -16,7 +16,7 @@ pub enum Repeat {
     PingPong(u32),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum TransitionFunction {
     /// No transition function.
     None,
@@ -175,6 +175,19 @@ impl Animation {
                 let t = t.eval(window_size, screen_props) as f64;
                 let value = Self::value_f64(f, t, elapsed, duration, easing);
                 StimulusParamValue::Size(Size::Pixels(value as f32))
+            }
+            // for now just animate in linear RGB space
+            (StimulusParamValue::LinRgba(f), StimulusParamValue::LinRgba(t)) => {
+                let value_r = Self::value_f64(f.r as f64, t.r as f64, elapsed, duration, easing);
+                let value_g = Self::value_f64(f.g as f64, t.g as f64, elapsed, duration, easing);
+                let value_b = Self::value_f64(f.b as f64, t.b as f64, elapsed, duration, easing);
+                let value_a = Self::value_f64(f.a as f64, t.a as f64, elapsed, duration, easing);
+                StimulusParamValue::LinRgba(crate::visual::color::LinRgba {
+                    r: value_r as f32,
+                    g: value_g as f32,
+                    b: value_b as f32,
+                    a: value_a as f32,
+                })
             }
             _ => self.to.clone(),
         }
