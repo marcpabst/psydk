@@ -1,6 +1,7 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     sync::{
+        atomic::AtomicU32,
         mpsc::{Receiver, Sender},
         Arc, Mutex,
     },
@@ -280,22 +281,76 @@ impl App {
         // deactivate the receiver
         let event_broadcast_receiver = physical_input_receiver.deactivate();
 
+        let presentation_times = Arc::new(Mutex::new(VecDeque::with_capacity(200)));
+        let missed_frames = Arc::new(AtomicU32::new(0));
+        let flip_count = Arc::new(AtomicU32::new(0));
+
         #[cfg(all(feature = "dx12", target_os = "windows"))]
         {
+            use crate::visual::utils::win::get_adapter_and_vidpn_source;
+
             let swap_chain = unsafe {
                 window_state
                     .surface
-                    .as_hal::<wgpu::hal::api::Dx12, _, _>(|surface| surface.unwrap().swap_chain().unwrap())
+                    .as_hal::<wgpu::hal::api::Dx12>()
+                    .unwrap()
+                    .swap_chain()
+                    .unwrap()
             };
 
             let waitable_handle = unsafe {
                 window_state
                     .surface
-                    .as_hal::<wgpu::hal::api::Dx12, _, _>(|surface| surface.unwrap().waitable_handle().unwrap())
+                    .as_hal::<wgpu::hal::api::Dx12>()
+                    .unwrap()
+                    .waitable_handle()
+                    .unwrap()
             };
 
             // this is waiting for the frame latency waitable object to be signaled
             unsafe { windows::Win32::System::Threading::WaitForSingleObject(waitable_handle, 10000) };
+
+            // initialise another htred who;s job is is to monitor vsyncs
+            // this is archived the following way:
+            // - we request an update to the presentation statistics using DwmFlush
+            // (this is important as presentation statistics are otherwhise unavailable in multi-monitor setups)
+            // - we extract the last vsync time from the presentation statistics and push it to the presentation times queue
+            // - we sleep for a short time to avoid busy waiting and repeat the process
+            let presentation_times_clone = presentation_times.clone();
+            let missed_frames_clone = missed_frames.clone();
+            let flip_count = flip_count.clone();
+
+            get_adapter_and_vidpn_source(&swap_chain);
+
+            thread::spawn(move || loop {
+                // request an update to the presentation statistics
+
+                // get the last vsync time
+                let mut pstats = windows::Win32::Graphics::Dxgi::DXGI_FRAME_STATISTICS::default();
+                if unsafe { swap_chain.GetFrameStatistics(&mut pstats) }.is_ok() {
+                    // check if the flip count has changed
+                    let new_flip_count = pstats.SyncRefreshCount;
+                    if new_flip_count > flip_count.load(std::sync::atomic::Ordering::Relaxed) {
+                        // we have a new vsync
+
+                        use ringbuf::traits::RingBuffer;
+                        flip_count.store(new_flip_count, std::sync::atomic::Ordering::Relaxed);
+                        let vsync_time = pstats.SyncQPCTime;
+                        presentation_times_clone.lock().unwrap().push_back(vsync_time);
+                        // remove old vsync times
+                        while presentation_times_clone.lock().unwrap().len() > 200 {
+                            presentation_times_clone.lock().unwrap().pop_front();
+                        }
+                    } else {
+                        // pass
+                    }
+                } else {
+                    log::warn!("Failed to get frame statistics");
+                }
+
+                // sleep for a short time to avoid busy waiting
+                thread::sleep(std::time::Duration::from_millis(1));
+            });
         }
 
         // create handle
@@ -306,6 +361,9 @@ impl App {
             event_broadcast_sender,
             event_broadcast_receiver,
             config: Arc::new(Mutex::new(ExperimentConfig::default())),
+            presentation_times,
+            missed_frames,
+            flip_count,
         };
 
         let win_clone = window.clone();

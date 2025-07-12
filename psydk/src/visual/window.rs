@@ -1,10 +1,10 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     ops::Deref,
     pin::Pin,
     str::FromStr,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU32, Ordering},
         Arc, Mutex, MutexGuard, RwLock,
     },
     time::Instant,
@@ -186,6 +186,12 @@ pub struct Window {
     pub event_broadcast_sender: async_broadcast::Sender<Event>,
     /// Broadcast receiver for keyboard events.
     pub event_broadcast_receiver: async_broadcast::InactiveReceiver<Event>,
+    /// A Buffer that holds recent presentation (or vsync) timestamps. Unit depends on the platform.
+    pub presentation_times: Arc<Mutex<VecDeque<i64>>>,
+    /// The number of missed frames since the last presentation timestamp was recorded.
+    pub missed_frames: Arc<AtomicU32>,
+    /// The number of flips when the last vsync timestamp was recorded.
+    pub flip_count: Arc<AtomicU32>,
 }
 
 impl Window {
@@ -215,7 +221,7 @@ impl Window {
         repeat_time: Option<f64>,
         repeat_update: bool,
         pedantic: Option<bool>,
-    ) -> PsydkResult<Option<Instant>> {
+    ) -> PsydkResult<(f64, Option<f64>, Option<u32>)> {
         // make sure that only one of repeat_frames or repeat_time is set (or none)
         if repeat_frames.is_some() && repeat_time.is_some() {
             return Err(PsydkError::ParameterError(
@@ -353,13 +359,19 @@ impl Window {
                 let swap_chain = unsafe {
                     win_state
                         .surface
-                        .as_hal::<wgpu::hal::api::Dx12, _, _>(|surface| surface.unwrap().swap_chain().unwrap())
+                        .as_hal::<wgpu::hal::api::Dx12>()
+                        .unwrap()
+                        .swap_chain()
+                        .unwrap()
                 };
 
                 let waitable_handle = unsafe {
                     win_state
                         .surface
-                        .as_hal::<wgpu::hal::api::Dx12, _, _>(|surface| surface.unwrap().waitable_handle().unwrap())
+                        .as_hal::<wgpu::hal::api::Dx12>()
+                        .unwrap()
+                        .waitable_handle()
+                        .unwrap()
                 };
 
                 // let frame_id = unsafe { swap_chain.GetLastPresentCount() }.expect("Failed to get frame id");
@@ -394,7 +406,12 @@ impl Window {
             let now = Instant::now();
             *onset_time = Some(now);
         }
-        Ok(*onset_time)
+        let flip_count_and_timestamp = self.flip_count_and_timestamp();
+        // map Option<(u32, f64)> to (Option<f64>, Option<u32>)
+        let (last_flip_count, last_timestamp) = flip_count_and_timestamp
+            .map(|(count, timestamp)| (Some(timestamp), Some(count)))
+            .unwrap_or((None, None));
+        Ok((0.0, last_flip_count, last_timestamp))
     }
 
     pub fn close(&self) {
@@ -437,6 +454,51 @@ impl Window {
         } else {
             None
         }
+    }
+
+    /// Returns the current flip count and last (estimated/corrected) presentation timestamp.
+    pub fn flip_count_and_timestamp(&self) -> Option<(u32, f64)> {
+        const TOLARENCE: f64 = 0.5; // 0.5 millisecond tolerance
+        let qpc_freq = super::utils::win::get_qpc_frequency() as f64;
+        let qpc_freq_ms = (super::utils::win::get_qpc_frequency() / 1000) as f64;
+        // the saved last flip_count might be unrealiable, so will use the presentation timestamps to calculate the flip count
+        // this means that we first estimate the refresh rate
+        let presentation_times = self.presentation_times.lock().unwrap();
+        let estimated_refresh_rate = super::utils::estimate_refresh_rate(
+            &presentation_times
+                .iter()
+                .map(|x| *x as f64 / qpc_freq_ms)
+                .collect::<Vec<_>>(),
+        );
+        if let Some((refresh_rate, last_t)) = estimated_refresh_rate {
+            // calculate the flip count based on the refresh rate, the last timestamp and the current time
+            let mut current_qpc = 0i64;
+            unsafe { windows::Win32::System::Performance::QueryPerformanceCounter(&mut current_qpc) };
+            let current_time = (current_qpc as f64 / qpc_freq_ms) as f64; // in milliseconds
+            let diff = current_time - (last_t as f64) + TOLARENCE; // in milliseconds
+
+            let expected_flips = (diff * (refresh_rate / 1000.0)).floor() as u32;
+
+            let estimated_last_t = last_t + (expected_flips as f64 * (1000.0 / refresh_rate));
+
+            println!(
+                "Estimated refresh rate: {:.2} Hz, Last timestamp: {:.2} ms, Current time: {:.2} ms, Expected flips: {}, Estimated last timestamp: {:.2} ms",
+                refresh_rate, last_t, current_time, expected_flips, estimated_last_t
+            );
+
+            // add the expected flips to the last flip count
+            let last_flip_count = self.flip_count.load(Ordering::Relaxed);
+            Some((last_flip_count + expected_flips, estimated_last_t))
+        } else {
+            // if we can't estimate the refresh rate, return None
+            None
+        }
+    }
+
+    /// Returns the current flip count of the window.
+    pub fn flip_count(&self) -> Option<u32> {
+        let flip_count = self.flip_count.load(Ordering::Relaxed);
+        Some(flip_count)
     }
 
     /// Set the visibility of the mouse cursor.
@@ -605,19 +667,17 @@ impl Window {
         repeat_update: bool,
         pedantic: Option<bool>,
         py: Python,
-    ) -> PyResult<Option<Timestamp>> {
+    ) -> PyResult<(f64, Option<f64>, Option<u32>)> {
         let self_wrapper = SendWrapper::new(self.clone());
         let frame_wrapper = SendWrapper::new(frame);
         py.allow_threads(move || {
-            self_wrapper
-                .present(
-                    frame_wrapper.take(),
-                    repeat_frames,
-                    repeat_time,
-                    repeat_update,
-                    pedantic,
-                )
-                .map(|x| x.map(|x| Timestamp { timestamp: x }))
+            self_wrapper.present(
+                frame_wrapper.take(),
+                repeat_frames,
+                repeat_time,
+                repeat_update,
+                pedantic,
+            )
         })
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
     }
@@ -636,6 +696,12 @@ impl Window {
     fn py_get_current_monitor(&self, py: Python) -> Option<Monitor> {
         let self_wrapper = SendWrapper::new(self);
         py.allow_threads(move || self_wrapper.get_current_monitor())
+    }
+
+    #[pyo3(name = "get_flip_count")]
+    fn py_get_flip_count(&self, py: Python) -> Option<u32> {
+        let self_wrapper = SendWrapper::new(self);
+        py.allow_threads(move || self_wrapper.flip_count())
     }
 
     #[pyo3(name = "get_size")]
