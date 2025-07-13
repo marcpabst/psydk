@@ -37,7 +37,7 @@ psydk-proc = { path = "../psydk-proc" }
 
 raw-window-handle = "0.6"
 # winit = "0.30.11"
-winit = { path = "../winit" }
+winit = { git = "https://github.com/marcpabst/winit", rev = "8d98798" }
 bytemuck = { version = "1.14.0", features = ["derive"] }
 nalgebra = "0.33.0"
 web-time = "1.0.0"

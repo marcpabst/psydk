@@ -458,41 +458,45 @@ impl Window {
 
     /// Returns the current flip count and last (estimated/corrected) presentation timestamp.
     pub fn flip_count_and_timestamp(&self) -> Option<(u32, f64)> {
-        const TOLARENCE: f64 = 0.5; // 0.5 millisecond tolerance
-        let qpc_freq = super::utils::win::get_qpc_frequency() as f64;
-        let qpc_freq_ms = (super::utils::win::get_qpc_frequency() / 1000) as f64;
-        // the saved last flip_count might be unrealiable, so will use the presentation timestamps to calculate the flip count
-        // this means that we first estimate the refresh rate
-        let presentation_times = self.presentation_times.lock().unwrap();
-        let estimated_refresh_rate = super::utils::estimate_refresh_rate(
-            &presentation_times
-                .iter()
-                .map(|x| *x as f64 / qpc_freq_ms)
-                .collect::<Vec<_>>(),
-        );
-        if let Some((refresh_rate, last_t)) = estimated_refresh_rate {
-            // calculate the flip count based on the refresh rate, the last timestamp and the current time
-            let mut current_qpc = 0i64;
-            unsafe { windows::Win32::System::Performance::QueryPerformanceCounter(&mut current_qpc) };
-            let current_time = (current_qpc as f64 / qpc_freq_ms) as f64; // in milliseconds
-            let diff = current_time - (last_t as f64) + TOLARENCE; // in milliseconds
+        #[cfg(target_os = "windows")]
+        {
+            const TOLARENCE: f64 = 0.5; // 0.5 millisecond tolerance
+            let qpc_freq = super::utils::win::get_qpc_frequency() as f64;
+            let qpc_freq_ms = (super::utils::win::get_qpc_frequency() / 1000) as f64;
+            // the saved last flip_count might be unrealiable, so will use the presentation timestamps to calculate the flip count
+            // this means that we first estimate the refresh rate
+            let presentation_times = self.presentation_times.lock().unwrap();
+            let estimated_refresh_rate = super::utils::estimate_refresh_rate(
+                &presentation_times
+                    .iter()
+                    .map(|x| *x as f64 / qpc_freq_ms)
+                    .collect::<Vec<_>>(),
+            );
+            if let Some((refresh_rate, last_t)) = estimated_refresh_rate {
+                // calculate the flip count based on the refresh rate, the last timestamp and the current time
+                let mut current_qpc = 0i64;
+                unsafe { windows::Win32::System::Performance::QueryPerformanceCounter(&mut current_qpc) };
+                let current_time = (current_qpc as f64 / qpc_freq_ms) as f64; // in milliseconds
+                let diff = current_time - (last_t as f64) + TOLARENCE; // in milliseconds
 
-            let expected_flips = (diff * (refresh_rate / 1000.0)).floor() as u32;
+                let expected_flips = (diff * (refresh_rate / 1000.0)).floor() as u32;
 
-            let estimated_last_t = last_t + (expected_flips as f64 * (1000.0 / refresh_rate));
+                let estimated_last_t = last_t + (expected_flips as f64 * (1000.0 / refresh_rate));
 
-            println!(
+                println!(
                 "Estimated refresh rate: {:.2} Hz, Last timestamp: {:.2} ms, Current time: {:.2} ms, Expected flips: {}, Estimated last timestamp: {:.2} ms",
                 refresh_rate, last_t, current_time, expected_flips, estimated_last_t
             );
 
-            // add the expected flips to the last flip count
-            let last_flip_count = self.flip_count.load(Ordering::Relaxed);
-            Some((last_flip_count + expected_flips, estimated_last_t))
-        } else {
-            // if we can't estimate the refresh rate, return None
-            None
+                // add the expected flips to the last flip count
+                let last_flip_count = self.flip_count.load(Ordering::Relaxed);
+                Some((last_flip_count + expected_flips, estimated_last_t))
+            } else {
+                // if we can't estimate the refresh rate, return None
+                None
+            }
         }
+        None
     }
 
     /// Returns the current flip count of the window.

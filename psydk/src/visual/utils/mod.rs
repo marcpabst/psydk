@@ -1,3 +1,4 @@
+#[cfg(target_os = "windows")]
 pub mod win;
 
 pub fn estimate_refresh_rate(timestamps: &[f64]) -> Option<(f64, f64)> {

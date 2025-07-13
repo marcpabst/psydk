@@ -467,10 +467,8 @@ impl SkiaRenderer {
         _backend: &mtl::BackendContext,
         context: &mut gpu::DirectContext,
     ) -> skia_safe::Surface {
-        let raw_texture_ptr = unsafe {
-            texture
-                .as_hal::<wgpu::hal::api::Metal, _, _>(|texture| texture.unwrap().raw_handle().as_ptr() as mtl::Handle)
-        };
+        let raw_texture_ptr =
+            unsafe { texture.as_hal::<wgpu::hal::api::Metal>().unwrap().raw_handle().as_ptr() as mtl::Handle };
 
         let texture_info = unsafe { mtl::TextureInfo::new(raw_texture_ptr) };
 
@@ -1096,10 +1094,8 @@ fn create_backend_texture(texture: &wgpu::Texture) -> skia_safe::gpu::BackendTex
     // macos/metal implementation
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     {
-        let raw_texture_ptr = unsafe {
-            texture
-                .as_hal::<wgpu::hal::api::Metal, _, _>(|texture| texture.unwrap().raw_handle().as_ptr() as mtl::Handle)
-        };
+        let raw_texture_ptr =
+            unsafe { texture.as_hal::<wgpu::hal::api::Metal>().unwrap().raw_handle().as_ptr() as mtl::Handle };
 
         let texture_info = unsafe { mtl::TextureInfo::new(raw_texture_ptr) };
 
@@ -1164,23 +1160,27 @@ fn create_bitmap_from_wgpu_texture(
 fn create_backend_context(adapter: &Adapter, device: &Device, queue: &Queue) -> BackendContext {
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     {
-        let command_queue_ptr =
-            unsafe { queue.as_hal::<wgpu::hal::api::Metal, _, _>(|queue| queue.map(|s| s.as_raw().lock().as_ptr())) };
+        let command_queue_ptr = unsafe {
+            queue
+                .as_hal::<wgpu::hal::api::Metal>()
+                .unwrap()
+                .as_raw()
+                .lock()
+                .as_ptr()
+        };
 
-        if let Some(command_queue_ptr) = command_queue_ptr {
-            let raw_device_ptr = unsafe {
-                device.as_hal::<wgpu::hal::api::Metal, _, _>(|device| {
-                    device.map(|s| s.raw_device().lock().as_ptr() as mtl::Handle)
-                })
-            };
+        let raw_device_ptr = unsafe {
+            device
+                .as_hal::<wgpu::hal::api::Metal>()
+                .unwrap()
+                .raw_device()
+                .lock()
+                .as_ptr() as mtl::Handle
+        };
 
-            let backend =
-                unsafe { mtl::BackendContext::new(raw_device_ptr.unwrap(), command_queue_ptr as mtl::Handle) };
+        let backend = unsafe { mtl::BackendContext::new(raw_device_ptr, command_queue_ptr as mtl::Handle) };
 
-            backend
-        } else {
-            panic!("Failed to create Skia backend context: command queue pointer is None");
-        }
+        backend
     }
     #[cfg(target_os = "windows")]
     {
