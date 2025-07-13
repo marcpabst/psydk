@@ -16,8 +16,7 @@ anyhow = "1.0.86"
 pollster = "0.3.0"
 image = { version = "0.23.14", features = ["png", "jpeg"] }
 itertools = "0.13.0"
-wgpu = { git = "https://github.com/marcpabst/wgpu", rev = "2535dd4" }
-# wgpu = { git = "https://github.com/gfx-rs/wgpu", rev = "a13f0a0"}
+wgpu = { git = "https://github.com/marcpabst/wgpu", rev = "0b24d89" }
 nalgebra = "0.33.0"
 custom_debug = "0.6.1"
 bytemuck = "1.20.0"
@@ -25,22 +24,23 @@ psydk-proc = { path = "../psydk-proc" }
 foreign-types-shared = "0.3.1"
 cosmic-text = "0.12.1"
 winit = "0.30.8"
+windows-core = "0.61.2"
 
 # vello
-skrifa = { version = "0.26.5", optional = true }
-vello = { git = "https://github.com/linebender/vello.git", rev = "4ec6b24", optional = true }
-vello_svg = { version = "0.6.0", optional = true }
+# skrifa = { version = "0.26.5", optional = true }
+# vello = { git = "https://github.com/linebender/vello.git", rev = "4ec6b24", optional = true }
+# vello_svg = { version = "0.6.0", optional = true }
 
 # macOS only
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 metal = "0.31.0"
-skia-safe = { version = "0.81.0", features = ["metal"], optional = true }
+skia-safe = { version = "0.84", features = ["metal"], optional = true }
 
 
 # windows only
 [target.'cfg(target_os = "windows")'.dependencies]
-skia-safe = { version = "0.81.0", features = ["d3d"], optional = true }
-windows = { version = "0.58.0", features = [
+skia-safe = { version = "0.84.0", features = ["d3d"], optional = true }
+windows = { version = "0.61", features = [
     "Win32",
     "Win32_Graphics",
     "Win32_Graphics_Dxgi",
@@ -54,4 +54,4 @@ windows = { version = "0.58.0", features = [
 [features]
 default = ["skia"]
 skia = ["dep:skia-safe"]
-vello = ["dep:vello"]
+#vello = ["dep:vello"]

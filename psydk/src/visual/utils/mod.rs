@@ -128,3 +128,60 @@ pub fn estimate_refresh_rate(timestamps: &[f64]) -> Option<(f64, f64)> {
         Some((refresh_rate, corrected_last_timestamp))
     }
 }
+
+/// Given slices `xs` and `ys` of equal length describing a sawtooth pattern,
+/// returns the x-values where each rising segment’s linear fit crosses y = 0.
+pub fn find_zero_crossings(xs: &[f64], ys: &[f64]) -> Vec<f64> {
+    assert_eq!(xs.len(), ys.len(), "xs and ys must have the same length");
+    let n = xs.len();
+    let mut zeros = Vec::new();
+    let mut start = 0;
+
+    // Helper to process one segment [start..end)
+    fn process_segment(xs: &[f64], ys: &[f64], start: usize, end: usize, zeros: &mut Vec<f64>) {
+        let len = end - start;
+        if len < 2 {
+            return;
+        }
+
+        // Compute sums for least‐squares
+        let mut sum_x = 0.0;
+        let mut sum_y = 0.0;
+        let mut sum_xx = 0.0;
+        let mut sum_xy = 0.0;
+        for i in start..end {
+            let x = xs[i];
+            let y = ys[i];
+            sum_x += x;
+            sum_y += y;
+            sum_xx += x * x;
+            sum_xy += x * y;
+        }
+        let n = len as f64;
+        let denom = n * sum_xx - sum_x * sum_x;
+        if denom.abs() < 1e-12 {
+            return;
+        } // avoid division by zero
+
+        let m = (n * sum_xy - sum_x * sum_y) / denom;
+        let b = (sum_y - m * sum_x) / n;
+        if m.abs() < 1e-12 {
+            return;
+        } // skip near‐horizontal fits
+
+        // Solve 0 = m*x + b  =>  x = -b/m
+        zeros.push(-b / m);
+    }
+
+    // Iterate, splitting on any decrease in y
+    for i in 1..n {
+        if ys[i] < ys[i - 1] {
+            process_segment(xs, ys, start, i, &mut zeros);
+            start = i;
+        }
+    }
+    // Process final segment
+    process_segment(xs, ys, start, n, &mut zeros);
+
+    zeros
+}

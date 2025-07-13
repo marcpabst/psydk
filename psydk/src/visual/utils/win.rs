@@ -1,10 +1,12 @@
 use std::thread;
 use std::time::{Duration, Instant};
 use windows::Wdk::Graphics::Direct3D::{
-    D3DKMTEnumAdapters3, D3DKMTGetScanLine, D3DKMT_ENUMADAPTERS3, D3DKMT_GETSCANLINE,
+    D3DKMTEnumAdapters3, D3DKMTGetScanLine, D3DKMTOpenAdapterFromLuid, D3DKMT_ENUMADAPTERS3, D3DKMT_GETSCANLINE,
+    D3DKMT_OPENADAPTERFROMLUID,
 };
 
 use windows::Win32::Devices::Display::DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME;
+use windows::Win32::Graphics::Direct3D12::ID3D12Device;
 use windows::Win32::Graphics::Gdi::HMONITOR;
 use windows::{
     core::Result as Win32Result,
@@ -32,13 +34,13 @@ use windows::{
 };
 
 /// A high-precision timer implementation for Windows using the Win32 API.
-struct HighPrecisionTimer {
+pub struct HighPrecisionTimer {
     timer: HANDLE,
     period_microseconds: u32,
 }
 
 impl HighPrecisionTimer {
-    fn new(period_microseconds: u32) -> Win32Result<Self> {
+    pub fn new(period_microseconds: u32) -> Win32Result<Self> {
         unsafe {
             let timer = CreateWaitableTimerExW(
                 None,
@@ -58,7 +60,7 @@ impl HighPrecisionTimer {
         }
     }
 
-    fn wait(&self) -> Win32Result<()> {
+    pub fn wait(&self) -> Win32Result<()> {
         unsafe {
             WaitForSingleObject(self.timer, u32::MAX);
             // Reset the timer for the next wait
@@ -68,13 +70,12 @@ impl HighPrecisionTimer {
         Ok(())
     }
 
-    fn cancel(&self) -> Win32Result<()> {
+    pub fn cancel(&self) -> Win32Result<()> {
         unsafe { CancelWaitableTimer(self.timer) }
     }
 }
 
-pub fn get_adapter_and_vidpn_source(swap_chain: &IDXGISwapChain) {
-    //-> Win32Result<(HANDLE, u32)> {
+pub fn get_adapter_and_vidpn_source(swap_chain: &IDXGISwapChain) -> Win32Result<(u32, u32)> {
     // 1. Get the output (monitor) the swap chain is presenting to
     let output: IDXGIOutput =
         unsafe { swap_chain.GetContainingOutput() }.expect("Failed to get output from swap chain");
@@ -167,30 +168,26 @@ pub fn get_adapter_and_vidpn_source(swap_chain: &IDXGISwapChain) {
 
     println!("Found VidPnSourceId: {}", vidpn_source_id);
 
-    // // 4. Get the adapter LUID from the swap chain's device
-    // let adapter: IDXGIAdapter = unsafe {
-    //     let mut adapter = None;
-    //     swap_chain.GetDevice(&IDXGIAdapter::IID, &mut adapter as *mut _ as _)?;
-    //     adapter.ok_or_else(|| Error::from_win32())?
-    // };
-    // let desc: DXGI_ADAPTER_DESC = unsafe {
-    //     let mut desc = std::mem::zeroed();
-    //     adapter.GetDesc(&mut desc)?;
-    //     desc
-    // };
+    // 4. Get the adapter LUID from the swap chain's device
+    let adapter_luid = unsafe {
+        let device: ID3D12Device = swap_chain.GetDevice().expect("Failed to get device from swap chain");
+        device.GetAdapterLuid()
+    };
 
-    // // 5. Open the adapter using D3DKMTOpenAdapterFromLuid
-    // let mut open_adapter = D3DKMT_OPENADAPTERFROMLUID {
-    //     AdapterLuid: desc.AdapterLuid,
-    //     hAdapter: 0,
-    // };
-    // let status = unsafe { D3DKMTOpenAdapterFromLuid(&mut open_adapter) };
-    // if status != 0 {
-    //     return Err(Error::from_win32());
-    // }
-    // let h_adapter = open_adapter.hAdapter as HANDLE;
+    // 5. Open the adapter using D3DKMTOpenAdapterFromLuid
+    let mut open_adapter = D3DKMT_OPENADAPTERFROMLUID {
+        AdapterLuid: adapter_luid,
+        hAdapter: 0,
+    };
+    let status = unsafe { D3DKMTOpenAdapterFromLuid(&mut open_adapter) }
+        .ok()
+        .expect("Failed to open adapter from LUID");
 
-    // Ok((h_adapter, vidpn_source_id))
+    let h_adapter = open_adapter.hAdapter;
+
+    println!("Opened adapter with handle: {}", h_adapter);
+
+    Ok((h_adapter, vidpn_source_id))
 }
 
 pub fn get_qpc_frequency() -> i64 {

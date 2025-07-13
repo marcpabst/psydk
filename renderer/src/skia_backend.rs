@@ -2,6 +2,7 @@ use std::{any::Any, cell::RefCell, sync::Arc};
 
 use cosmic_text::fontdb::FaceInfo;
 use foreign_types_shared::ForeignType;
+use windows_core::Interface;
 
 #[cfg(target_os = "windows")]
 use skia_safe::gpu::{d3d, d3d::BackendContext, Protected};
@@ -499,35 +500,27 @@ impl SkiaRenderer {
         device: &Device,
         queue: &Queue,
     ) -> Option<(d3d::BackendContext, gpu::DirectContext)> {
-        let command_queue =
-            unsafe { queue.as_hal::<wgpu::hal::api::Dx12, _, _>(|queue| queue.map(|s| s.as_raw().clone())) };
+        let command_queue = unsafe { queue.as_hal::<wgpu::hal::api::Dx12>().unwrap().as_raw().clone() };
 
-        if let Some(command_queue) = command_queue {
-            let raw_adapter = unsafe {
-                adapter.as_hal::<wgpu::hal::api::Dx12, _, _>(|adapter| adapter.map(|s| (**s.raw_adapter()).clone()))
+        let raw_adapter = unsafe { adapter.as_hal::<wgpu::hal::api::Dx12>().unwrap().raw_adapter().clone() };
+
+        let raw_device = unsafe { device.as_hal::<wgpu::hal::api::Dx12>().unwrap().raw_device().clone() };
+
+        let backend = unsafe {
+            use windows::core::Interface;
+
+            d3d::BackendContext {
+                adapter: raw_adapter.cast().unwrap(),
+                device: raw_device,
+                queue: command_queue.clone(),
+                memory_allocator: None,
+                protected_context: Protected::No,
             }
-            .unwrap();
+        };
 
-            let raw_device =
-                unsafe { device.as_hal::<wgpu::hal::api::Dx12, _, _>(|device| device.map(|s| s.raw_device().clone())) }
-                    .unwrap();
+        let context = unsafe { gpu::DirectContext::new_d3d(&backend, None).unwrap() };
 
-            let backend = unsafe {
-                d3d::BackendContext {
-                    adapter: raw_adapter.into(),
-                    device: raw_device,
-                    queue: command_queue.clone(),
-                    memory_allocator: None,
-                    protected_context: Protected::No,
-                }
-            };
-
-            let context = unsafe { gpu::DirectContext::new_d3d(&backend, None).unwrap() };
-
-            Some((backend, context))
-        } else {
-            None
-        }
+        Some((backend, context))
     }
 
     #[cfg(target_os = "windows")]
@@ -543,10 +536,7 @@ impl SkiaRenderer {
     ) -> skia_safe::Surface {
         use windows::Win32::Graphics::Direct3D12::D3D12_RESOURCE_STATE_RENDER_TARGET;
 
-        let raw_texture = unsafe {
-            texture.as_hal::<wgpu::hal::api::Dx12, _, _>(|texture| texture.map(|s| s.raw_resource().clone()))
-        }
-        .expect("Failed to get raw texture from WGPU texture");
+        let raw_texture = unsafe { texture.as_hal::<wgpu::hal::api::Dx12>().unwrap().raw_resource().clone() };
 
         let backend_render_target = skia_safe::gpu::BackendRenderTarget::new_d3d(
             (width as i32, height as i32),
@@ -1084,10 +1074,7 @@ fn create_backend_texture(texture: &wgpu::Texture) -> skia_safe::gpu::BackendTex
     // windows/dx12 implementation
     #[cfg(target_os = "windows")]
     {
-        let raw_texture_ptr = unsafe {
-            texture.as_hal::<wgpu::hal::api::Dx12, _, _>(|texture| texture.map(|s| s.raw_resource().clone()))
-        }
-        .unwrap();
+        let raw_texture_ptr = unsafe { texture.as_hal::<wgpu::hal::api::Dx12>().unwrap().raw_resource().clone() };
 
         let backend_texture = skia_safe::gpu::BackendTexture::new_d3d(
             (texture.width() as i32, texture.height() as i32),
@@ -1197,28 +1184,21 @@ fn create_backend_context(adapter: &Adapter, device: &Device, queue: &Queue) -> 
     }
     #[cfg(target_os = "windows")]
     {
-        let command_queue =
-            unsafe { queue.as_hal::<wgpu::hal::api::Dx12, _, _>(|queue| queue.map(|s| s.as_raw().clone())) };
+        let command_queue = unsafe { queue.as_hal::<wgpu::hal::api::Dx12>().unwrap().as_raw().clone() };
 
-        if let Some(command_queue) = command_queue {
-            let raw_adapter = unsafe {
-                adapter.as_hal::<wgpu::hal::api::Dx12, _, _>(|adapter| adapter.map(|s| (**s.raw_adapter()).clone()))
-            }
-            .unwrap();
+        let raw_adapter = unsafe {
+            let a = adapter.as_hal::<wgpu::hal::api::Dx12>().unwrap();
+            a.raw_adapter().clone()
+        };
 
-            let raw_device =
-                unsafe { device.as_hal::<wgpu::hal::api::Dx12, _, _>(|device| device.map(|s| s.raw_device().clone())) }
-                    .unwrap();
+        let raw_device = unsafe { device.as_hal::<wgpu::hal::api::Dx12>().unwrap().raw_device().clone() };
 
-            d3d::BackendContext {
-                adapter: raw_adapter.into(),
-                device: raw_device,
-                queue: command_queue.clone(),
-                memory_allocator: None,
-                protected_context: Protected::No,
-            }
-        } else {
-            panic!("Failed to create Skia backend context: command queue is None");
+        d3d::BackendContext {
+            adapter: raw_adapter.cast().expect("Failed to cast raw adapter"),
+            device: raw_device,
+            queue: command_queue.clone(),
+            memory_allocator: None,
+            protected_context: Protected::No,
         }
     }
 }

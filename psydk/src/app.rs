@@ -320,36 +320,103 @@ impl App {
             let missed_frames_clone = missed_frames.clone();
             let flip_count = flip_count.clone();
 
-            get_adapter_and_vidpn_source(&swap_chain);
+            let (adapter_handle, pid) = get_adapter_and_vidpn_source(&swap_chain).unwrap();
 
-            thread::spawn(move || loop {
-                // request an update to the presentation statistics
+            thread::spawn(move || {
+                // Vector to store scan line data points
 
-                // get the last vsync time
-                let mut pstats = windows::Win32::Graphics::Dxgi::DXGI_FRAME_STATISTICS::default();
-                if unsafe { swap_chain.GetFrameStatistics(&mut pstats) }.is_ok() {
-                    // check if the flip count has changed
-                    let new_flip_count = pstats.SyncRefreshCount;
-                    if new_flip_count > flip_count.load(std::sync::atomic::Ordering::Relaxed) {
-                        // we have a new vsync
+                use crate::visual::utils::win::HighPrecisionTimer;
+                let mut scan_lines = VecDeque::with_capacity(200);
+                let mut times = VecDeque::with_capacity(200);
 
-                        use ringbuf::traits::RingBuffer;
-                        flip_count.store(new_flip_count, std::sync::atomic::Ordering::Relaxed);
-                        let vsync_time = pstats.SyncQPCTime;
-                        presentation_times_clone.lock().unwrap().push_back(vsync_time);
-                        // remove old vsync times
-                        while presentation_times_clone.lock().unwrap().len() > 200 {
-                            presentation_times_clone.lock().unwrap().pop_front();
+                // use timeBeginPeriod(1) to set the timer resolution to 1ms
+                unsafe { windows::Win32::Media::timeBeginPeriod(1) };
+
+                // Create a high precision timer with 0.5 ms interval
+                let timer = HighPrecisionTimer::new(1).expect("Failed to create high precision timer");
+
+                let t0 = std::time::Instant::now();
+
+                // Collect data for 1 second
+                loop {
+                    // let elapsed_ms = start_time.elapsed().as_secs_f64() * 1000.0;
+
+                    // Prepare the structure for D3DKMTGetScanLine
+
+                    use windows::Wdk::Graphics::Direct3D::D3DKMT_GETSCANLINE;
+
+                    use crate::utils;
+                    let mut scan_line_info = D3DKMT_GETSCANLINE {
+                        hAdapter: adapter_handle,
+                        VidPnSourceId: 1, // Primary display
+                        InVerticalBlank: false.into(),
+                        ScanLine: 0,
+                    };
+
+                    // Call D3DKMTGetScanLine);
+                    unsafe {
+                        use windows::Wdk::Graphics::Direct3D::D3DKMTGetScanLine;
+
+                        D3DKMTGetScanLine(&mut scan_line_info)
+                            .ok()
+                            .expect("Failed to call D3DKMTGetScanLine");
+
+                        // push the scan line and time to the scan_lines vector
+                        scan_lines.push_back(scan_line_info.ScanLine);
+                        times.push_back(t0.elapsed().as_secs_f64());
+
+                        // remove old scan lines and times
+                        while scan_lines.len() > 200 {
+                            scan_lines.pop_front();
+                            times.pop_front();
                         }
-                    } else {
-                        // pass
                     }
-                } else {
-                    log::warn!("Failed to get frame statistics");
+
+                    // hint tight loop to the CPU
+                    timer.wait().expect("Failed to wait on timer");
+
+                    // run through the scan line data and check if we have a new vsync
+                    let x = times.make_contiguous();
+                    let y = &scan_lines
+                        .make_contiguous()
+                        .iter()
+                        .map(|&s| s as f64)
+                        .collect::<Vec<_>>();
+
+                    let vblanks = crate::visual::utils::find_zero_crossings(x, y);
+
+                    println!("Vblanks: {:?}", vblanks.len());
                 }
 
-                // sleep for a short time to avoid busy waiting
-                thread::sleep(std::time::Duration::from_millis(1));
+                // loop {
+                //     // request an update to the presentation statistics
+
+                //     // get the last vsync time
+                //     let mut pstats = windows::Win32::Graphics::Dxgi::DXGI_FRAME_STATISTICS::default();
+                //     if unsafe { swap_chain.GetFrameStatistics(&mut pstats) }.is_ok() {
+                //         // check if the flip count has changed
+                //         let new_flip_count = pstats.SyncRefreshCount;
+                //         if new_flip_count > flip_count.load(std::sync::atomic::Ordering::Relaxed) {
+                //             // we have a new vsync
+
+                //             use ringbuf::traits::RingBuffer;
+                //             flip_count.store(new_flip_count, std::sync::atomic::Ordering::Relaxed);
+                //             let vsync_time = pstats.SyncQPCTime;
+                //             presentation_times_clone.lock().unwrap().push_back(vsync_time);
+                //             // remove old vsync times
+                //             while presentation_times_clone.lock().unwrap().len() > 200 {
+                //                 presentation_times_clone.lock().unwrap().pop_front();
+                //             }
+                //         } else {
+                //             // pass
+                //         }
+                //     } else {
+                //         log::warn!("Failed to get frame statistics");
+                //     }
+
+                //     // sleep for a short time to avoid busy waiting
+                //     thread::sleep(std::time::Duration::from_millis(1));
+                // }
             });
         }
 
