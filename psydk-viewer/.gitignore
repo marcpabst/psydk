@@ -1,0 +1,3 @@
+# gitingore for rust project
+# Compiled Rust code
+/target/
