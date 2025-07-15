@@ -4,13 +4,14 @@ use std::{
     pin::Pin,
     str::FromStr,
     sync::{
-        atomic::{AtomicBool, AtomicU32, Ordering},
+        atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
         Arc, Mutex, MutexGuard, RwLock,
     },
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use async_channel::{bounded, Receiver, Sender};
+use atomic_float::AtomicF64;
 use derive_debug::Dbg;
 use futures_lite::{future::block_on, Future};
 use nalgebra;
@@ -37,6 +38,7 @@ use crate::{
     errors::{PsydkError, PsydkResult},
     input::{Event, EventHandler, EventHandlerId, EventHandlingExt, EventKind, EventReceiver},
     time::Timestamp,
+    visual::utils::find_zero_crossings,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -186,12 +188,17 @@ pub struct Window {
     pub event_broadcast_sender: async_broadcast::Sender<Event>,
     /// Broadcast receiver for keyboard events.
     pub event_broadcast_receiver: async_broadcast::InactiveReceiver<Event>,
-    /// A Buffer that holds recent presentation (or vsync) timestamps. Unit depends on the platform.
-    pub presentation_times: Arc<Mutex<VecDeque<i64>>>,
-    /// The number of missed frames since the last presentation timestamp was recorded.
-    pub missed_frames: Arc<AtomicU32>,
-    /// The number of flips when the last vsync timestamp was recorded.
-    pub flip_count: Arc<AtomicU32>,
+    /// The Instant at which the window was created.
+    pub created_at: Instant,
+    #[cfg(target_os = "windows")]
+    /// A Buffer that holds recent presentation (or vsync) timestamps.
+    pub win32_scanline_samples: Arc<Mutex<(VecDeque<Instant>, VecDeque<u32>)>>,
+    /// The refresh rate as estimated at the last presentation.
+    pub estimated_refresh_rate: Arc<AtomicF64>,
+    /// A running list of vblanl timestamps
+    pub vblank_times: Arc<Mutex<VecDeque<f64>>>,
+    /// The last vblank time at which a frame was presented.
+    pub last_vblank_time_presented_at: Arc<AtomicF64>,
 }
 
 impl Window {
@@ -213,52 +220,12 @@ impl Window {
         win_state.resize(size, &mut gpu_state);
     }
 
-    /// Present a frame on the window.
-    pub fn present(
-        &self,
-        frame: &mut Frame,
-        repeat_frames: Option<u32>,
-        repeat_time: Option<f64>,
-        repeat_update: bool,
-        pedantic: Option<bool>,
-    ) -> PsydkResult<(f64, Option<f64>, Option<u32>)> {
-        // make sure that only one of repeat_frames or repeat_time is set (or none)
-        if repeat_frames.is_some() && repeat_time.is_some() {
-            return Err(PsydkError::ParameterError(
-                "You can only specify one of repeat_frames or repeat_time".into(),
-            ));
-        }
-
-        let mut onset_time = Arc::new(Mutex::new(None));
-
-        // get the refresh rate of the  monitor
-        let refresh_rate = self.get_current_refresh_rate().expect("Failed to get refresh rate");
-
+    /// Present a frame on the window. Returns the timestamp of the vblank at which the frame was presented.
+    pub fn present(&self, frame: &mut Frame) -> PsydkResult<()> {
         // lock the gpu state and window state
         let gpu_state = &mut self.gpu_state.lock().unwrap();
         let mut win_state = &mut self.state.lock().unwrap();
         let mut win_state = win_state.as_mut().unwrap();
-
-        let pedantic = pedantic.unwrap_or(self.config.lock().unwrap().pedantic);
-
-        // if repeat_time is set, we need to calculate the repeat frames
-        let f_repeat_frames = if let Some(repeat_time) = repeat_time {
-            // calculate the repeat frames
-            repeat_time / (1.0 / refresh_rate)
-        } else {
-            repeat_frames.unwrap_or(1) as f64
-        };
-
-        // if pedantic is set, we need to make sure that the repeat frames is a whole number
-        // (with a small tolerance)
-        if pedantic && (f_repeat_frames - f_repeat_frames).round().abs() > 0.0001 {
-            // TODO: proper error handling
-            let repeat_time = repeat_time.unwrap_or(0.0);
-            return Err(PsydkError::ParameterError(format!("You specified a `repeat_time` {repeat_time} that is not a multiple of the monitor's reported frame time ({refresh_rate} fps -> number of frames: {f_repeat_frames}) This can lead to unexpected behavior and is therefore diallowed by default. However, you can disable this check by disabling pedantic mode. In this case, the repeat time will be rounded to the nearest integer number of frames.")));
-        }
-
-        // convert the repeat frames to an integer
-        let repeat_frames = f_repeat_frames.round() as u32;
 
         let device = &gpu_state.device;
         let queue = &gpu_state.queue;
@@ -295,104 +262,94 @@ impl Window {
             .frame_callbacks
             .insert(new_frame_id, Box::new(onset_callback_fn));
 
-        for i in 0..repeat_frames {
-            let suface_texture = win_state
-                .surface
-                .get_current_texture()
-                .expect("Failed to acquire next swap chain texture");
+        let suface_texture = win_state
+            .surface
+            .get_current_texture()
+            .expect("Failed to acquire next swap chain texture");
 
-            let width = suface_texture.texture.size().width;
-            let height = suface_texture.texture.size().height;
+        let width = suface_texture.texture.size().width;
+        let height = suface_texture.texture.size().height;
 
-            let texture = win_state.wgpu_renderer.texture();
+        let texture = win_state.wgpu_renderer.texture();
 
-            let mut scene = win_state.renderer.create_scene(width, height);
+        let mut scene = win_state.renderer.create_scene(width, height);
 
-            for stimulus in &frame.stimuli {
-                let now = Instant::now();
-                let mut stimulus = (&stimulus).lock();
-                stimulus.update_animations(now, &win_state);
-                stimulus.draw(&mut scene, &win_state);
-            }
+        for stimulus in &frame.stimuli {
+            let now = Instant::now();
+            let mut stimulus = (&stimulus).lock();
+            stimulus.update_animations(now, &win_state);
+            stimulus.draw(&mut scene, &win_state);
+        }
 
-            win_state
-                .renderer
-                .render_to_texture(device, queue, texture, width, height, &mut scene);
+        win_state
+            .renderer
+            .render_to_texture(device, queue, texture, width, height, &mut scene);
 
-            let surface_texture_view = suface_texture.texture.create_view(&wgpu::TextureViewDescriptor {
-                format: Some(config.format),
-                ..wgpu::TextureViewDescriptor::default()
-            });
+        let surface_texture_view = suface_texture.texture.create_view(&wgpu::TextureViewDescriptor {
+            format: Some(config.format),
+            ..wgpu::TextureViewDescriptor::default()
+        });
 
-            // render the texture to the surface
-            win_state
-                .wgpu_renderer
-                .render_to_texture(device, queue, &surface_texture_view);
+        // render the texture to the surface
+        win_state
+            .wgpu_renderer
+            .render_to_texture(device, queue, &surface_texture_view);
 
-            // on metal, we will don't need to use the frame queue as we can tell metal to run the callback
-            // #[cfg(all(target_os = "macos", feature = "metal"))]
-            // unsafe {
-            //     // if let Some(on_present) = frame.on_present.take() {
-            //     //     let drawable = unsafe {
-            //             suface_texture.texture
-            //                 .as_hal::<wgpu::hal::api::Metal, _, _>(|suface_texture| {
+        // on metal, we will don't need to use the frame queue as we can tell metal to run the callback
+        // #[cfg(all(target_os = "macos", feature = "metal"))]
+        // unsafe {
+        //     // if let Some(on_present) = frame.on_present.take() {
+        //     //     let drawable = unsafe {
+        //             suface_texture.texture
+        //                 .as_hal::<wgpu::hal::api::Metal, _, _>(|suface_texture| {
 
-            //                     if let Some(suface_texture) = suface_texture {
+        //                     if let Some(suface_texture) = suface_texture {
 
-            //                     }
-            //                 });
-            //     //     };
-            //     // }
-            // }
-            //
+        //                     }
+        //                 });
+        //     //     };
+        //     // }
+        // }
+        //
 
-            // write frame to window_state
-            win_state.current_frame = Some(frame.clone());
+        // write frame to window_state
+        win_state.current_frame = Some(frame.clone());
 
-            // present the frame
-            suface_texture.present();
+        // present the frame
+        suface_texture.present();
 
-            // on dx12, get the frame id and add it to the frame queue
-            // then wait for the frame to be presented
-            #[cfg(all(feature = "dx12", target_os = "windows"))]
-            {
-                let swap_chain = unsafe {
-                    win_state
-                        .surface
-                        .as_hal::<wgpu::hal::api::Dx12>()
-                        .unwrap()
-                        .swap_chain()
-                        .unwrap()
-                };
+        let t0 = Instant::now();
 
-                let waitable_handle = unsafe {
-                    win_state
-                        .surface
-                        .as_hal::<wgpu::hal::api::Dx12>()
-                        .unwrap()
-                        .waitable_handle()
-                        .unwrap()
-                };
+        // on dx12, get the frame id and add it to the frame queue
+        // then wait for the frame to be presented
+        #[cfg(all(feature = "dx12", target_os = "windows"))]
+        {
+            let swap_chain = unsafe {
+                win_state
+                    .surface
+                    .as_hal::<wgpu::hal::api::Dx12>()
+                    .unwrap()
+                    .swap_chain()
+                    .unwrap()
+            };
 
-                // let frame_id = unsafe { swap_chain.GetLastPresentCount() }.expect("Failed to get frame id");
-                // win_state.frame_queue.push(frame_id.into());
-                // this is waiting for the frame latency waitable object to be signaled
-                unsafe { windows::Win32::System::Threading::WaitForSingleObject(waitable_handle, 10000) };
+            let waitable_handle = unsafe {
+                win_state
+                    .surface
+                    .as_hal::<wgpu::hal::api::Dx12>()
+                    .unwrap()
+                    .waitable_handle()
+                    .unwrap()
+            };
 
-                if i == 0 {
-                    // timestamp frame presentation
-                    let timestamp = Instant::now();
-                    onset_time.lock().unwrap().replace(timestamp);
-                    // get the frame id that was presented from the frame queue
-                    let frame_id = win_state.frame_queue.remove(0);
-                    // get the callback for the frame id
-                    let callback = win_state
-                        .frame_callbacks
-                        .remove(&frame_id)
-                        .expect("Failed to get callback for frame id");
-                    // // call the callback
-                    callback();
-                }
+            // let frame_id = unsafe { swap_chain.GetLastPresentCount() }.expect("Failed to get frame id");
+            // win_state.frame_queue.push(frame_id.into());
+            // this is waiting for the frame latency waitable object to be signaled
+            unsafe { windows::Win32::System::Threading::WaitForSingleObject(waitable_handle, 10000) };
+
+            // now we can run the callback
+            if let Some(callback) = win_state.frame_callbacks.remove(&new_frame_id) {
+                callback();
             }
         }
 
@@ -400,18 +357,53 @@ impl Window {
         // TODO on Windows, we will run the callback here
         // TODO on MacOS we will let Metal run the callback
 
-        let mut onset_time = onset_time.lock().unwrap();
-        // if the onset time is None, set it to the current time
-        if onset_time.is_none() {
-            let now = Instant::now();
-            *onset_time = Some(now);
+        let onset_time = Instant::now();
+
+        // we run our vblank finding algorithm here, which will yield a list of timestamps where the vblanks occured
+        // we can then use this to estimate the refresh rate and figure out when the last flip occurred
+        let xs = self
+            .win32_scanline_samples
+            .lock()
+            .unwrap()
+            .0
+            .iter()
+            .map(|x| x.duration_since(self.created_at).as_secs_f64() * 1000.0)
+            .collect::<Vec<_>>();
+        let ys = self
+            .win32_scanline_samples
+            .lock()
+            .unwrap()
+            .1
+            .iter()
+            .map(|y| *y as f64)
+            .collect::<Vec<_>>();
+        let vblanks = find_zero_crossings(&xs, &ys);
+
+        // use vblanks to estimate the refresh rate
+        let estimated_refresh_rate = super::utils::estimate_refresh_rate(&vblanks);
+
+        if let Some((refresh_rate, last_recorded_time)) = estimated_refresh_rate {
+            // update the estimated refresh rate
+            self.estimated_refresh_rate.store(refresh_rate, Ordering::Relaxed);
+            let current_time = Instant::now().duration_since(self.created_at).as_secs_f64() * 1000.0; // in milliseconds
+            let diff = current_time - (last_recorded_time as f64); //+ TOLARENCE; // in milliseconds
+
+            let expected_flips = (diff * (refresh_rate / 1000.0)).floor() as u32;
+            // println!(
+            //     "Estimated refresh rate: {refresh_rate:.2} Hz, last recorded time: {last_recorded_time:.2} ms, current time: {current_time:.2} ms, diff: {diff:.2} ms, expected flips: {expected_flips}",
+            // );
+
+            let estimated_last_t = last_recorded_time + (expected_flips as f64 * (1000.0 / refresh_rate));
+
+            // update the last vsync timestamp
+            self.last_vblank_time_presented_at
+                .store(estimated_last_t, Ordering::Relaxed);
+
+            let diff_est = current_time - estimated_last_t;
+            // println!("Time since last estimated flip: {diff_est:.3} ms");
         }
-        let flip_count_and_timestamp = self.flip_count_and_timestamp();
-        // map Option<(u32, f64)> to (Option<f64>, Option<u32>)
-        let (last_flip_count, last_timestamp) = flip_count_and_timestamp
-            .map(|(count, timestamp)| (Some(timestamp), Some(count)))
-            .unwrap_or((None, None));
-        Ok((0.0, last_flip_count, last_timestamp))
+
+        Ok(())
     }
 
     pub fn close(&self) {
@@ -454,55 +446,6 @@ impl Window {
         } else {
             None
         }
-    }
-
-    /// Returns the current flip count and last (estimated/corrected) presentation timestamp.
-    pub fn flip_count_and_timestamp(&self) -> Option<(u32, f64)> {
-        #[cfg(target_os = "windows")]
-        {
-            const TOLARENCE: f64 = 0.5; // 0.5 millisecond tolerance
-            let qpc_freq = super::utils::win::get_qpc_frequency() as f64;
-            let qpc_freq_ms = (super::utils::win::get_qpc_frequency() / 1000) as f64;
-            // the saved last flip_count might be unrealiable, so will use the presentation timestamps to calculate the flip count
-            // this means that we first estimate the refresh rate
-            let presentation_times = self.presentation_times.lock().unwrap();
-            let estimated_refresh_rate = super::utils::estimate_refresh_rate(
-                &presentation_times
-                    .iter()
-                    .map(|x| *x as f64 / qpc_freq_ms)
-                    .collect::<Vec<_>>(),
-            );
-            if let Some((refresh_rate, last_t)) = estimated_refresh_rate {
-                // calculate the flip count based on the refresh rate, the last timestamp and the current time
-                let mut current_qpc = 0i64;
-                unsafe { windows::Win32::System::Performance::QueryPerformanceCounter(&mut current_qpc) };
-                let current_time = (current_qpc as f64 / qpc_freq_ms) as f64; // in milliseconds
-                let diff = current_time - (last_t as f64) + TOLARENCE; // in milliseconds
-
-                let expected_flips = (diff * (refresh_rate / 1000.0)).floor() as u32;
-
-                let estimated_last_t = last_t + (expected_flips as f64 * (1000.0 / refresh_rate));
-
-                println!(
-                "Estimated refresh rate: {:.2} Hz, Last timestamp: {:.2} ms, Current time: {:.2} ms, Expected flips: {}, Estimated last timestamp: {:.2} ms",
-                refresh_rate, last_t, current_time, expected_flips, estimated_last_t
-            );
-
-                // add the expected flips to the last flip count
-                let last_flip_count = self.flip_count.load(Ordering::Relaxed);
-                Some((last_flip_count + expected_flips, estimated_last_t))
-            } else {
-                // if we can't estimate the refresh rate, return None
-                None
-            }
-        }
-        None
-    }
-
-    /// Returns the current flip count of the window.
-    pub fn flip_count(&self) -> Option<u32> {
-        let flip_count = self.flip_count.load(Ordering::Relaxed);
-        Some(flip_count)
     }
 
     /// Set the visibility of the mouse cursor.
@@ -651,39 +594,37 @@ impl Window {
     }
 
     #[pyo3(name = "get_frames")]
-    fn py_get_frames(&self, py: Python) -> FrameIterator {
-        todo!()
+    fn py_get_frames(&self, py: Python, n: u32) -> FrameIterator {
+        FrameIterator {
+            window: self.clone(),
+            mode: FrameIterationMode::Number(n),
+            current_index: 0,
+            first_presentation_time: None,
+            handle_missed_frames: false,
+            start_time: Instant::now(),
+        }
+    }
+
+    #[pyo3(name = "get_frames_for_duration")]
+    fn py_get_frames_for_duration(&self, py: Python, duration: f64) -> FrameIterator {
+        FrameIterator {
+            window: self.clone(),
+            mode: FrameIterationMode::Time(Duration::from_secs_f64(duration)),
+            current_index: 0,
+            first_presentation_time: None,
+            handle_missed_frames: false,
+            start_time: Instant::now(),
+        }
     }
 
     #[pyo3(name = "present")]
-    #[pyo3(signature = (frame, repeat_frames=None, repeat_time=None, repeat_update=true, pedantic=None))]
-    /// Present a frame on the window. By default, the frame will be presented once.
-    /// Alternatively, you can specify the number of times to present the frame or the
-    /// time to present the frame. Please note that if you're using a fixed frame rate monitor
-    /// with the `repeat_time` parameter, `repeat_time` need to be a multiple of the
-    /// monitor's frame time. Otherwise, the this function will error.
-    ///
-    fn py_present(
-        &self,
-        frame: &mut Frame,
-        repeat_frames: Option<u32>,
-        repeat_time: Option<f64>,
-        repeat_update: bool,
-        pedantic: Option<bool>,
-        py: Python,
-    ) -> PyResult<(f64, Option<f64>, Option<u32>)> {
+    #[pyo3(signature = (frame))]
+    /// Present a frame on the window.
+    fn py_present(&self, frame: &mut Frame, py: Python) -> PyResult<()> {
         let self_wrapper = SendWrapper::new(self.clone());
         let frame_wrapper = SendWrapper::new(frame);
-        py.allow_threads(move || {
-            self_wrapper.present(
-                frame_wrapper.take(),
-                repeat_frames,
-                repeat_time,
-                repeat_update,
-                pedantic,
-            )
-        })
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+        py.allow_threads(move || self_wrapper.present(frame_wrapper.take()))
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
     }
 
     #[getter(cursor_visible)]
@@ -700,12 +641,6 @@ impl Window {
     fn py_get_current_monitor(&self, py: Python) -> Option<Monitor> {
         let self_wrapper = SendWrapper::new(self);
         py.allow_threads(move || self_wrapper.get_current_monitor())
-    }
-
-    #[pyo3(name = "get_flip_count")]
-    fn py_get_flip_count(&self, py: Python) -> Option<u32> {
-        let self_wrapper = SendWrapper::new(self);
-        py.allow_threads(move || self_wrapper.flip_count())
     }
 
     #[pyo3(name = "get_size")]
@@ -802,12 +737,29 @@ impl Window {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum FrameIterationMode {
+    Number(u32),
+    Time(Duration),
+    Forever,
+}
+
 /// FrameIterator is an iterator that yields frames.
 #[derive(Debug, Clone)]
 #[pyclass]
 pub struct FrameIterator {
     /// The window that the frames are associated with.
     window: Window,
+    /// How long to iterate over frames.
+    mode: FrameIterationMode,
+    /// The current frame index.
+    current_index: u32,
+    /// First time at which a frame from the iterator was presented.
+    first_presentation_time: Option<f64>,
+    /// If the iterator should handle missed frames.
+    handle_missed_frames: bool,
+    /// The time at which the iterator was started.
+    start_time: Instant,
 }
 
 #[pymethods]
@@ -816,9 +768,52 @@ impl FrameIterator {
         Ok(slf.into())
     }
 
-    fn __next__(mut slf: PyRefMut<Self>) -> PyResult<Option<Frame>> {
-        let frame = slf.window.get_frame();
-        Ok(Some(frame))
+    fn __next__(mut slf: PyRefMut<Self>, py: Python) -> PyResult<Option<(u32, Frame)>> {
+        if slf.handle_missed_frames {
+            if slf.current_index == 0 {
+                slf.first_presentation_time = Some(slf.window.last_vblank_time_presented_at.load(Ordering::Relaxed));
+            } else if let Some(first_presentation_time) = slf.first_presentation_time {
+                // we just count the number of vblanks that have occurred since the first presentation time
+                // for this, we iterate over the vblank times and count how many are greater than the first presentation time
+                let expected_vblanks = {
+                    let vblank_times = slf.window.vblank_times.lock().unwrap();
+                    vblank_times.iter().filter(|&&t| t > first_presentation_time).count() as u32
+                };
+                slf.current_index = expected_vblanks;
+            }
+        }
+
+        match slf.mode {
+            FrameIterationMode::Number(n) => {
+                if slf.current_index < n {
+                    let slf_wrapper = SendWrapper::new(slf.window.clone());
+                    let frame = py.allow_threads(move || slf_wrapper.get_frame());
+                    let frame_id = slf.current_index;
+                    slf.current_index += 1;
+                    Ok(Some((frame_id, frame)))
+                } else {
+                    Ok(None)
+                }
+            }
+            FrameIterationMode::Time(duration) => {
+                if slf.start_time.elapsed() < duration {
+                    let slf_wrapper = SendWrapper::new(slf.window.clone());
+                    let frame = py.allow_threads(move || slf_wrapper.get_frame());
+                    let frame_id = slf.current_index;
+                    slf.current_index += 1;
+                    Ok(Some((frame_id, frame)))
+                } else {
+                    Ok(None)
+                }
+            }
+            FrameIterationMode::Forever => {
+                let slf_wrapper = SendWrapper::new(slf.window.clone());
+                let frame = py.allow_threads(move || slf_wrapper.get_frame());
+                let frame_id = slf.current_index;
+                slf.current_index += 1;
+                Ok(Some((frame_id, frame)))
+            }
+        }
     }
 }
 

@@ -89,6 +89,7 @@ byte-slice-cast = "1.2.3"
 crossbeam-utils = "0.8.21"
 arc-swap = "1.7.1"
 ringbuf = "0.4.8"
+atomic_float = "1.1.0"
 # tikv-jemallocator = { version = "0.5.4", features = ["profiling"] }
 
 # Windows dependencies

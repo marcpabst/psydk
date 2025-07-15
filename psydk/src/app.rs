@@ -1,13 +1,14 @@
 use std::{
     collections::{HashMap, VecDeque},
     sync::{
-        atomic::AtomicU32,
+        atomic::{AtomicU32, AtomicU64},
         mpsc::{Receiver, Sender},
         Arc, Mutex,
     },
     thread,
 };
 
+use atomic_float::AtomicF64;
 use derive_debug::Dbg;
 use pyo3::{
     pyclass, pyfunction,
@@ -234,6 +235,9 @@ impl App {
 
         winit_window.set_fullscreen(Some(winit::window::Fullscreen::Borderless(Some(mon_handle.clone()))));
 
+        // wait for 1 second to let the window settle
+        // std::thread::sleep(std::time::Duration::from_secs(1));
+
         let wgpu_renderer = pollster::block_on(renderer::wgpu_renderer::WgpuRenderer::new(
             winit_window.clone(),
             instance,
@@ -281,9 +285,15 @@ impl App {
         // deactivate the receiver
         let event_broadcast_receiver = physical_input_receiver.deactivate();
 
-        let presentation_times = Arc::new(Mutex::new(VecDeque::with_capacity(200)));
-        let missed_frames = Arc::new(AtomicU32::new(0));
-        let flip_count = Arc::new(AtomicU32::new(0));
+        let vblank_times = Arc::new(Mutex::new(VecDeque::with_capacity(100_000_000)));
+        let flip_count_presented_at = Arc::new(AtomicU32::new(0));
+        let created_at_time = std::time::Instant::now();
+
+        #[cfg(all(feature = "dx12", target_os = "windows"))]
+        let win32_scanline_samples = Arc::new(Mutex::new((
+            VecDeque::with_capacity(1000),
+            VecDeque::with_capacity(1000),
+        )));
 
         #[cfg(all(feature = "dx12", target_os = "windows"))]
         {
@@ -310,15 +320,9 @@ impl App {
             // this is waiting for the frame latency waitable object to be signaled
             unsafe { windows::Win32::System::Threading::WaitForSingleObject(waitable_handle, 10000) };
 
-            // initialise another htred who;s job is is to monitor vsyncs
-            // this is archived the following way:
-            // - we request an update to the presentation statistics using DwmFlush
-            // (this is important as presentation statistics are otherwhise unavailable in multi-monitor setups)
-            // - we extract the last vsync time from the presentation statistics and push it to the presentation times queue
-            // - we sleep for a short time to avoid busy waiting and repeat the process
-            let presentation_times_clone = presentation_times.clone();
-            let missed_frames_clone = missed_frames.clone();
-            let flip_count = flip_count.clone();
+            let win32_scanline_samples_clone = win32_scanline_samples.clone();
+            let vblank_times_clone = vblank_times.clone();
+            let flip_count_presented_at = flip_count_presented_at.clone();
 
             let (adapter_handle, pid) = get_adapter_and_vidpn_source(&swap_chain).unwrap();
 
@@ -326,8 +330,6 @@ impl App {
                 // Vector to store scan line data points
 
                 use crate::visual::utils::win::HighPrecisionTimer;
-                let mut scan_lines = VecDeque::with_capacity(200);
-                let mut times = VecDeque::with_capacity(200);
 
                 // use timeBeginPeriod(1) to set the timer resolution to 1ms
                 unsafe { windows::Win32::Media::timeBeginPeriod(1) };
@@ -335,14 +337,9 @@ impl App {
                 // Create a high precision timer with 0.5 ms interval
                 let timer = HighPrecisionTimer::new(1).expect("Failed to create high precision timer");
 
-                let t0 = std::time::Instant::now();
+                let mut i = 0;
 
-                // Collect data for 1 second
                 loop {
-                    // let elapsed_ms = start_time.elapsed().as_secs_f64() * 1000.0;
-
-                    // Prepare the structure for D3DKMTGetScanLine
-
                     use windows::Wdk::Graphics::Direct3D::D3DKMT_GETSCANLINE;
 
                     use crate::utils;
@@ -361,62 +358,56 @@ impl App {
                             .ok()
                             .expect("Failed to call D3DKMTGetScanLine");
 
-                        // push the scan line and time to the scan_lines vector
-                        scan_lines.push_back(scan_line_info.ScanLine);
-                        times.push_back(t0.elapsed().as_secs_f64());
+                        // if we're in vertical blank, we skip this frame
+                        if scan_line_info.InVerticalBlank == false {
+                            // push the scan line data into the vector
+                            use std::time::Instant;
+                            let mut win32_scanline_samples = win32_scanline_samples_clone.lock().unwrap();
+                            win32_scanline_samples.0.push_back(Instant::now());
+                            win32_scanline_samples.1.push_back(scan_line_info.ScanLine);
 
-                        // remove old scan lines and times
-                        while scan_lines.len() > 200 {
-                            scan_lines.pop_front();
-                            times.pop_front();
+                            // remove old scan lines and times
+                            if win32_scanline_samples.0.len() >= 1000 {
+                                win32_scanline_samples.0.pop_front();
+                                win32_scanline_samples.1.pop_front();
+                            }
+
+                            if i % 500 == 0 {
+                                // find vblanks
+                                // we run our vblank finding algorithm here, which will yield a list of timestamps where the vblanks occured
+                                // we can then use this to estimate the refresh rate and figure out when the last flip occurred
+
+                                use crate::visual::utils::find_zero_crossings;
+                                let xs = win32_scanline_samples
+                                    .0
+                                    .iter()
+                                    .map(|x| x.duration_since(created_at_time.clone()).as_secs_f64() * 1000.0)
+                                    .collect::<Vec<_>>();
+                                let ys = win32_scanline_samples.1.iter().map(|y| *y as f64).collect::<Vec<_>>();
+                                let vblanks = find_zero_crossings(&xs, &ys);
+
+                                // we add the vblank times to the vblank_times vector
+                                // hoowever, we only add the vblank times if they are not already in the vector
+                                // to do this efficiently, we take the first NEW vblank time and check where it is in the vector
+                                // we then remove all vblank times that are before this time and add the new vblank time to the vector
+                                let mut vblank_times = vblank_times_clone.lock().unwrap();
+                                if let Some(first_new_vblank) = vblanks.first() {
+                                    // find the index of the first new vblank time
+                                    let index = vblank_times.iter().position(|x| *x >= *first_new_vblank);
+                                    if let Some(index) = index {
+                                        // remove all vblank times before this index
+                                        vblank_times.drain(0..index);
+                                    }
+                                    // add the new vblank time to the vector
+                                    vblank_times.push_back(*first_new_vblank);
+                                }
+                            }
+                            i += 1;
                         }
                     }
 
-                    // hint tight loop to the CPU
                     timer.wait().expect("Failed to wait on timer");
-
-                    // run through the scan line data and check if we have a new vsync
-                    let x = times.make_contiguous();
-                    let y = &scan_lines
-                        .make_contiguous()
-                        .iter()
-                        .map(|&s| s as f64)
-                        .collect::<Vec<_>>();
-
-                    let vblanks = crate::visual::utils::find_zero_crossings(x, y);
-
-                    println!("Vblanks: {:?}", vblanks.len());
                 }
-
-                // loop {
-                //     // request an update to the presentation statistics
-
-                //     // get the last vsync time
-                //     let mut pstats = windows::Win32::Graphics::Dxgi::DXGI_FRAME_STATISTICS::default();
-                //     if unsafe { swap_chain.GetFrameStatistics(&mut pstats) }.is_ok() {
-                //         // check if the flip count has changed
-                //         let new_flip_count = pstats.SyncRefreshCount;
-                //         if new_flip_count > flip_count.load(std::sync::atomic::Ordering::Relaxed) {
-                //             // we have a new vsync
-
-                //             use ringbuf::traits::RingBuffer;
-                //             flip_count.store(new_flip_count, std::sync::atomic::Ordering::Relaxed);
-                //             let vsync_time = pstats.SyncQPCTime;
-                //             presentation_times_clone.lock().unwrap().push_back(vsync_time);
-                //             // remove old vsync times
-                //             while presentation_times_clone.lock().unwrap().len() > 200 {
-                //                 presentation_times_clone.lock().unwrap().pop_front();
-                //             }
-                //         } else {
-                //             // pass
-                //         }
-                //     } else {
-                //         log::warn!("Failed to get frame statistics");
-                //     }
-
-                //     // sleep for a short time to avoid busy waiting
-                //     thread::sleep(std::time::Duration::from_millis(1));
-                // }
             });
         }
 
@@ -428,9 +419,12 @@ impl App {
             event_broadcast_sender,
             event_broadcast_receiver,
             config: Arc::new(Mutex::new(ExperimentConfig::default())),
-            presentation_times,
-            missed_frames,
-            flip_count,
+            created_at: created_at_time,
+            #[cfg(all(feature = "dx12", target_os = "windows"))]
+            win32_scanline_samples,
+            vblank_times: vblank_times.clone(),
+            estimated_refresh_rate: Arc::new(AtomicF64::new(0.0)),
+            last_vblank_time_presented_at: Arc::new(AtomicF64::new(0.0)),
         };
 
         let win_clone = window.clone();

@@ -1,0 +1,23 @@
+[package]
+name = "psydk-camera"
+version = "0.1.2"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "psydk_camera"
+crate-type = ["cdylib", "lib"]
+
+[examples]
+name = "record"
+
+
+[dependencies]
+pyo3 = "0.19.0"
+glib = { version = "0.19.0"}
+gstreamer = {version = "0.23.7"}
+gstreamer-app = {version = "0.23.5"}
+gstreamer-pbutils = "0.23.5"
+atomic_float = "1.1.0"
+gstreamer-video = "0.23.6"
+chrono = "0.4.41"
