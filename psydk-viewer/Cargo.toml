@@ -1,0 +1,11 @@
+[package]
+name = "lsl-viewer"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+eframe = "0.29"
+egui = "0.29"
+egui_plot = "0.29"
+lsl = { git = "https://github.com/labstreaminglayer/liblsl-rust" }
+crossbeam-channel = "0.5"
