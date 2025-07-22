@@ -8,8 +8,6 @@ edition = "2021"
 name = "psydk_camera"
 crate-type = ["cdylib", "lib"]
 
-[examples]
-name = "record"
 
 
 [dependencies]

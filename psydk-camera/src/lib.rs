@@ -30,9 +30,7 @@ pub fn create_usb_camera_source() -> Result<gst::Element, gst::glib::Error> {
 
     #[cfg(target_os = "linux")]
     {
-        gst::ElementFactory::make("v4l2src")
-            .name("usb-camera-source")
-            .build()
+        gst::ElementFactory::make("v4l2src").name("usb-camera-source").build()
     }
 
     #[cfg(target_os = "windows")]
@@ -104,10 +102,9 @@ fn record(
     };
 
     // Create the elements
-    let source = create_usb_camera_source()
-        .unwrap_or_else(|_| {
-            panic!("Failed to create USB camera source. Ensure the appropriate GStreamer plugins are installed.");
-        });
+    let source = create_usb_camera_source().unwrap_or_else(|_| {
+        panic!("Failed to create USB camera source. Ensure the appropriate GStreamer plugins are installed.");
+    });
     let caps_filter = gst::ElementFactory::make("capsfilter").build().unwrap();
     let rotate = gst::ElementFactory::make("videoflip")
         .property("video-direction", &rotation_angle)
@@ -202,12 +199,9 @@ fn record(
 
     // add and link the display pipeline
     if display {
-        pipeline
-            .add_many(&[&display_queue, &autovideosink])
-            .unwrap();
+        pipeline.add_many(&[&display_queue, &autovideosink]).unwrap();
         gst::Element::link_many(&[&tee, &display_queue, &autovideosink]).unwrap();
     }
-
 
     // link the recording pipeline
     gst::Element::link_many(&[
@@ -250,79 +244,68 @@ fn record(
         let pipeline_clone = pipeline.clone();
 
         // start rtsp server
-        rtsp::run_rtsp_server(
-            port,
-            move |session: rtsp::RtspSession, client_ip: String| {
-                // 1. Create elements
-                let rtpbin = gst::ElementFactory::make("rtpbin")
-                    .build()
-                    .expect("Failed to create rtpbin");
+        rtsp::run_rtsp_server(port, move |session: rtsp::RtspSession, client_ip: String| {
+            // 1. Create elements
+            let rtpbin = gst::ElementFactory::make("rtpbin")
+                .build()
+                .expect("Failed to create rtpbin");
 
-                let rtph264pay = gst::ElementFactory::make("rtph264pay")
-                    .property("config-interval", 10i32)
-                    .property("pt", 96u32)
-                    .property_from_str("aggregate-mode", "zero-latency")
-                    .build()
-                    .expect("Failed to create rtph264pay");
+            let rtph264pay = gst::ElementFactory::make("rtph264pay")
+                .property("config-interval", 10i32)
+                .property("pt", 96u32)
+                .property_from_str("aggregate-mode", "zero-latency")
+                .build()
+                .expect("Failed to create rtph264pay");
 
-                let queue = gst::ElementFactory::make("queue")
-                    .build()
-                    .expect("Failed to create queue");
+            let queue = gst::ElementFactory::make("queue")
+                .build()
+                .expect("Failed to create queue");
 
-                let udpsink = gst::ElementFactory::make("udpsink")
-                    .property("host", &client_ip)
-                    .property("port", &session.client_rtp.parse::<i32>().unwrap())
-                    .property("sync", false)
-                    .build()
-                    .expect("Failed to create udpsink");
+            let udpsink = gst::ElementFactory::make("udpsink")
+                .property("host", &client_ip)
+                .property("port", &session.client_rtp.parse::<i32>().unwrap())
+                .property("sync", false)
+                .build()
+                .expect("Failed to create udpsink");
 
-                // 2. Add elements to pipeline
-                pipeline_clone
-                    .add_many(&[&rtpbin, &rtph264pay, &queue, &udpsink])
-                    .expect("Failed to add elements to pipeline");
+            // 2. Add elements to pipeline
+            pipeline_clone
+                .add_many(&[&rtpbin, &rtph264pay, &queue, &udpsink])
+                .expect("Failed to add elements to pipeline");
 
-                // 3. Link source to payloader
-                // Get a request pad from the tee
-                let tee_pad = tee2
-                    .request_pad_simple("src_%u")
-                    .expect("Failed to get tee src pad");
-                let queue_sink_pad = queue
-                    .static_pad("sink")
-                    .expect("Failed to get queue sink pad");
-                tee_pad.link(&queue_sink_pad).expect("Failed to link tee to queue");
+            // 3. Link source to payloader
+            // Get a request pad from the tee
+            let tee_pad = tee2.request_pad_simple("src_%u").expect("Failed to get tee src pad");
+            let queue_sink_pad = queue.static_pad("sink").expect("Failed to get queue sink pad");
+            tee_pad.link(&queue_sink_pad).expect("Failed to link tee to queue");
 
-                // Link queue -> payloader
-                gst::Element::link_many(&[&queue, &rtph264pay])
-                    .expect("Failed to link queue to payloader");
+            // Link queue -> payloader
+            gst::Element::link_many(&[&queue, &rtph264pay]).expect("Failed to link queue to payloader");
 
-                // 4. Link payloader to rtpbin
-                let pay_src_pad = rtph264pay
-                    .static_pad("src")
-                    .expect("Failed to get payloader src pad");
-                let rtpbin_sink_pad = rtpbin
-                    .request_pad_simple("send_rtp_sink_0")
-                    .expect("Failed to get rtpbin send_rtp_sink_0 pad");
-                pay_src_pad.link(&rtpbin_sink_pad)
-                    .expect("Failed to link payloader to rtpbin");
+            // 4. Link payloader to rtpbin
+            let pay_src_pad = rtph264pay.static_pad("src").expect("Failed to get payloader src pad");
+            let rtpbin_sink_pad = rtpbin
+                .request_pad_simple("send_rtp_sink_0")
+                .expect("Failed to get rtpbin send_rtp_sink_0 pad");
+            pay_src_pad
+                .link(&rtpbin_sink_pad)
+                .expect("Failed to link payloader to rtpbin");
 
-                // 5. Link rtpbin src to udpsink
-                let rtpbin_src_pad = rtpbin
-                    .static_pad("send_rtp_src_0")
-                    .expect("Failed to get rtpbin send_rtp_src_0 pad");
-                let udpsink_sink_pad = udpsink
-                    .static_pad("sink")
-                    .expect("Failed to get udpsink sink pad");
-                rtpbin_src_pad.link(&udpsink_sink_pad)
-                    .expect("Failed to link rtpbin to udpsink");
+            // 5. Link rtpbin src to udpsink
+            let rtpbin_src_pad = rtpbin
+                .static_pad("send_rtp_src_0")
+                .expect("Failed to get rtpbin send_rtp_src_0 pad");
+            let udpsink_sink_pad = udpsink.static_pad("sink").expect("Failed to get udpsink sink pad");
+            rtpbin_src_pad
+                .link(&udpsink_sink_pad)
+                .expect("Failed to link rtpbin to udpsink");
 
-                // 6. Sync state with parent
-                for element in [&rtpbin, &rtph264pay, &queue, &udpsink] {
-                    element.sync_state_with_parent().unwrap();
-                }
-            },
-        )
+            // 6. Sync state with parent
+            for element in [&rtpbin, &rtph264pay, &queue, &udpsink] {
+                element.sync_state_with_parent().unwrap();
+            }
+        })
     }
-
 
     // Start playing
     pipeline.set_state(gst::State::Playing).unwrap();
@@ -334,26 +317,20 @@ fn record(
             match msg.view() {
                 gst::MessageView::Eos(..) => break,
                 gst::MessageView::Error(err) => {
-                    eprintln!(
-                        "Error from {:?}: {}",
-                        err.src().map(|s| s.path_string()),
-                        err.error()
-                    );
+                    eprintln!("Error from {:?}: {}", err.src().map(|s| s.path_string()), err.error());
                     break;
                 }
                 gst::MessageView::StateChanged(s) => {
                     match s.current() {
                         gst::State::Playing => {
                             // chexk if state change pertains to whole pipeline
-                            if s.src().map(|s| s.path_string()).unwrap() == "/GstPipeline:pipeline0"
-                            {
+                            if s.src().map(|s| s.path_string()).unwrap() == "/GstPipeline:pipeline0" {
                                 is_recording.store(true, std::sync::atomic::Ordering::Relaxed);
                             }
                         }
                         _ => {
                             // if the pipeline is not playing, set is_recording to false
-                            if s.src().map(|s| s.path_string()).unwrap() == "/GstPipeline:pipeline0"
-                            {
+                            if s.src().map(|s| s.path_string()).unwrap() == "/GstPipeline:pipeline0" {
                                 is_recording.store(false, std::sync::atomic::Ordering::Relaxed);
                             }
                         }
@@ -377,11 +354,7 @@ fn record(
         match msg.view() {
             gst::MessageView::Eos(..) => break,
             gst::MessageView::Error(err) => {
-                eprintln!(
-                    "Error from {:?}: {}",
-                    err.src().map(|s| s.path_string()),
-                    err.error()
-                );
+                eprintln!("Error from {:?}: {}", err.src().map(|s| s.path_string()), err.error());
                 break;
             }
             _ => {}
@@ -416,13 +389,7 @@ pub struct CameraCaps {
 #[pymethods]
 impl CameraCaps {
     #[new]
-    fn __new__(
-        width: i32,
-        height: i32,
-        framerate_numerator: i32,
-        framerate_denominator: i32,
-        format: String,
-    ) -> Self {
+    fn __new__(width: i32, height: i32, framerate_numerator: i32, framerate_denominator: i32, format: String) -> Self {
         CameraCaps {
             width,
             height,
@@ -460,11 +427,7 @@ impl Recorder {
             90 => Some(Rotation::Rotate90),
             180 => Some(Rotation::Rotate180),
             270 => Some(Rotation::Rotate270),
-            _ => {
-                return Err(pyo3::exceptions::PyValueError::new_err(
-                    "Invalid rotation value",
-                ))
-            }
+            _ => return Err(pyo3::exceptions::PyValueError::new_err("Invalid rotation value")),
         };
 
         std::thread::spawn(move || {
@@ -497,8 +460,7 @@ impl Recorder {
     }
 
     pub fn stop(&self) {
-        self.stop_flag
-            .store(true, std::sync::atomic::Ordering::Relaxed);
+        self.stop_flag.store(true, std::sync::atomic::Ordering::Relaxed);
         // Wait for the recording to stop
         while self.is_recording.load(std::sync::atomic::Ordering::Relaxed) {
             std::thread::sleep(std::time::Duration::from_millis(5));
@@ -506,13 +468,11 @@ impl Recorder {
     }
 
     pub fn last_frame_time(&self) -> f64 {
-        self.last_frame_time
-            .load(std::sync::atomic::Ordering::Relaxed)
+        self.last_frame_time.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     pub fn last_frame_count(&self) -> usize {
-        self.last_frame_count
-            .load(std::sync::atomic::Ordering::Relaxed)
+        self.last_frame_count.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     pub fn is_recording(&self) -> bool {
@@ -538,7 +498,7 @@ impl Recorder {
 
 /// A Python module implemented in Rust.
 #[pymodule]
-fn webcam_py(_py: Python, m: &PyModule) -> PyResult<()> {
+fn psydk_camera(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<Recorder>()?;
     m.add_class::<CameraCaps>()?;
     Ok(())

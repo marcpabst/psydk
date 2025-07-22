@@ -203,6 +203,10 @@ pub enum Event {
     Onset {
         /// Timestamp of the event.
         timestamp: Timestamp,
+        // /// If the provided timestamp has been corrected/estimated.
+        // corrected: bool,
+        // /// If corrected, the original timestamp before correction.
+        // original_timestamp: Option<Timestamp>,
     },
     /// Offset event.
     Offset {

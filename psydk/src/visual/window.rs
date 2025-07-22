@@ -144,7 +144,7 @@ pub struct WindowState {
     pub bg_color: LinRgba,
     /// The frame callbacks that maps the frame number to the callback.
     #[dbg(placeholder = "...")]
-    pub frame_callbacks: HashMap<FrameId, Box<dyn FnOnce() + Send>>,
+    pub frame_callbacks: HashMap<FrameId, Box<dyn FnOnce(Instant, Option<Instant>) + Send>>,
     /// Queue of frames that have been submitted.
     #[dbg(placeholder = "...")]
     pub frame_queue: Vec<FrameId>,
@@ -221,7 +221,7 @@ impl Window {
     }
 
     /// Present a frame on the window. Returns the timestamp of the vblank at which the frame was presented.
-    pub fn present(&self, frame: &mut Frame) -> PsydkResult<()> {
+    pub fn present(&self, frame: &mut Frame) -> PsydkResult<f64> {
         // lock the gpu state and window state
         let gpu_state = &mut self.gpu_state.lock().unwrap();
         let mut win_state = &mut self.state.lock().unwrap();
@@ -247,11 +247,11 @@ impl Window {
             .collect::<Vec<_>>();
 
         // push onset event from frame to the event queue
-        let onset_callback_fn = move || {
+        let onset_callback_fn = move |timestamp: Instant, estimated_timestamp: Option<Instant>| {
             for (id, handler) in frame_onset_events.iter() {
                 // create a new event
                 let onset_event = Event::Onset {
-                    timestamp: Instant::now().into(),
+                    timestamp: estimated_timestamp.unwrap_or(timestamp).into(),
                 };
                 // call the handler
                 handler(onset_event);
@@ -318,8 +318,6 @@ impl Window {
         // present the frame
         suface_texture.present();
 
-        let t0 = Instant::now();
-
         // on dx12, get the frame id and add it to the frame queue
         // then wait for the frame to be presented
         #[cfg(all(feature = "dx12", target_os = "windows"))]
@@ -347,63 +345,85 @@ impl Window {
             // this is waiting for the frame latency waitable object to be signaled
             unsafe { windows::Win32::System::Threading::WaitForSingleObject(waitable_handle, 10000) };
 
-            // now we can run the callback
+            // TODO wait for the frame to be presented
+            // TODO on Windows, we will run the callback here
+            // TODO on MacOS we will let Metal run the callback
+        }
+
+        let mut onset_time = self.created_at.elapsed().as_secs_f64();
+        let t0 = Instant::now();
+
+        let mut estimated_last_t_as_instant = None;
+
+        #[cfg(all(feature = "dx12", target_os = "windows"))]
+        {
+            // we run our vblank finding algorithm here, which will yield a list of timestamps where the vblanks occured
+            // we can then use this to estimate the refresh rate and figure out when the last flip occurred
+            let xs = self
+                .win32_scanline_samples
+                .lock()
+                .unwrap()
+                .0
+                .iter()
+                .map(|x| x.duration_since(self.created_at).as_secs_f64() * 1000.0)
+                .collect::<Vec<_>>();
+            let ys = self
+                .win32_scanline_samples
+                .lock()
+                .unwrap()
+                .1
+                .iter()
+                .map(|y| *y as f64)
+                .collect::<Vec<_>>();
+            let vblanks = find_zero_crossings(&xs, &ys);
+
+            // use vblanks to estimate the refresh rate
+            let estimated_refresh_rate = super::utils::estimate_refresh_rate(&vblanks);
+
+            if let Some((refresh_rate, last_recorded_time)) = estimated_refresh_rate {
+                // update the estimated refresh rate
+                self.estimated_refresh_rate.store(refresh_rate, Ordering::Relaxed);
+                let current_time = Instant::now().duration_since(self.created_at).as_secs_f64() * 1000.0; // in milliseconds
+                let diff = current_time - (last_recorded_time as f64); //+ TOLARENCE; // in milliseconds
+
+                let expected_flips = (diff * (refresh_rate / 1000.0)).floor() as u32;
+                // println!(
+                //     "Estimated refresh rate: {refresh_rate:.2} Hz, last recorded time: {last_recorded_time:.2} ms, current time: {current_time:.2} ms, diff: {diff:.2} ms, expected flips: {expected_flips}",
+                // );
+
+                let estimated_last_t = last_recorded_time + (expected_flips as f64 * (1000.0 / refresh_rate));
+
+                // update the last vsync timestamp
+                let old_estimated_last_t = self
+                    .last_vblank_time_presented_at
+                    .swap(estimated_last_t, Ordering::Relaxed);
+
+                let diff_actual = estimated_last_t - old_estimated_last_t;
+
+                let diff_est = current_time - estimated_last_t;
+                // println!("Estimated refresh rate: {refresh_rate:.3} Hz, time since last flip: {diff:.3} ms, time since last estimated flip: {diff_est:.3} ms, time since last eastimated flip: {diff_actual:.3}");
+
+                estimated_last_t_as_instant =
+                    Some(self.created_at + Duration::from_secs_f64(estimated_last_t / 1000.0));
+
+                // if let Some(estimated_last_t_as_instant) = estimated_last_t_as_instant {
+                //     // print diff between estimated_last_t_as_instant and t0
+                //     println!(
+                //         "Estimated last t as instant and t0: {:.5} ms",
+                //         (t0 - estimated_last_t_as_instant).as_secs_f64() * 1000.0
+                //     );
+                // }
+
+                // put estimated_last_t into onset time
+                onset_time = estimated_last_t;
+            }
+
             if let Some(callback) = win_state.frame_callbacks.remove(&new_frame_id) {
-                callback();
+                callback(t0, estimated_last_t_as_instant);
             }
         }
 
-        // TODO wait for the frame to be presented
-        // TODO on Windows, we will run the callback here
-        // TODO on MacOS we will let Metal run the callback
-
-        let onset_time = Instant::now();
-
-        // we run our vblank finding algorithm here, which will yield a list of timestamps where the vblanks occured
-        // we can then use this to estimate the refresh rate and figure out when the last flip occurred
-        let xs = self
-            .win32_scanline_samples
-            .lock()
-            .unwrap()
-            .0
-            .iter()
-            .map(|x| x.duration_since(self.created_at).as_secs_f64() * 1000.0)
-            .collect::<Vec<_>>();
-        let ys = self
-            .win32_scanline_samples
-            .lock()
-            .unwrap()
-            .1
-            .iter()
-            .map(|y| *y as f64)
-            .collect::<Vec<_>>();
-        let vblanks = find_zero_crossings(&xs, &ys);
-
-        // use vblanks to estimate the refresh rate
-        let estimated_refresh_rate = super::utils::estimate_refresh_rate(&vblanks);
-
-        if let Some((refresh_rate, last_recorded_time)) = estimated_refresh_rate {
-            // update the estimated refresh rate
-            self.estimated_refresh_rate.store(refresh_rate, Ordering::Relaxed);
-            let current_time = Instant::now().duration_since(self.created_at).as_secs_f64() * 1000.0; // in milliseconds
-            let diff = current_time - (last_recorded_time as f64); //+ TOLARENCE; // in milliseconds
-
-            let expected_flips = (diff * (refresh_rate / 1000.0)).floor() as u32;
-            // println!(
-            //     "Estimated refresh rate: {refresh_rate:.2} Hz, last recorded time: {last_recorded_time:.2} ms, current time: {current_time:.2} ms, diff: {diff:.2} ms, expected flips: {expected_flips}",
-            // );
-
-            let estimated_last_t = last_recorded_time + (expected_flips as f64 * (1000.0 / refresh_rate));
-
-            // update the last vsync timestamp
-            self.last_vblank_time_presented_at
-                .store(estimated_last_t, Ordering::Relaxed);
-
-            let diff_est = current_time - estimated_last_t;
-            // println!("Time since last estimated flip: {diff_est:.3} ms");
-        }
-
-        Ok(())
+        Ok(onset_time)
     }
 
     pub fn close(&self) {
@@ -620,7 +640,7 @@ impl Window {
     #[pyo3(name = "present")]
     #[pyo3(signature = (frame))]
     /// Present a frame on the window.
-    fn py_present(&self, frame: &mut Frame, py: Python) -> PyResult<()> {
+    fn py_present(&self, frame: &mut Frame, py: Python) -> PyResult<f64> {
         let self_wrapper = SendWrapper::new(self.clone());
         let frame_wrapper = SendWrapper::new(frame);
         py.allow_threads(move || self_wrapper.present(frame_wrapper.take()))

@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
 use numpy::{IntoPyArray, PyReadonlyArrayDyn};
+use psydk_audio::cpal::traits::{DeviceTrait, HostTrait};
+use psydk_audio::cpal::{default_host, Device, Host, StreamConfig};
+use psydk_audio::{AudioObject, Stream};
 use pyo3::ffi::c_str;
 use pyo3::types::PyAnyMethods;
 use pyo3::{pyclass, pyfunction, pymethods, Bound, PyAny, PyObject, PyRef, PyRefMut, PyResult, Python};
-use timed_audio::cpal::traits::{DeviceTrait, HostTrait};
-use timed_audio::cpal::{default_host, Device, Host, StreamConfig};
-use timed_audio::{AudioObject, Stream};
 
 use crate::time::Timestamp;
 
@@ -60,7 +60,7 @@ impl PyStream {
 
         // If a specific sample rate is requested, override the default
         if let Some(rate) = sampling_rate {
-            config.sample_rate = timed_audio::cpal::SampleRate(rate);
+            config.sample_rate = psydk_audio::cpal::SampleRate(rate);
         }
 
         Self {

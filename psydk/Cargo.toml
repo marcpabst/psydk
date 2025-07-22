@@ -71,7 +71,7 @@ strum_macros = "0.26.4"
 csscolorparser = "0.7.0"
 pollster = "0.4.0"
 cosmic-text = "0.12.1"
-timed-audio = { path = "../timed-audio" }
+psydk-audio = { path = "../psydk-audio" }
 
 # Gstreamer dependencies
 glib = { version = "0.20.10", optional = true }

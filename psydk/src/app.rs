@@ -464,7 +464,7 @@ impl App {
 
         let action_sender = self.action_sender.clone();
 
-        let audio_host = timed_audio::cpal::default_host().into();
+        let audio_host = psydk_audio::cpal::default_host().into();
 
         let exp_manager = ExperimentContext::new(
             self.gpu_state.clone(),

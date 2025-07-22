@@ -163,7 +163,7 @@ pub struct ExperimentContext {
     event_loop_proxy: EventLoopProxy<()>,
     action_sender: Sender<EventLoopAction>,
     renderer_factory: Arc<dyn SharedRendererState>,
-    audio_host: Arc<timed_audio::cpal::Host>,
+    audio_host: Arc<psydk_audio::cpal::Host>,
     font_manager: Arc<Mutex<cosmic_text::FontSystem>>,
     config: Arc<Mutex<crate::config::ExperimentConfig>>,
 }
@@ -174,7 +174,7 @@ impl ExperimentContext {
         event_loop_proxy: EventLoopProxy<()>,
         action_sender: Sender<EventLoopAction>,
         renderer_factory: Arc<dyn SharedRendererState>,
-        audio_host: Arc<timed_audio::cpal::Host>,
+        audio_host: Arc<psydk_audio::cpal::Host>,
         font_manager: Arc<Mutex<cosmic_text::FontSystem>>,
     ) -> Self {
         Self {
