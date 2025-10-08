@@ -61,7 +61,10 @@ jobs:
           python -m pip install git+https://github.com/pypa/cibuildwheel.git
 
       - name: Setup GStreamer
-        uses: marcpabst/setup-gstreamer@v.1.5.3
+        id:   setup_gstreamer
+        uses: blinemedical/setup-gstreamer@1.4
+        with:
+          version: '1.24.10'
 
       # - uses: actions-rust-lang/setup-rust-toolchain@v1
       - name: Build wheels
