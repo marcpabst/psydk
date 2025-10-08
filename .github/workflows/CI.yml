@@ -65,6 +65,7 @@ jobs:
         working-directory: ./psydk
         run: python -m cibuildwheel --output-dir wheelhouse
         env:
+          FORCE_SKIA_BUILD: "1"
           IPHONEOS_DEPLOYMENT_TARGET: "23.0"
           CIBW_PLATFORM: ${{ matrix.platform }}
           CIBW_ARCHS: ${{ matrix.archs }}

@@ -16,16 +16,15 @@ anyhow = "1.0.86"
 pollster = "0.3.0"
 image = { version = "0.23.14", features = ["png", "jpeg"] }
 itertools = "0.13.0"
-# wgpu = { git = "https://github.com/marcpabst/wgpu", rev = "0b24d89" }
-wgpu = { path = "../../wgpu/wgpu" }
+wgpu = { git = "https://github.com/marcpabst/wgpu", rev = "91d8339" }
 nalgebra = "0.33.0"
 custom_debug = "0.6.1"
 bytemuck = "1.20.0"
 psydk-proc = { path = "../psydk-proc" }
 foreign-types-shared = "0.3.1"
 cosmic-text = "0.12.1"
-# winit = { git = "https://github.com/rust-windowing/winit", rev = "fa0795a" }
-winit = { path = "../../winit/winit" }
+winit = { git = "https://github.com/rust-windowing/winit", rev = "fa0795a" }
+#winit = { path = "../../winit/winit" }
 windows-core = "0.61.2"
 
 # vello
@@ -36,12 +35,12 @@ windows-core = "0.61.2"
 # macOS only
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 metal = "0.31.0"
-skia-safe = { version = "0.84", path = "../../rust-skia/skia-safe", features = ["metal"], optional = true }
+skia-safe = { git = "https://github.com/marcpabst/rust-skia", rev = "2acb894", features = ["metal"], optional = true }
 
 
 # windows only
 [target.'cfg(target_os = "windows")'.dependencies]
-skia-safe = { version = "0.84.0",  path = "../../rust-skia/skia-safe", features = ["d3d"], optional = true }
+skia-safe = { git = "https://github.com/marcpabst/rust-skia", rev = "2acb894", features = ["d3d"], optional = true }
 windows = { version = "0.61", features = [
     "Win32",
     "Win32_Graphics",
