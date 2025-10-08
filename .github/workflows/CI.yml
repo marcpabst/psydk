@@ -60,6 +60,9 @@ jobs:
           # python -m pip install cibuildwheel==3.0.0
           python -m pip install git+https://github.com/pypa/cibuildwheel.git
 
+      - name: Setup GStreamer
+        uses: marcpabst/setup-gstreamer@v.1.5.3
+
       # - uses: actions-rust-lang/setup-rust-toolchain@v1
       - name: Build wheels
         working-directory: ./psydk
