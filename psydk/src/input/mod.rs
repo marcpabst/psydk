@@ -169,6 +169,8 @@ pub enum Event {
     CursorEntered {
         /// Timestamp of the event.
         timestamp: Timestamp,
+        /// The position of the cursor when it entered the window.
+        position: (f32, f32),
         /// The Window that the event was triggered on.
         window: Window,
     },
@@ -405,21 +407,37 @@ impl EventTryFrom<winit_event::WindowEvent> for Event {
                 }
             }
             // match mouse button events
-            winit_event::WindowEvent::MouseInput {
-                device_id: _,
+            winit_event::WindowEvent::PointerButton {
+                device_id,
                 state,
+                position,
+                primary,
                 button,
             } => {
                 let button = match button {
-                    winit_event::MouseButton::Left => MouseButton::Left(),
-                    winit_event::MouseButton::Right => MouseButton::Right(),
-                    winit_event::MouseButton::Middle => MouseButton::Middle(),
-                    winit_event::MouseButton::Forward => MouseButton::Forward(),
-                    winit_event::MouseButton::Back => MouseButton::Back(),
-                    winit_event::MouseButton::Other(id) => MouseButton::Other(id),
+                    winit_event::ButtonSource::Mouse(winit_event::MouseButton::Left) => MouseButton::Left(),
+                    winit_event::ButtonSource::Mouse(winit_event::MouseButton::Right) => MouseButton::Right(),
+                    winit_event::ButtonSource::Mouse(winit_event::MouseButton::Middle) => MouseButton::Middle(),
+                    winit_event::ButtonSource::Mouse(winit_event::MouseButton::Back) => MouseButton::Back(),
+                    winit_event::ButtonSource::Mouse(winit_event::MouseButton::Forward) => MouseButton::Forward(),
+                    winit_event::ButtonSource::Mouse(winit_event::MouseButton::Other(index)) => {
+                        MouseButton::Other(index)
+                    }
+                    _ => MouseButton::Other(0), // Default case, should not happen
                 };
 
-                let position = window.mouse_position().unwrap_or((0.0, 0.0));
+                let position = {
+                    // move by x_origin and y_origin
+                    let window_state = window.state.lock().unwrap();
+                    let window_state = window_state.as_ref().unwrap();
+                    let window_size = window_state.size;
+                    let pos = (position.x as f32, position.y as f32);
+
+                    (
+                        pos.0 - (window_size.width as f32 / 2.0),
+                        pos.1 - (window_size.height as f32 / 2.0),
+                    )
+                };
 
                 match state {
                     winit_event::ElementState::Pressed => Event::MouseButtonPress {
@@ -436,10 +454,85 @@ impl EventTryFrom<winit_event::WindowEvent> for Event {
                     },
                 }
             }
-            // match touch events
-            winit_event::WindowEvent::Touch(touch) => {
+            winit_event::WindowEvent::PointerEntered {
+                device_id,
+                position,
+                primary,
+                kind,
+            } => {
                 //  let position = (Size::Pixels(position.x) - Size::ScreenWidth(0.5), Size::Pixels(-position.y) + Size::ScreenHeight(0.5));
-                let position = (touch.location.x as f32, touch.location.y as f32);
+                let position = {
+                    // move by x_origin and y_origin
+                    let window_state = window.state.lock().unwrap();
+                    let window_state = window_state.as_ref().unwrap();
+                    let window_size = window_state.size;
+                    let pos = (position.x as f32, position.y as f32);
+
+                    (
+                        pos.0 - (window_size.width as f32 / 2.0),
+                        pos.1 - (window_size.height as f32 / 2.0),
+                    )
+                };
+
+                match kind {
+                    // this is a touch even
+                    winit_event::PointerKind::Touch(finger_id) => Event::TouchStart {
+                        timestamp: timestamp.into(),
+                        position,
+                        window: window.clone(),
+                        id: Some(finger_id.into_raw() as u64),
+                    },
+                    // this is a mouse event
+                    _ => Event::CursorEntered {
+                        timestamp: timestamp.into(),
+                        position: position,
+                        window: window.clone(),
+                    },
+                }
+            }
+            winit_event::WindowEvent::PointerLeft {
+                device_id,
+                position,
+                primary,
+                kind,
+            } => {
+                let position = position.map(|pos| {
+                    // move by x_origin and y_origin
+                    let window_state = window.state.lock().unwrap();
+                    let window_state = window_state.as_ref().unwrap();
+                    let window_size = window_state.size;
+                    let pos = (pos.x as f32, pos.y as f32);
+
+                    (
+                        pos.0 - (window_size.width as f32 / 2.0),
+                        pos.1 - (window_size.height as f32 / 2.0),
+                    )
+                });
+
+                match kind {
+                    // this is a touch even
+                    winit_event::PointerKind::Touch(finger_id) => Event::TouchEnd {
+                        timestamp: timestamp.into(),
+                        // position should always be Some for touch events
+                        position: position.expect("Position should be Some"),
+                        window: window.clone(),
+                        id: Some(finger_id.into_raw() as u64),
+                    },
+                    // this is a mouse event
+                    _ => Event::CursorExited {
+                        timestamp: timestamp.into(),
+                        window: window.clone(),
+                    },
+                }
+            }
+            winit_event::WindowEvent::PointerMoved {
+                device_id,
+                position,
+                primary,
+                source,
+            } => {
+                //  let position = (Size::Pixels(position.x) - Size::ScreenWidth(0.5), Size::Pixels(-position.y) + Size::ScreenHeight(0.5));
+                let position = (position.x as f32, position.y as f32);
 
                 // move by x_origin and y_origin
                 let window_state = window.state.lock().unwrap();
@@ -450,31 +543,19 @@ impl EventTryFrom<winit_event::WindowEvent> for Event {
                     position.1 - (window_size.height as f32 / 2.0),
                 );
 
-                // dispatch on TouchPhase
-                match touch.phase {
-                    winit_event::TouchPhase::Started => Event::TouchStart {
+                match source {
+                    // this is a touch event
+                    winit_event::PointerSource::Touch { finger_id, force } => Event::TouchMove {
                         timestamp: timestamp.into(),
                         position,
                         window: window.clone(),
-                        id: Some(touch.id),
+                        id: Some(finger_id.into_raw() as u64),
                     },
-                    winit_event::TouchPhase::Moved => Event::TouchMove {
+                    // this is a mouse event
+                    _ => Event::CursorMoved {
                         timestamp: timestamp.into(),
                         position,
                         window: window.clone(),
-                        id: Some(touch.id),
-                    },
-                    winit_event::TouchPhase::Ended => Event::TouchEnd {
-                        timestamp: timestamp.into(),
-                        position,
-                        window: window.clone(),
-                        id: Some(touch.id),
-                    },
-                    winit_event::TouchPhase::Cancelled => Event::TouchCancel {
-                        timestamp: timestamp.into(),
-                        position,
-                        window: window.clone(),
-                        id: Some(touch.id),
                     },
                 }
             }
@@ -492,35 +573,17 @@ impl EventTryFrom<winit_event::WindowEvent> for Event {
                     }
                 }
             }
-            // match cursor movement events
-            winit_event::WindowEvent::CursorMoved { position, .. } => {
-                let position = (position.x as f32, position.y as f32);
 
-                // move by x_origin and y_origin
-                let window_state = window.state.lock().unwrap();
-                let window_state = window_state.as_ref().unwrap();
-                let window_size = window_state.size;
-                let position = (
-                    position.0 - (window_size.width as f32 / 2.0),
-                    position.1 - (window_size.height as f32 / 2.0),
-                );
-
-                Event::CursorMoved {
-                    timestamp: timestamp.into(),
-                    position,
-                    window: window.clone(),
-                }
-            }
-            // match cursor enter events
-            winit_event::WindowEvent::CursorEntered { .. } => Event::CursorEntered {
-                timestamp: timestamp.into(),
-                window: window.clone(),
-            },
-            // match cursor exit events
-            winit_event::WindowEvent::CursorLeft { .. } => Event::CursorExited {
-                timestamp: timestamp.into(),
-                window: window.clone(),
-            },
+            // // match cursor enter events
+            // winit_event::WindowEvent::PointerEntered { .. } => Event::CursorEntered {
+            //     timestamp: timestamp.into(),
+            //     window: window.clone(),
+            // },
+            // // match cursor exit events
+            // winit_event::WindowEvent::PointerLeft { .. } => Event::CursorExited {
+            //     timestamp: timestamp.into(),
+            //     window: window.clone(),
+            // },
             // match touchpad press events
             winit_event::WindowEvent::TouchpadPressure {
                 device_id: _,

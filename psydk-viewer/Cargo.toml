@@ -4,9 +4,30 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-eframe = "0.31.1"
-egui = "0.31.1"
-egui_plot = "0.32.1"
+# For the example:
+eframe = { version = "0.32", default-features = false, features = [
+    "default_fonts", # Embed the default egui fonts.
+    "glow",          # Use the glow rendering backend. Alternative: "wgpu".
+    "persistence",   # Enable restoring app state when restarting the app.
+    "wayland",       # Required for Linux and CI.
+] }
+egui = "0.32"
+egui_plot = "0.33"
 lsl = { git = "https://github.com/labstreaminglayer/liblsl-rust" }
 crossbeam-channel = "0.5"
 ndarray = "0.16.1"
+egui_tiles = { git = "https://github.com/rerun-io/egui_tiles/", rev = "0e2f210" }
+serde = { version = "1.0.219", features = ["serde_derive"] }
+ron = "0.10"
+log = "0.4.27"
+libp2p = { version = "0.56", features = [
+    "tcp",
+    "noise",
+    "yamux",
+    "floodsub",
+    "mdns",
+    "tokio",
+    "macros",
+    "plaintext",
+] }
+tokio = { version = "1.46.1", features = ["full"] }

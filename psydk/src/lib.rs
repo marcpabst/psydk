@@ -1,30 +1,33 @@
 #![allow(unused)]
 #[macro_use]
 use std::collections::HashMap;
-use std::{
-    pin::Pin,
-    sync::{atomic::AtomicBool, Arc, Mutex},
-};
-
+use crate::input::{Event, EventHandlingExt, EventKind, EventTryFrom};
+use crate::visual::window::Frame;
 use async_channel::{bounded, Receiver, Sender};
 use context::{py_run_experiment, ExperimentContext};
 use derive_debug::Dbg;
 use futures_lite::{future::block_on, Future};
+use pyo3::types::{PyDict, PyList, PyTuple, PyType};
 use pyo3::{prelude::*, py_run};
 use renderer::wgpu_renderer;
+use std::thread;
+use std::{
+    pin::Pin,
+    sync::{atomic::AtomicBool, Arc, Mutex},
+};
 use visual::geometry::Size;
+
 use wgpu::{MemoryHints, TextureFormat};
 use winit::{
-    event::{Event as WinitEvent, WindowEvent},
+    event::WindowEvent,
     event_loop::{ControlFlow, EventLoop, EventLoopBuilder},
     monitor::VideoMode,
 };
 
-use crate::input::{Event, EventHandlingExt, EventKind, EventTryFrom};
-
 pub mod app;
 pub mod audio;
 pub mod config;
+pub mod context;
 pub mod errors;
 pub mod git;
 pub mod input;
@@ -32,19 +35,8 @@ pub mod time;
 pub mod utils;
 pub mod visual;
 
-pub mod context;
-
 // re-export wgpu
 pub use wgpu;
-
-// types to make the code more readable
-// pub(crate) type RenderThreadChannelPayload = Box<dyn FnOnce() -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>;
-
-use std::thread;
-
-use pyo3::types::{PyDict, PyList, PyTuple, PyType};
-
-use crate::visual::window::Frame;
 
 // macro that adds a sub-module to the current module
 macro_rules! new_submodule {
@@ -63,9 +55,11 @@ macro_rules! new_submodule {
 /// This module is implemented in Rust.
 #[pymodule]
 fn psydk(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    std::env::set_var("RUST_BACKTRACE", "full");
     m.add_function(wrap_pyfunction!(py_run_experiment, m)?);
     m.add_class::<ExperimentContext>()?;
     m.add_class::<config::ExperimentConfig>()?;
+    m.add_class::<config::DisplayConfig>()?;
 
     let m_visual = {
         let m = new_submodule!(m, "psydk", "visual");
@@ -113,8 +107,10 @@ fn psydk(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
         let m_color = {
             let m = new_submodule!(m, "psydk.visual", "color");
-            m.add_function(wrap_pyfunction!(visual::color::py_rgb, &m)?)?;
-            m.add_function(wrap_pyfunction!(visual::color::py_linrgb, &m)?)?;
+            m.add_function(wrap_pyfunction!(visual::colors::py_rgb, &m)?)?;
+            m.add_function(wrap_pyfunction!(visual::colors::py_linrgb, &m)?)?;
+            m.add_function(wrap_pyfunction!(visual::colors::py_luv, &m)?)?;
+            m.add_function(wrap_pyfunction!(visual::colors::py_xyz, &m)?)?;
             m
         };
 

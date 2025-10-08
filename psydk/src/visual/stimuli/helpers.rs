@@ -10,25 +10,25 @@ use renderer::{
 use uuid::Uuid;
 
 use super::{
-    animations::Animation, impl_pystimulus_for_wrapper, pattern::FillPattern, LinRgba, PyStimulus, Stimulus,
+    animations::Animation, impl_pystimulus_for_wrapper, pattern::FillPattern, Color, PyStimulus, Stimulus,
     StimulusParamValue, StimulusParams, StrokeStyle,
 };
 use crate::{
     context::{ExperimentContext, PyRendererFactory},
-    visual::{geometry::Size, window::Window},
+    visual::{colors::DisplayRGBA, geometry::Size, window::Window},
 };
 
-pub(crate) fn create_fill_brush_uniform<'a>(fill_color: &LinRgba) -> Brush<'a> {
-    Brush::Solid((*fill_color).into())
+pub(crate) fn create_fill_brush_uniform<'a>(fill_color: &DisplayRGBA) -> Brush<'a> {
+    Brush::Solid(fill_color.clone().into())
 }
 
 pub(crate) fn create_fill_brush_pattern<'a>(
-    foreground_color: &LinRgba,
+    foreground_color: &DisplayRGBA,
     pattern: &FillPattern,
     pattern_origin: (f32, f32),
 ) -> Brush<'a> {
     match pattern {
-        FillPattern::Uniform => Brush::Solid((*foreground_color).into()),
+        FillPattern::Uniform => Brush::Solid(foreground_color.clone().into()),
         FillPattern::Stripes => todo!(),
         FillPattern::Sinosoidal => todo!(),
         FillPattern::Checkerboard => todo!(),
@@ -36,9 +36,9 @@ pub(crate) fn create_fill_brush_pattern<'a>(
 }
 
 pub(crate) fn create_fill_brush<'a>(
-    fill_color: &Option<LinRgba>,
+    fill_color: &Option<DisplayRGBA>,
     stroke_style: &Option<StrokeStyle>,
-    stroke_color: &Option<LinRgba>,
+    stroke_color: &Option<DisplayRGBA>,
     stroke_width: &Option<Size>,
     gradient: &Option<Gradient>,
     // image: Option<Image>,
@@ -49,30 +49,29 @@ pub(crate) fn create_fill_brush<'a>(
     } else if let Some(fill_color) = fill_color {
         create_fill_brush_uniform(fill_color)
     } else {
-        create_fill_brush_uniform(&LinRgba::new(0.0, 0.0, 0.0, 0.0))
+        create_fill_brush_uniform(&DisplayRGBA::default())
     }
 }
 
 pub(crate) fn create_fill_brush2<'a>(
     pattern: &Option<FillPattern>,
     fill_origin: Option<(f32, f32)>,
-    fill_color: &Option<LinRgba>,
+    fill_color: &Option<DisplayRGBA>,
     stroke_style: &Option<StrokeStyle>,
-    stroke_color: &Option<LinRgba>,
+    stroke_color: &Option<DisplayRGBA>,
     stroke_width: &Option<Size>,
     gradient: &Option<Gradient>,
 ) -> Result<Brush<'a>, crate::errors::PsydkError> {
     let fill_origin = fill_origin.unwrap_or((0.0, 0.0));
     if let Some(pattern) = pattern {
-        let default_color = LinRgba::default();
-        let fill_color = fill_color.as_ref().unwrap_or(&default_color);
+        let fill_color = fill_color.as_ref().unwrap_or_default();
         Ok(create_fill_brush_pattern(fill_color, pattern, fill_origin))
     } else if let Some(gradient) = gradient {
         Ok(Brush::Gradient(gradient.clone()))
     } else if let Some(fill_color) = fill_color {
         Ok(create_fill_brush_uniform(fill_color))
     } else {
-        Ok(create_fill_brush_uniform(&LinRgba::new(0.0, 0.0, 0.0, 0.0)))
+        Ok(create_fill_brush_uniform(&DisplayRGBA::default()))
     }
 }
 

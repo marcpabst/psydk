@@ -30,14 +30,16 @@ crate-type = ["cdylib"]
 
 # General dependencies
 [dependencies]
-wgpu = { git = "https://github.com/marcpabst/wgpu", rev = "0b24d89" }
+# wgpu = { git = "https://github.com/marcpabst/wgpu", rev = "0b24d89" }
+wgpu = { path = "../../wgpu/wgpu" }
 serde = { version = "1.0", features = ["derive"] }
 renderer = { path = "../renderer" }
 psydk-proc = { path = "../psydk-proc" }
 
 raw-window-handle = "0.6"
 # winit = "0.30.11"
-winit = { git = "https://github.com/marcpabst/winit", rev = "8d98798" }
+# winit = { git = "https://github.com/rust-windowing/winit", rev = "fa0795a" }
+winit = { path = "../../winit/winit" }
 bytemuck = { version = "1.14.0", features = ["derive"] }
 nalgebra = "0.33.0"
 web-time = "1.0.0"
@@ -90,6 +92,9 @@ crossbeam-utils = "0.8.21"
 arc-swap = "1.7.1"
 ringbuf = "0.4.8"
 atomic_float = "1.1.0"
+lcms2 = "6.1.1"
+serde_json = "1.0.145"
+ndarray = "0.16.1"
 # tikv-jemallocator = { version = "0.5.4", features = ["profiling"] }
 
 # Windows dependencies
@@ -102,8 +107,8 @@ windows = { version = "0.61", features = [
     "Win32_System_Threading",
     "Win32_Security",
     "Win32_System_WindowsProgramming",
-    "Win32_Devices_Display"
-    ]}
+    "Win32_Devices_Display",
+] }
 
 # MacOS dependencies
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -115,7 +120,7 @@ objc2-core-foundation = "0.3.1"
 # iOS dependencies
 [target.'cfg(target_os = "ios")'.dependencies]
 objc2 = { version = "0.6.1" }
-objc2-ui-kit  = { version = "0.3.1" }
+objc2-ui-kit = { version = "0.3.1" }
 objc2-foundation = "0.3.1"
 objc2-core-foundation = "0.3.1"
 block2 = "0.6.1"

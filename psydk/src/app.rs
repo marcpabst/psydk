@@ -8,6 +8,7 @@ use std::{
     thread,
 };
 
+use crate::visual::colors::display_charactersitics::GenericDisplayCharacteristics;
 use atomic_float::AtomicF64;
 use derive_debug::Dbg;
 use pyo3::{
@@ -21,24 +22,23 @@ use renderer::{
     renderer::SharedRendererState,
     wgpu::TextureFormat,
 };
+
+use crate::visual::colors::Color;
 use wgpu::MemoryHints;
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
     monitor::MonitorHandle,
-    window::{Window as WinitWindow, WindowId},
+    window::{Window as WinitWindow, WindowAttributes, WindowId},
 };
 
 use crate::{
-    config::ExperimentConfig,
-    context::{EventLoopAction, ExperimentContext, GammaOptions, Monitor, WindowOptions},
+    config::{DisplayConfig, ExperimentConfig, PixelDepth},
+    context::{EventLoopAction, ExperimentContext, Monitor, WindowOptions},
     errors,
     input::Event,
-    visual::{
-        color::LinRgba,
-        window::{PhysicalScreen, Window, WindowState},
-    },
+    visual::window::{PhysicalScreen, Window, WindowState},
     EventTryFrom,
 };
 
@@ -65,10 +65,17 @@ pub struct App {
 }
 
 impl App {
+    /// Create a new app with the given configuration.
     pub fn new(config: ExperimentConfig) -> Self {
+        // the main event loop is running on the main thread, but our experiment code will run in a separate thread
+        // so we need to create a channel to communicate between the two threads
         let (action_sender, action_receiver) = std::sync::mpsc::channel();
 
+        // ESSENTIAL GPU SETUP
+
+        // we currently only support Metal and DX12 backends
         let backend = wgpu::Backends::METAL | wgpu::Backends::DX12;
+        // we need to set some backend options to enable low latency rendering on Windows with DX12
         let backend_options = wgpu::BackendOptions {
             gl: wgpu::GlBackendOptions::default(),
             dx12: wgpu::Dx12BackendOptions {
@@ -96,9 +103,11 @@ impl App {
 
         log::debug!("Selected graphics adapter: {:?}", adapter.get_info());
 
+        // TODO: check if its really necessary to request these limits
         let mut limits = wgpu::Limits::downlevel_defaults();
         limits.max_storage_buffers_per_shader_stage = 16;
 
+        // we want to use higher-bit color formats if possible
         let features =
             wgpu::Features::TEXTURE_FORMAT_16BIT_NORM | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES;
 
@@ -113,6 +122,8 @@ impl App {
         }))
         .expect("Failed to create device. This is likely a bug, please report it.");
 
+        log::debug!("Created graphics device: {:?}", device);
+
         let gpu_state = GPUState {
             instance,
             adapter,
@@ -120,40 +131,35 @@ impl App {
             queue,
         };
 
-        // create font manager
-        // create a font system (=font manager)
-        let empty_db = cosmic_text::fontdb::Database::new();
-        let mut font_manager = cosmic_text::FontSystem::new_with_locale_and_db("en".to_string(), empty_db);
+        // set the pixel format/texture format used for internal rendering
+        let internal_color_format = match config.internal_color_depth {
+            crate::config::PixelDepth::EightBit => renderer::color_formats::ColorFormat::Rgba8,
+            crate::config::PixelDepth::TenBit => renderer::color_formats::ColorFormat::Rgba10,
+            crate::config::PixelDepth::SixteenBitFloat => renderer::color_formats::ColorFormat::RgbaF16,
+        };
 
-        // load Noto Sans
-        let noto_sans_regular = include_bytes!("../assets/fonts/NotoSans-Regular.ttf");
-        font_manager.db_mut().load_font_data(noto_sans_regular.to_vec());
-        let noto_sans_bold = include_bytes!("../assets/fonts/NotoSans-Bold.ttf");
-        font_manager.db_mut().load_font_data(noto_sans_bold.to_vec());
-        let noto_sans_italic = include_bytes!("../assets/fonts/NotoSans-Italic.ttf");
-        font_manager.db_mut().load_font_data(noto_sans_italic.to_vec());
-        let noto_sans_bold_italic = include_bytes!("../assets/fonts/NotoSans-BoldItalic.ttf");
-        font_manager.db_mut().load_font_data(noto_sans_bold_italic.to_vec());
-
-        // create shared renderer state
-        let renderer = renderer::skia_backend::SkiaSharedRendererState::new(
+        // create a shared renderer state (can be shared between multiple windows)
+        let shared_render_state = renderer::skia_backend::SkiaSharedRendererState::new(
             &gpu_state.adapter,
             &gpu_state.device,
             &gpu_state.queue,
-            config.internal_color_encoding.into(),
-            config.internal_color_depth.into(),
-            config.display_color_format.into(),
+            renderer::color_formats::ColorEncoding::Linear,
+            internal_color_format,
         );
 
-        println!(
-            r"
-            Renderer created with
-            Display Color Format: {:?},
-            Internal Color Encoding: {:?},
-            Internal Color Depth: {:?}
-            ",
-            &config.display_color_format, &config.internal_color_encoding, &config.internal_color_depth,
-        );
+        // create a font system
+        let empty_db = cosmic_text::fontdb::Database::new();
+        let mut font_system = cosmic_text::FontSystem::new_with_locale_and_db("en".to_string(), empty_db);
+
+        // load Noto Sans as the default/fallback font
+        let noto_sans_regular = include_bytes!("../assets/fonts/NotoSans-Regular.ttf");
+        font_system.db_mut().load_font_data(noto_sans_regular.to_vec());
+        let noto_sans_bold = include_bytes!("../assets/fonts/NotoSans-Bold.ttf");
+        font_system.db_mut().load_font_data(noto_sans_bold.to_vec());
+        let noto_sans_italic = include_bytes!("../assets/fonts/NotoSans-Italic.ttf");
+        font_system.db_mut().load_font_data(noto_sans_italic.to_vec());
+        let noto_sans_bold_italic = include_bytes!("../assets/fonts/NotoSans-BoldItalic.ttf");
+        font_system.db_mut().load_font_data(noto_sans_bold_italic.to_vec());
 
         Self {
             windows: vec![],
@@ -161,8 +167,8 @@ impl App {
             action_receiver,
             action_sender,
             dummy_window: None,
-            shared_renderer_state: Arc::new(renderer),
-            font_manager: Arc::new(Mutex::new(font_manager)),
+            shared_renderer_state: Arc::new(shared_render_state),
+            font_manager: Arc::new(Mutex::new(font_system)),
         }
     }
 
@@ -170,22 +176,17 @@ impl App {
     pub fn create_window(
         &self,
         window_options: &WindowOptions,
-        gamma_options: GammaOptions,
+        display_config: DisplayConfig,
         experiment_config: &ExperimentConfig,
-        event_loop: &ActiveEventLoop,
+        event_loop: &dyn ActiveEventLoop,
     ) -> Window {
-        let window_attributes = WinitWindow::default_attributes()
-            .with_title("Winit window")
-            .with_transparent(false);
+        let window_attributes = WindowAttributes::default();
 
         let winit_window = event_loop.create_window(window_attributes).unwrap();
 
-        // make sure cursor is visible (for normlisation across platforms)
-        winit_window.set_cursor_visible(true);
-
         winit_window.focus_window();
 
-        // log::debug!("Window created: {:?}", winit_window);
+        log::debug!("Window created: {:?}", winit_window);
 
         let winit_window = Arc::new(winit_window);
 
@@ -196,7 +197,7 @@ impl App {
         let device = &gpu_state.device;
         let queue = &gpu_state.queue;
 
-        log::debug!("Creating wgup surface...");
+        log::debug!("Creating WGPU surface...");
 
         let surface = instance
             .create_surface(winit_window.clone())
@@ -206,14 +207,29 @@ impl App {
         let swapchain_formats = surface.get_capabilities(adapter).formats;
         log::debug!("Supported swapchain formats: {:?}", swapchain_formats);
 
-        let size = winit_window.inner_size();
-
-        // let _swapchain_formats = adapter.get_texture_format_features(TextureFormat::Bgra8Unorm);
+        let size = winit_window.surface_size();
 
         let swapchain_capabilities = surface.get_capabilities(adapter);
-        let swapchain_format = experiment_config.display_color_format.into();
-        let swapchain_view_format = vec![swapchain_format];
 
+        // depending on the provided internal color format, there are multiple possible swapchain formats
+        // not all formats are supported on all platforms, so we pick the first one that is supported
+        let possible_swapchain_formats = match display_config.surface_color_depth {
+            PixelDepth::EightBit => vec![TextureFormat::Bgra8Unorm, TextureFormat::Rgba8Unorm],
+            PixelDepth::TenBit => vec![TextureFormat::Rgb10a2Unorm],
+            PixelDepth::SixteenBitFloat => vec![TextureFormat::Rgba16Float],
+        };
+
+        let swapchain_format = possible_swapchain_formats
+            .into_iter()
+            .find(|f| swapchain_formats.contains(f))
+            .expect(&format!(
+                "No supported swapchain format found for the requested display color format: {:?}. Supported formats on this adapter are: {:?}",
+                display_config.surface_color_depth, swapchain_formats
+            ));
+
+        log::debug!("Selected swapchain format: {:?}", swapchain_format);
+
+        // create surface configuration for wgpu
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: swapchain_format,
@@ -221,22 +237,48 @@ impl App {
             height: size.height,
             present_mode: wgpu::PresentMode::Fifo,
             alpha_mode: swapchain_capabilities.alpha_modes[0],
-            view_formats: swapchain_view_format,
+            view_formats: vec![swapchain_format],
             desired_maximum_frame_latency: 1,
         };
 
         log::debug!("Surface configuration: {:?}", config);
 
+        // configure the surface
         surface.configure(device, &config);
 
         // set fullscreen mode
         let mon_handle = window_options.monitor().unwrap().handle();
-        let mon_name = mon_handle.name().unwrap_or("Unnamed monitor".to_string());
+        let mon_name = mon_handle.name().unwrap_or("Unnamed monitor".to_string().into());
 
-        winit_window.set_fullscreen(Some(winit::window::Fullscreen::Borderless(Some(mon_handle.clone()))));
+        // Borderless fullscreen is preferred, as it allows for better compatibility with different display setups
+        winit_window.set_fullscreen(Some(winit::monitor::Fullscreen::Borderless(Some(mon_handle.clone()))));
 
-        // wait for 1 second to let the window settle
-        // std::thread::sleep(std::time::Duration::from_secs(1));
+        // on macOS, we request the device's native color space
+        #[cfg(target_os = "macos")]
+        {
+            use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+
+            let view = match winit_window.window_handle().unwrap().as_raw() {
+                RawWindowHandle::AppKit(handle) => {
+                    assert!(objc2::MainThreadMarker::new().is_some());
+                    unsafe { handle.ns_view.cast::<objc2_app_kit::NSView>().as_ref() }
+                }
+                _ => panic!("Not running on macOS!"),
+            };
+
+            unsafe {
+                view.window()
+                    .unwrap()
+                    .setColorSpace(Some(&objc2_app_kit::NSColorSpace::deviceRGBColorSpace()));
+            }
+        }
+
+        // chose an internal color format based on internal_color_depth
+        let internal_color_format = match experiment_config.internal_color_depth {
+            PixelDepth::EightBit => ColorFormat::Rgba8,
+            PixelDepth::TenBit => ColorFormat::Rgba10,
+            PixelDepth::SixteenBitFloat => ColorFormat::RgbaF16,
+        };
 
         let wgpu_renderer = pollster::block_on(renderer::wgpu_renderer::WgpuRenderer::new(
             winit_window.clone(),
@@ -244,11 +286,10 @@ impl App {
             device,
             queue,
             swapchain_format,
-            gamma_options.lut,
-            gamma_options.encode_gamma,
+            internal_color_format,
         ));
 
-        // create the renderer
+        // create the skia renderer
         let mut renderer = self
             .shared_renderer_state
             .create_renderer(swapchain_format, size.width, size.height);
@@ -267,12 +308,13 @@ impl App {
             renderer,
             wgpu_renderer,
             shared_renderer_state: self.shared_renderer_state.clone(),
+            display_characteristics: display_config.display_characteristics.clone(),
             mouse_cursor_visible: true,
             mouse_position: None,
             size: size.into(),
             physical_screen: PhysicalScreen::new(size.width, width_mm, viewing_distance),
             event_handlers: HashMap::new(), // TODO this should be a weak reference
-            bg_color: LinRgba::new(0.5, 0.5, 0.5, 1.0),
+            bg_color: Color::new_srgba(0.5, 0.5, 0.5, 1.0),
             frame_callbacks: HashMap::new(),
             frame_queue: Vec::new(),
             last_frame_id: 0,
@@ -450,14 +492,14 @@ impl App {
     // }
 
     /// Starts the experiment. This will block until the experiment is finished.
-    pub fn run_experiment<F>(&mut self, experiment_fn: F) -> Result<(), errors::PsydkError>
+    pub fn run_experiment<F>(&mut self, experiment_fn: F, config: ExperimentConfig) -> Result<(), errors::PsydkError>
     where
         F: FnOnce(ExperimentContext) -> Result<(), errors::PsydkError> + 'static + Send,
     {
         log::debug!("Main task is running on thread {:?}", std::thread::current().id());
 
         let event_loop = EventLoop::new().unwrap();
-        event_loop.set_control_flow(ControlFlow::Poll);
+        event_loop.set_control_flow(ControlFlow::Wait);
 
         let event_loop_proxy = event_loop.create_proxy();
         let event_loop_proxy2 = event_loop.create_proxy();
@@ -473,6 +515,7 @@ impl App {
             self.shared_renderer_state.clone(),
             audio_host,
             self.font_manager.clone(),
+            config,
         );
 
         // create mutex to hold potential error
@@ -481,11 +524,12 @@ impl App {
 
         // start experiment
         thread::spawn(move || {
+            // println!("Experiment thread started on {:?}", std::thread::current().id());
             let res = experiment_fn(exp_manager);
 
             // send Exit event to the event loop, then wake it up
             action_sender.send(EventLoopAction::Exit(None)).unwrap();
-            event_loop_proxy2.send_event(()).unwrap();
+            event_loop_proxy2.wake_up();
 
             // panic if the experiment function returns an error
             if let Err(e) = res {
@@ -513,14 +557,16 @@ impl App {
     // Start a thread that will dispath
 }
 
-impl ApplicationHandler<()> for App {
-    fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {}
+impl ApplicationHandler for App {
+    // fn war_what_is_it_good_for(&self) {}
+    fn resumed(&mut self, event_loop: &dyn winit::event_loop::ActiveEventLoop) {}
 
-    fn user_event(&mut self, event_loop: &ActiveEventLoop, event: ()) {
+    fn proxy_wake_up(&mut self, event_loop: &dyn ActiveEventLoop) {
+        println!("Proxy wake up called");
         // check if we need to create a new window
         self.action_receiver.try_recv().map(|action| match action {
-            EventLoopAction::CreateNewWindow(options, experiment_config, gamma_options, sender) => {
-                let window = self.create_window(&options, gamma_options, &experiment_config, event_loop);
+            EventLoopAction::CreateNewWindow(options, experiment_config, display_config, sender) => {
+                let window = self.create_window(&options, display_config, &experiment_config, event_loop);
                 self.windows.push(window.clone());
                 sender.send(window).unwrap();
             }
@@ -530,7 +576,11 @@ impl ApplicationHandler<()> for App {
                 // convert into a vector of monitors
                 let monitors: Vec<Monitor> = monitors
                     .map(|monitor| {
-                        Monitor::new(monitor.name().unwrap_or("Unnamed monitor".to_string()), (0, 0), monitor)
+                        Monitor::new(
+                            monitor.name().unwrap_or("Unnamed monitor".to_string().into()).into(),
+                            (0, 0),
+                            monitor,
+                        )
                     })
                     .collect();
                 sender.send(monitors).unwrap();
@@ -545,7 +595,7 @@ impl ApplicationHandler<()> for App {
         });
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, window_id: WindowId, event: WindowEvent) {
+    fn window_event(&mut self, event_loop: &dyn ActiveEventLoop, window_id: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::CloseRequested => {
                 // for now, exit the program
@@ -558,7 +608,7 @@ impl ApplicationHandler<()> for App {
                     self.windows.retain(|w| w.winit_id != window_id);
                 }
             }
-            WindowEvent::Resized(size) => {
+            WindowEvent::SurfaceResized(size) => {
                 // find the window
                 let window = self.windows.iter().find(|w| w.winit_id == window_id);
 
@@ -568,15 +618,16 @@ impl ApplicationHandler<()> for App {
                 }
             }
             WindowEvent::KeyboardInput { .. }
-            | WindowEvent::CursorMoved { .. }
-            | WindowEvent::MouseInput { .. }
-            | WindowEvent::MouseWheel { .. }
-            | WindowEvent::Touch { .. } => {
+            | WindowEvent::PointerMoved { .. }
+            | WindowEvent::PointerEntered { .. }
+            | WindowEvent::PointerLeft { .. }
+            | WindowEvent::PointerButton { .. }
+            | WindowEvent::MouseWheel { .. } => {
                 // find the window
                 let window = self.windows.iter().find(|w| w.winit_id == window_id);
 
                 // if this was a cursor moved event, update the mouse position
-                if let WindowEvent::CursorMoved { position, .. } = event {
+                if let WindowEvent::PointerMoved { position, .. } = event {
                     if let Some(window) = window {
                         let mut window_state = window.state.lock().unwrap();
                         let window_state = window_state.as_mut().unwrap();
@@ -607,5 +658,14 @@ impl ApplicationHandler<()> for App {
             }
             _ => {}
         }
+    }
+
+    fn can_create_surfaces(&mut self, event_loop: &dyn ActiveEventLoop) {}
+}
+
+// print a message when App is dropped
+impl Drop for App {
+    fn drop(&mut self) {
+        println!("App is being dropped. That's not good!");
     }
 }

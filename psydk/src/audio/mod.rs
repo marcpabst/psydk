@@ -28,6 +28,7 @@ impl Default for PyHost {
 #[derive(Clone)]
 #[pyclass]
 #[pyo3(name = "Stream")]
+/// Represents an audio output stream to a specific device.
 pub struct PyStream {
     stream: Option<Stream>,
 }
@@ -35,6 +36,7 @@ pub struct PyStream {
 #[derive(Clone)]
 #[pyclass]
 #[pyo3(name = "Device")]
+/// Represents an audio output device.
 pub struct PyDevice {
     pub(crate) device: Device,
 }
@@ -42,6 +44,7 @@ pub struct PyDevice {
 #[derive(Debug, Clone)]
 #[pyclass]
 #[pyo3(name = "AudioObject")]
+/// Represents an audio object that can be played through a stream.
 pub struct PyAudioObject {
     pub(crate) audio_object: AudioObject,
 }
@@ -107,6 +110,19 @@ impl PyStream {
 #[pymethods]
 impl PyAudioObject {
     #[staticmethod]
+    /// Create a white noise audio object.
+    ///
+    /// Parameters
+    /// ----------
+    /// amplitude : float
+    ///    The amplitude of the white noise (0.0 to 1.0).
+    /// duration : float
+    ///   The duration of the white noise in seconds.
+    ///
+    /// Returns
+    /// -------
+    /// AudioObject
+    ///   The created white noise audio object.
     fn white_noise(amplitude: f32, duration: f32) -> Self {
         let duration = std::time::Duration::from_secs_f32(duration);
         Self {
@@ -115,6 +131,21 @@ impl PyAudioObject {
     }
 
     #[staticmethod]
+    /// Create a sine wave audio object.
+    ///
+    /// Parameters
+    /// ----------
+    /// frequency : float
+    ///   The frequency of the sine wave in Hz.
+    /// volume : float
+    ///  The volume of the sine wave (0.0 to 1.0).
+    /// duration : float
+    ///  The duration of the sine wave in seconds.
+    ///
+    /// Returns
+    /// ------
+    /// AudioObject
+    ///  The created sine wave audio object.
     fn sine_wave(frequency: f32, volume: f32, duration: std::time::Duration) -> Self {
         Self {
             audio_object: AudioObject::sine_wave(frequency, volume, duration),
@@ -122,6 +153,17 @@ impl PyAudioObject {
     }
 
     #[staticmethod]
+    /// Create a silence audio object.
+    ///
+    /// Parameters
+    /// ---------
+    /// duration : float
+    ///  The duration of the silence in seconds.
+    ///
+    /// Returns
+    /// -------
+    /// AudioObject
+    ///  The created silence audio object.
     fn silence(duration: std::time::Duration) -> Self {
         Self {
             audio_object: AudioObject::silence(duration),
@@ -129,6 +171,19 @@ impl PyAudioObject {
     }
 
     #[staticmethod]
+    /// Create an audio object from raw samples.
+    ///
+    /// Parameters
+    /// ----------
+    /// samples : numpy.ndarray
+    ///  A 1D or 2D numpy array of float32 samples. If 2D, shape should be (num_channels, num_samples).
+    /// sample_rate : int
+    ///  The sample rate of the audio in Hz.
+    ///
+    /// Returns
+    /// -------
+    /// AudioObject
+    ///  The created audio object.
     fn from_samples(samples: PyReadonlyArrayDyn<'_, f32>, sample_rate: u32) -> Self {
         let buffer = samples.as_array().into_owned();
 
@@ -139,11 +194,68 @@ impl PyAudioObject {
 
     #[staticmethod]
     #[pyo3(signature = (path, track = None, sampling_rate = None))]
+    /// Create an audio object from an audio file.
+    ///
+    /// Parameters
+    /// ----------
+    /// path : str
+    ///  The path to the audio file.
+    /// track : Optional[int]
+    ///  The track number to load (for multi-track files). Default is None (first track).
+    /// sampling_rate : Optional[int]
+    ///  The desired sampling rate in Hz. If None, uses the file's original rate.
+    ///
+    /// Returns
+    /// -------
+    /// AudioObject
+    ///  The created audio object.
     fn from_file(path: &str, track: Option<usize>, sampling_rate: Option<u32>) -> PyResult<Self> {
         let audio_object = AudioObject::from_file(path, track, sampling_rate)
             .map_err(|e| pyo3::exceptions::PyIOError::new_err(format!("Failed to load audio file: {}", e)))?;
         Ok(Self { audio_object })
     }
+}
+
+#[pyfunction]
+#[pyo3(name = "create_silence")]
+/// Shorthand function to create a silence audio object. See AudioObject.silence for details.
+pub fn py_create_silence(py: Python, duration: f32) -> PyAudioObject {
+    PyAudioObject::silence(std::time::Duration::from_secs_f32(duration))
+}
+
+#[pyfunction]
+#[pyo3(name = "create_white_noise")]
+/// Shorthand function to create a white noise audio object. See AudioObject.white_noise for details.
+pub fn py_create_white_noise(py: Python, amplitude: f32, duration: f32) -> PyAudioObject {
+    PyAudioObject::white_noise(amplitude, duration)
+}
+
+#[pyfunction]
+#[pyo3(name = "create_sine_wave")]
+/// Shorthand function to create a sine wave audio object. See AudioObject.sine_wave for details.
+pub fn py_create_sine_wave(py: Python, frequency: f32, volume: f32, duration: f32) -> PyAudioObject {
+    PyAudioObject::sine_wave(frequency, volume, std::time::Duration::from_secs_f32(duration))
+}
+
+#[pyfunction]
+#[pyo3(name = "create_from_samples")]
+/// Shorthand function to create an audio object from raw samples. See AudioObject.from_samples for details.
+pub fn py_create_from_samples(py: Python, samples: PyReadonlyArrayDyn<'_, f32>, sample_rate: u32) -> PyAudioObject {
+    PyAudioObject::from_samples(samples, sample_rate)
+}
+
+#[pyfunction]
+#[pyo3(name = "create_from_file")]
+/// Shorthand function to create an audio object from an audio file. See AudioObject.from_file for details.
+#[pyo3(signature = (path, track = None, sampling_rate = None))]
+pub fn py_create_from_file(
+    py: Python,
+    path: &str,
+    track: Option<usize>,
+    sampling_rate: Option<u32>,
+) -> PyResult<PyAudioObject> {
+    PyAudioObject::from_file(path, track, sampling_rate)
+        .map_err(|e| pyo3::exceptions::PyIOError::new_err(format!("Failed to load audio file: {}", e)))
 }
 
 pub(crate) fn get_host(py: Python) -> PyResult<PyHost> {
@@ -156,41 +268,4 @@ pub(crate) fn get_host(py: Python) -> PyResult<PyHost> {
     // let renderer_factory = PyRendererFactory::extract_bound(renderer_factory).unwrap();
     let host: PyHost = host.extract().unwrap();
     Ok(host)
-}
-
-#[pyfunction]
-#[pyo3(name = "create_silence")]
-pub fn py_create_silence(py: Python, duration: f32) -> PyAudioObject {
-    PyAudioObject::silence(std::time::Duration::from_secs_f32(duration))
-}
-
-#[pyfunction]
-#[pyo3(name = "create_white_noise")]
-pub fn py_create_white_noise(py: Python, amplitude: f32, duration: f32) -> PyAudioObject {
-    PyAudioObject::white_noise(amplitude, duration)
-}
-
-#[pyfunction]
-#[pyo3(name = "create_sine_wave")]
-pub fn py_create_sine_wave(py: Python, frequency: f32, volume: f32, duration: f32) -> PyAudioObject {
-    PyAudioObject::sine_wave(frequency, volume, std::time::Duration::from_secs_f32(duration))
-}
-
-#[pyfunction]
-#[pyo3(name = "create_from_samples")]
-pub fn py_create_from_samples(py: Python, samples: PyReadonlyArrayDyn<'_, f32>, sample_rate: u32) -> PyAudioObject {
-    PyAudioObject::from_samples(samples, sample_rate)
-}
-
-#[pyfunction]
-#[pyo3(name = "create_from_file")]
-#[pyo3(signature = (path, track = None, sampling_rate = None))]
-pub fn py_create_from_file(
-    py: Python,
-    path: &str,
-    track: Option<usize>,
-    sampling_rate: Option<u32>,
-) -> PyResult<PyAudioObject> {
-    PyAudioObject::from_file(path, track, sampling_rate)
-        .map_err(|e| pyo3::exceptions::PyIOError::new_err(format!("Failed to load audio file: {}", e)))
 }

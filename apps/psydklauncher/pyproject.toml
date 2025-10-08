@@ -1,0 +1,105 @@
+# This project was generated with 0.3.22 using template: https://github.com/beeware/briefcase-template@v0.3.22
+[tool.briefcase]
+project_name = "Psydk Launcher"
+bundle = "com.psydklauncher"
+version = "0.0.1"
+url = "https://psydklauncher.com/psydklauncher"
+license.file = "LICENSE"
+author = "Jane Developer"
+author_email = "jane@psydklauncher.com"
+
+[tool.briefcase.app.psydklauncher]
+formal_name = "Psydk Launcher"
+description = "..."
+long_description = """More details about the app should go here.
+"""
+sources = [
+    "src/psydklauncher",
+]
+test_sources = [
+    "tests",
+]
+
+requires = [
+    # Add your cross-platform app requirements here
+]
+test_requires = [
+    # Add your cross-platform test requirements here
+]
+
+[tool.briefcase.app.psydklauncher.macOS]
+universal_build = true
+requires = [
+    # Add your macOS-specific app requirements here
+]
+
+[tool.briefcase.app.psydklauncher.linux]
+requires = [
+    # Add your Linux-specific app requirements here
+]
+
+[tool.briefcase.app.psydklauncher.linux.system.debian]
+system_requires = [
+    # Add any system packages needed at build the app here
+]
+
+system_runtime_requires = [
+    # Add any system packages needed at runtime here
+]
+
+[tool.briefcase.app.psydklauncher.linux.system.rhel]
+system_requires = [
+    # Add any system packages needed at build the app here
+]
+
+system_runtime_requires = [
+    # Add any system packages needed at runtime here
+]
+
+[tool.briefcase.app.psydklauncher.linux.system.suse]
+system_requires = [
+    # Add any system packages needed at build the app here
+]
+
+system_runtime_requires = [
+    # Add any system packages needed at runtime here
+]
+
+[tool.briefcase.app.psydklauncher.linux.system.arch]
+system_requires = [
+    # Add any system packages needed at build the app here
+]
+
+system_runtime_requires = [
+    # Add any system packages needed at runtime here
+]
+
+[tool.briefcase.app.psydklauncher.linux.flatpak]
+flatpak_runtime = "org.freedesktop.Platform"
+flatpak_runtime_version = "24.08"
+flatpak_sdk = "org.freedesktop.Sdk"
+
+[tool.briefcase.app.psydklauncher.windows]
+requires = [
+    # Add your Windows-specific app requirements here
+]
+
+# Mobile deployments
+[tool.briefcase.app.psydklauncher.iOS]
+requires = [
+    "--find-links=/Users/marc/repos/psydk/psydk/target/wheels/",
+    "psydk",
+    "--find-links=/Users/marc/repos/psydk/psydk-launcher/target/wheels/",
+    "psydk_launcher",
+]
+
+[tool.briefcase.app.psydklauncher.android]
+requires = [
+    # Add your Android-specific app requirements here
+]
+
+# Web deployments
+[tool.briefcase.app.psydklauncher.web]
+requires = [
+    # Add your web-specific app requirements here
+]

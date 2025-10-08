@@ -7,6 +7,7 @@
 export IOS_SDKROOT=$(xcrun --sdk iphoneos --show-sdk-path)
 export PYO3_CROSS_LIB_DIR="$PYTHONDIR"
 export PYO3_CROSS_PYTHON_VERSION="$PYTHON_VERSION"
+export _PYTHON_HOST_PLATFORM="ios_13_0_arm64_iphoneos"
 env SDKROOT="$IOS_SDKROOT" \
 PYO3_CROSS_LIB_DIR="$PYTHONDIR" \
 CARGO_TARGET_AARCH64_APPLE_IOS_RUSTFLAGS="-C link-arg=-isysroot -C link-arg=$IOS_SDKROOT \
@@ -17,16 +18,18 @@ CARGO_TARGET_AARCH64_APPLE_IOS_RUSTFLAGS="-C link-arg=-isysroot -C link-arg=$IOS
 	maturin build --target aarch64-apple-ios --release --no-default-features --features "metal"
 
 
-# SDKROOT=$(xcrun --sdk iphoneos --show-sdk-path) \
-# PYO3_CROSS_PYTHON_VERSION="$PYTHON_VERSION" \
-# PYO3_CROSS_LIB_DIR="$PYTHONDIR" \
-# CARGO_TARGET_AARCH64_APPLE_IOS_RUSTFLAGS="-C link-arg=-isysroot -C link-arg=$IOS_SDKROOT \
-# -C link-arg=-arch -C link-arg=arm64 -C link-arg=-miphoneos-version-min=14.0 -C link-arg=-L \
-# -C link-arg=$PYTHONDIR \
-# -C link-arg=-undefined \
-# -C link-arg=dynamic_lookup" \
-# maturin build --target aarch64-apple-ios --release
-
+export IOS_SDKROOT=$(xcrun --sdk iphonesimulator --show-sdk-path)
+export PYO3_CROSS_LIB_DIR="$PYTHONDIR"
+export PYO3_CROSS_PYTHON_VERSION="$PYTHON_VERSION"
+export _PYTHON_HOST_PLATFORM="ios_13_0_arm64_iphonesimulator"
+env SDKROOT="$IOS_SDKROOT" \
+PYO3_CROSS_LIB_DIR="$PYTHONDIR" \
+CARGO_TARGET_AARCH64_APPLE_IOS_SIM_RUSTFLAGS="-C link-arg=-isysroot -C link-arg=$IOS_SDKROOT \
+			-C link-arg=-arch -C link-arg=arm64 -C link-arg=-miphoneos-version-min=14.0 -C link-arg=-L \
+			-C link-arg=$PYTHONDIR \
+			-C link-arg=-undefined \
+			-C link-arg=dynamic_lookup" \
+			maturin build --target aarch64-apple-ios-sim --release --no-default-features --features "metal"
 
 rc=$?
 

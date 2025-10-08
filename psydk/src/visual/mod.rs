@@ -1,4 +1,4 @@
-pub mod color;
+pub mod colors;
 pub mod geometry;
 pub mod stimuli;
 pub mod utils;

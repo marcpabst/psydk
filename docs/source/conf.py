@@ -10,7 +10,7 @@ print(sys.path)
 
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
-import psydk
+
 
 project = 'psydk'
 copyright = '2025, mp'

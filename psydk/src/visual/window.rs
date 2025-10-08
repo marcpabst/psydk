@@ -1,3 +1,4 @@
+use crate::visual::colors::Color;
 use std::{
     collections::{HashMap, VecDeque},
     ops::Deref,
@@ -9,6 +10,8 @@ use std::{
     },
     time::{Duration, Instant},
 };
+
+use crate::visual::colors::DisplayCharacteristics;
 
 use async_channel::{bounded, Receiver, Sender};
 use atomic_float::AtomicF64;
@@ -28,7 +31,6 @@ use wgpu::TextureFormat;
 use winit::{dpi::PhysicalSize, window::WindowId};
 
 use super::{
-    color::LinRgba,
     geometry::Size,
     stimuli::{DynamicStimulus, Stimulus},
 };
@@ -116,9 +118,12 @@ pub type FrameId = u64;
 #[derive(Dbg)]
 pub struct WindowState {
     /// the winit window
-    pub winit_window: Arc<winit::window::Window>,
+    pub winit_window: Arc<Box<dyn winit::window::Window>>,
     /// the wgpu surface
     pub surface: wgpu::Surface<'static>,
+    /// display characteristics
+    #[dbg(placeholder = "[[ DisplayCharacteristics ]]")]
+    pub display_characteristics: Arc<dyn DisplayCharacteristics>,
     /// the wgpu surface configuration
     pub config: wgpu::SurfaceConfiguration,
     /// the renderers
@@ -129,7 +134,7 @@ pub struct WindowState {
     /// The shared renderer state. This is used to share the renderer state
     #[dbg(placeholder = "[[ DynamicRenderer ]]")]
     pub shared_renderer_state: Arc<dyn SharedRendererState>,
-    // The current mouse position. None if the mouse has left the window.
+    /// The current mouse position. None if the mouse has left the window.
     pub mouse_position: Option<(f32, f32)>,
     /// Stores if the mouse cursor is currently visible.
     pub mouse_cursor_visible: bool,
@@ -141,7 +146,7 @@ pub struct WindowState {
     #[dbg(placeholder = "...")]
     pub event_handlers: HashMap<EventHandlerId, (EventKind, EventHandler)>,
     /// Background color of the window.
-    pub bg_color: LinRgba,
+    pub bg_color: Color,
     /// The frame callbacks that maps the frame number to the callback.
     #[dbg(placeholder = "...")]
     pub frame_callbacks: HashMap<FrameId, Box<dyn FnOnce(Instant, Option<Instant>) + Send>>,
@@ -353,7 +358,7 @@ impl Window {
         let mut onset_time = self.created_at.elapsed().as_secs_f64();
         let t0 = Instant::now();
 
-        let mut estimated_last_t_as_instant = None;
+        let mut estimated_last_t_as_instant: Option<Instant> = None;
 
         #[cfg(all(feature = "dx12", target_os = "windows"))]
         {
@@ -443,7 +448,9 @@ impl Window {
         let monitor = winit_window.current_monitor();
 
         if let Some(monitor) = monitor {
-            monitor.refresh_rate_millihertz().map(|x| x as f64 / 1000.0)
+            monitor
+                .current_video_mode()
+                .and_then(|video_mode| video_mode.refresh_rate_millihertz().map(|x| x.get() as f64 / 1000.0))
         } else {
             None
         }
@@ -458,9 +465,13 @@ impl Window {
         let monitor = winit_window.current_monitor();
 
         if let Some(monitor) = monitor {
+            let resolution: (u32, u32) = monitor
+                .current_video_mode()
+                .and_then(|video_mode| Some((video_mode.size().width as u32, video_mode.size().height as u32)))
+                .unwrap_or((0, 0));
             Some(Monitor {
-                name: monitor.name().unwrap_or_default(),
-                resolution: monitor.size().into(),
+                name: monitor.name().unwrap_or_default().into(),
+                resolution,
                 handle: monitor.clone(),
             })
         } else {
@@ -670,7 +681,7 @@ impl Window {
 
     #[pyo3(name = "bg_color")]
     #[getter]
-    fn py_get_bg_color(&self, py: Python) -> LinRgba {
+    fn py_get_bg_color(&self, py: Python) -> Color {
         let self_wrapper = SendWrapper::new(self);
         py.allow_threads(move || {
             let state = self_wrapper.state.lock().unwrap();
@@ -681,7 +692,7 @@ impl Window {
 
     #[pyo3(name = "bg_color")]
     #[setter]
-    fn py_set_bg_color(&self, py: Python, bg_color: LinRgba) {
+    fn py_set_bg_color(&self, py: Python, bg_color: Color) {
         let self_wrapper = SendWrapper::new(self);
         py.allow_threads(move || {
             let mut state = self_wrapper.state.lock().unwrap();
@@ -852,7 +863,7 @@ pub struct Frame {
 
 impl Frame {
     /// Set the background color of the frame.
-    pub fn set_bg_color(&mut self, bg_color: LinRgba) {
+    pub fn set_bg_color(&mut self, bg_color: Color) {
         // TODO
     }
 
@@ -921,7 +932,7 @@ impl Frame {
     }
 
     #[setter(bg_color)]
-    fn py_set_bg_color(&mut self, bg_color: super::color::LinRgba) {
+    fn py_set_bg_color(&mut self, bg_color: super::colors::Color) {
         self.set_bg_color(bg_color);
     }
 

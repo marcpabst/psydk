@@ -1,8 +1,12 @@
+/// Note that we only use skia's colour management for converting betwen
+/// srgb and linear srgb. We do not use it for any other colour space conversions.
 use std::{any::Any, cell::RefCell, sync::Arc};
 
 use cosmic_text::fontdb::FaceInfo;
 use foreign_types_shared::ForeignType;
 use windows_core::Interface;
+
+pub use skia_safe;
 
 #[cfg(target_os = "windows")]
 use skia_safe::gpu::{d3d, d3d::BackendContext, Protected};
@@ -477,6 +481,11 @@ impl SkiaRenderer {
             &texture_info,
         );
 
+        println!(
+            "Creating skia surface from metal texture with color encoding {:?} and color format {:?}",
+            color_encoding, color_format
+        );
+
         // panic!("Color format: {:?}, wgpu_texture: {:?}", color_format, texture);
 
         unsafe {
@@ -588,13 +597,13 @@ impl Bitmap for SkiaTexture {
 // convert a color to a skia color
 impl From<RGBA> for skia_safe::Color4f {
     fn from(color: RGBA) -> Self {
+        println!("Converting color: {:?}", color);
         skia_safe::Color4f::new(color.r, color.g, color.b, color.a)
     }
 }
 
 impl From<&RGBA> for skia_safe::Color4f {
     fn from(c: &RGBA) -> Self {
-        // let c = color.as_srgba();
         skia_safe::Color4f::new(c.r, c.g, c.b, c.a)
     }
 }
@@ -607,7 +616,13 @@ impl From<&Brush<'_>> for skia_safe::Paint {
             Brush::Solid(color) => {
                 let skia_color: skia_safe::Color4f = color.into();
                 let skia_color_space: skia_safe::ColorSpace = color.color_encoding().into();
-                paint.set_color4f(skia_color, &skia_color_space);
+
+                // paint.set_color4f(skia_color, &skia_color_space);
+
+                // use color shader instead of set_color4f to full precision
+                let shader = skia_safe::shaders::color_in_space(skia_color, &skia_color_space);
+                paint.set_shader(shader);
+                paint.set_blend_mode(skia_safe::BlendMode::Src);
                 paint
             }
             Brush::Gradient(Gradient { extend, kind, stops }) => {
@@ -867,7 +882,6 @@ pub struct SkiaSharedRendererState {
     font_manager: skia_safe::FontMgr,
     internal_color_encoding: ColorEncoding,
     internal_color_format: ColorFormat,
-    output_color_format: ColorFormat,
 }
 
 unsafe impl Send for SkiaSharedRendererState {}
@@ -880,7 +894,6 @@ impl SkiaSharedRendererState {
         queue: &Queue,
         internal_color_encoding: ColorEncoding,
         internal_color_format: ColorFormat,
-        output_color_format: ColorFormat,
     ) -> Self {
         let backend_context = create_backend_context(adapter, device, queue);
         let skia_context = create_context(&backend_context);
@@ -894,7 +907,6 @@ impl SkiaSharedRendererState {
             font_manager,
             internal_color_encoding: internal_color_encoding,
             internal_color_format: internal_color_format,
-            output_color_format: output_color_format,
         }
     }
 }
@@ -921,7 +933,7 @@ impl SharedRendererState for SkiaSharedRendererState {
             font_manager: self.font_manager.clone(),
             internal_color_encoding: self.internal_color_encoding,
             internal_color_format: self.internal_color_format,
-            output_color_format: self.output_color_format,
+            // output_color_format: self.output_color_format,
         })
     }
 
@@ -1023,7 +1035,6 @@ impl From<ColorEncoding> for skia_safe::ColorSpace {
         match value {
             ColorEncoding::Srgb => skia_safe::ColorSpace::new_srgb(),
             ColorEncoding::Linear => skia_safe::ColorSpace::new_srgb_linear(),
-            ColorEncoding::Unspecified => skia_safe::ColorSpace::new_srgb_linear(),
         }
     }
 }
@@ -1033,8 +1044,7 @@ impl From<ColorFormat> for skia_safe::ColorType {
         match value {
             ColorFormat::Rgba8 => skia_safe::ColorType::RGBA8888,
             ColorFormat::RgbaF16 => skia_safe::ColorType::RGBAF16,
-            ColorFormat::Rgba1010102 => skia_safe::ColorType::RGBA1010102,
-            ColorFormat::Bgra8 => skia_safe::ColorType::BGRA8888,
+            ColorFormat::Rgba10 => skia_safe::ColorType::RGBA1010102,
             _ => panic!("Unsupported color format for Skia renderer"),
         }
     }

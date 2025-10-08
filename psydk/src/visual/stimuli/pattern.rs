@@ -1,5 +1,5 @@
-use std::sync::Arc;
-
+use crate::visual::colors::Color;
+use crate::visual::colors::IntoColor;
 use psydk_proc::{FromPyStr, StimulusParams};
 use renderer::{
     affine::Affine,
@@ -9,6 +9,7 @@ use renderer::{
     styles::ImageFitMode,
     DynamicBitmap, DynamicScene,
 };
+use std::sync::Arc;
 use strum::EnumString;
 use uuid::Uuid;
 
@@ -21,7 +22,6 @@ use super::{
 use crate::{
     context::ExperimentContext,
     visual::{
-        color::{IntoLinRgba, LinRgba},
         geometry::{Shape, Size, Transformation2D},
         window::{Frame, WindowState},
     },
@@ -44,13 +44,14 @@ pub struct PatternParams {
     pub phase_x: f64,
     pub phase_y: f64,
     pub pattern_size: Size,
-    pub fill_color: LinRgba,
-    pub background_color: LinRgba,
+    pub fill_color: Color,
+    pub background_color: Color,
     pub pattern_rotation: f64,
     pub stroke_style: StrokeStyle,
-    pub stroke_color: LinRgba,
+    pub stroke_color: Color,
     pub stroke_width: Size,
     pub alpha: Option<f64>,
+    pub flag_clicked: bool,
 }
 
 #[derive(Debug)]
@@ -59,7 +60,7 @@ pub struct PatternStimulus {
     params: PatternParams,
     fill_pattern: FillPattern,
 
-    gradient_colors: Option<Vec<LinRgba>>,
+    gradient_colors: Option<Vec<Color>>,
     pattern_image: Option<DynamicBitmap>,
     transform: Transformation2D,
     animations: Vec<Animation>,
@@ -74,12 +75,12 @@ impl PatternStimulus {
         phase_x: f64,
         phase_y: f64,
         pattern_size: Size,
-        fill_color: LinRgba,
-        background_color: LinRgba,
+        fill_color: Color,
+        background_color: Color,
         pattern: FillPattern,
         pattern_rotation: f64,
         stroke_style: StrokeStyle,
-        stroke_color: LinRgba,
+        stroke_color: Color,
         stroke_width: Size,
         alpha: Option<f64>,
         transform: Transformation2D,
@@ -101,6 +102,7 @@ impl PatternStimulus {
                 stroke_color,
                 stroke_width,
                 alpha,
+                flag_clicked: false,
             },
             fill_pattern: pattern,
             gradient_colors: None,
@@ -116,42 +118,44 @@ impl PatternStimulus {
         match pattern {
             FillPattern::Uniform => {}
             FillPattern::Stripes => {
-                let image_2x1_data = vec![fg.r(), fg.g(), fg.b(), fg.a(), bg.r(), bg.g(), bg.b(), bg.a()];
-                let image_2x1 = renderer::image::ImageBuffer::from_raw(2, 1, image_2x1_data)
-                    .expect("Failed to create image. This should never happen.");
+                panic!("Stripes pattern not implemented yet");
+                // let image_2x1_data = vec![fg.r(), fg.g(), fg.b(), fg.a(), bg.r(), bg.g(), bg.b(), bg.a()];
+                // let image_2x1 = renderer::image::ImageBuffer::from_raw(2, 1, image_2x1_data)
+                //     .expect("Failed to create image. This should never happen.");
 
-                let pattern_image = context
-                    .renderer_factory()
-                    .create_bitmap_f32(image_2x1, renderer::color_formats::ColorEncoding::Linear);
-                stim.pattern_image = Some(pattern_image);
+                // let pattern_image = context
+                //     .renderer_factory()
+                //     .create_bitmap_f32(image_2x1, renderer::color_formats::ColorEncoding::Linear);
+                // stim.pattern_image = Some(pattern_image);
             }
             FillPattern::Sinosoidal => todo!(),
             FillPattern::Checkerboard => {
-                let image_2x2_data = vec![
-                    fg.r(),
-                    fg.g(),
-                    fg.b(),
-                    fg.a(),
-                    bg.r(),
-                    bg.g(),
-                    bg.b(),
-                    bg.a(),
-                    bg.r(),
-                    bg.g(),
-                    bg.b(),
-                    bg.a(),
-                    fg.r(),
-                    fg.g(),
-                    fg.b(),
-                    fg.a(),
-                ];
-                let image_2x2 = renderer::image::ImageBuffer::from_raw(2, 2, image_2x2_data)
-                    .expect("Failed to create image. This should never happen.");
+                panic!("Checkerboard pattern not implemented yet");
+                // let image_2x2_data = vec![
+                //     fg.r(),
+                //     fg.g(),
+                //     fg.b(),
+                //     fg.a(),
+                //     bg.r(),
+                //     bg.g(),
+                //     bg.b(),
+                //     bg.a(),
+                //     bg.r(),
+                //     bg.g(),
+                //     bg.b(),
+                //     bg.a(),
+                //     fg.r(),
+                //     fg.g(),
+                //     fg.b(),
+                //     fg.a(),
+                // ];
+                // let image_2x2 = renderer::image::ImageBuffer::from_raw(2, 2, image_2x2_data)
+                //     .expect("Failed to create image. This should never happen.");
 
-                let pattern_image = context
-                    .renderer_factory()
-                    .create_bitmap_f32(image_2x2, renderer::color_formats::ColorEncoding::Linear);
-                stim.pattern_image = Some(pattern_image);
+                // let pattern_image = context
+                //     .renderer_factory()
+                //     .create_bitmap_f32(image_2x2, renderer::color_formats::ColorEncoding::Linear);
+                // stim.pattern_image = Some(pattern_image);
             }
         }
 
@@ -171,11 +175,11 @@ impl PatternStimulus {
 ///     The x-coordinate of the center of the shape.
 /// y : Size, optional
 ///     The y-coordinate of the center of the shape.
-/// fill_color : Union[LinRgba, (float, float, float), (float, float, float, float), str], optional
+/// fill_color : Union[Color, (float, float, float), (float, float, float, float), str], optional
 ///    The fill color of the shape.
 /// stroke_style : StrokeStyle, optional
 ///    The stroke style of the shape.
-/// stroke_color : Union[LinRgba, (float, float, float), (float, float, float, float), str], optional
+/// stroke_color : Union[Color, (float, float, float), (float, float, float, float), str], optional
 ///   The stroke color of the shape.
 /// stroke_width : Union[Size, float], optional
 ///  The stroke width of the shape.
@@ -195,12 +199,12 @@ impl PyPatternStimulus {
         phase_x = 0.0,
         phase_y = 0.0,
         pattern_size = IntoSize(Size::Pixels(100.0)),
-        fill_color = IntoLinRgba(LinRgba::default()),
-        background_color = IntoLinRgba(LinRgba::default()),
+        fill_color = IntoColor(Color::new_srgba(1.0, 1.0, 1.0, 1.0)),
+        background_color = IntoColor(Color::new_srgba(0.0, 0.0, 0.0, 1.0)),
         pattern = FillPattern::Uniform,
         pattern_rotation = 0.0,
         stroke_style = StrokeStyle::default(),
-        stroke_color = IntoLinRgba(LinRgba::default()),
+        stroke_color = IntoColor(Color::new_srgba(0.0, 0.0, 0.0, 1.0)),
         stroke_width = IntoSize(Size::Pixels(0.0)),
         alpha = None,
         transform = Transformation2D::Identity(),
@@ -216,11 +220,11 @@ impl PyPatternStimulus {
     ///     The x-coordinate of the center of the shape.
     /// y : Size, optional
     ///     The y-coordinate of the center of the shape.
-    /// fill_color : Union[LinRgba, (float, float, float), (float, float, float, float), str], optional
+    /// fill_color : Union[Color, (float, float, float), (float, float, float, float), str], optional
     ///    The fill color of the shape.
     /// stroke_style : StrokeStyle, optional
     ///    The stroke style of the shape.
-    /// stroke_color : Union[LinRgba, (float, float, float), (float, float, float, float), str], optional
+    /// stroke_color : Union[Color, (float, float, float), (float, float, float, float), str], optional
     ///   The stroke color of the shape.
     /// stroke_width : Union[Size, float], optional
     ///    The stroke width of the shape.
@@ -236,12 +240,12 @@ impl PyPatternStimulus {
         phase_x: f64,
         phase_y: f64,
         pattern_size: IntoSize,
-        fill_color: IntoLinRgba,
-        background_color: IntoLinRgba,
+        fill_color: IntoColor,
+        background_color: IntoColor,
         pattern: FillPattern,
         pattern_rotation: f64,
         stroke_style: StrokeStyle,
-        stroke_color: IntoLinRgba,
+        stroke_color: IntoColor,
         stroke_width: IntoSize,
         alpha: Option<f64>,
         transform: Transformation2D,
@@ -270,6 +274,15 @@ impl PyPatternStimulus {
             )),
         )
     }
+
+    fn clicked(slf: PyRef<'_, Self>) -> bool {
+        let mut stim = slf.as_ref().0.lock();
+        if let Some(stim) = stim.downcast_mut::<PatternStimulus>() {
+            stim.clicked()
+        } else {
+            unreachable!("PyPatternStimulus contains a non-PatternStimulus")
+        }
+    }
 }
 
 impl_pystimulus_for_wrapper!(PyPatternStimulus, PatternStimulus);
@@ -294,6 +307,7 @@ impl Stimulus for PatternStimulus {
 
         let windows_size = window_state.size;
         let screen_props = window_state.physical_screen;
+        let dc = &*window_state.display_characteristics;
 
         let renderer_factory = &window_state.shared_renderer_state;
 
@@ -305,10 +319,12 @@ impl Stimulus for PatternStimulus {
         let shift_x = (self.params.phase_x % 360.0) / 360.0 * pattern_size as f64;
         let shift_y = (self.params.phase_y % 360.0) / 360.0 * pattern_size as f64;
 
+        let fill_color = self.params.fill_color.to_display_rgba(dc);
+
         let pattern_transform = Affine::rotate(self.params.pattern_rotation);
 
         let fill_brush = match self.fill_pattern {
-            FillPattern::Uniform => Brush::Solid(self.params.fill_color.into()),
+            FillPattern::Uniform => Brush::Solid(fill_color.into()),
             FillPattern::Sinosoidal => todo!(),
             FillPattern::Checkerboard | FillPattern::Stripes => Brush::Image {
                 image: &self.pattern_image.as_ref().unwrap(),
@@ -324,7 +340,7 @@ impl Stimulus for PatternStimulus {
             },
         };
 
-        let stroke_color = self.params.stroke_color;
+        let stroke_color = self.params.stroke_color.to_display_rgba(dc);
 
         let stroke_brush = renderer::brushes::Brush::Solid(stroke_color.into());
 
@@ -467,5 +483,43 @@ impl Stimulus for PatternStimulus {
 
     fn set_param(&mut self, name: &str, value: StimulusParamValue) {
         self.params.set_param(name, value)
+    }
+
+    fn dispatch_event(&mut self, event: &crate::input::Event, window_state: &WindowState) -> bool {
+        // handle mouse click events
+        return match event {
+            crate::input::Event::MouseButtonPress { position, .. }
+            | crate::input::Event::TouchStart { position, .. } => {
+                println!("Mouse click at position: {:?}", position);
+                let (x, y) = (Size::Pixels(position.0 as f32), Size::Pixels(position.1 as f32));
+                if self.contains(x, y, window_state) {
+                    self.params.flag_clicked = true;
+                    true
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        };
+    }
+
+    fn contains(&self, x: Size, y: Size, window_state: &WindowState) -> bool {
+        let windows_size = window_state.size;
+        let screen_props = window_state.physical_screen;
+        // translate x and y by the stimulus position
+        let x = -x + self.params.x.clone();
+        let y = -y + self.params.y.clone();
+
+        // check if the shape contains a point
+        self.params.shape.contains_point((x, y), windows_size, screen_props)
+    }
+
+    fn clicked(&mut self) -> bool {
+        if self.params.flag_clicked {
+            self.params.flag_clicked = false; // reset the flag
+            true // return true if the button was clicked
+        } else {
+            false // return false if the button was not clicked
+        }
     }
 }

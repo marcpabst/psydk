@@ -1,5 +1,5 @@
-use std::sync::Arc;
-
+use crate::visual::colors::Color;
+use crate::visual::colors::IntoColor;
 use psydk_proc::{FromPyStr, StimulusParams};
 use pyo3::{pyclass, pymethods};
 use renderer::{
@@ -10,6 +10,7 @@ use renderer::{
     styles::BlendMode,
     DynamicScene,
 };
+use std::sync::Arc;
 use strum::EnumString;
 use uuid::Uuid;
 
@@ -18,7 +19,6 @@ use super::{
     StrokeStyle,
 };
 use crate::visual::{
-    color::LinRgba,
     geometry::{Anchor, Size, Transformation2D},
     window::{Frame, WindowState},
 };
@@ -45,7 +45,7 @@ pub struct GaborParams {
     pub sigma: Size,
     pub orientation: f64,
     pub stroke_style: Option<StrokeStyle>,
-    pub stroke_color: Option<LinRgba>,
+    pub stroke_color: Option<Color>,
     pub stroke_width: Option<Size>,
     pub alpha: Option<f64>,
 }
@@ -80,7 +80,7 @@ impl GaborStimulus {
         anchor: Anchor,
         color_interpolation: ColorInterpolation,
         stroke_style: Option<StrokeStyle>,
-        stroke_color: Option<LinRgba>,
+        stroke_color: Option<Color>,
         stroke_width: Option<Size>,
         alpha: Option<f64>,
     ) -> Self {
@@ -174,8 +174,8 @@ impl GaborStimulus {
 ///   The color interpolation mode (default is 'linear').
 /// stroke_style : str or StrokeStyle, optional
 ///   The stroke style of the stimulus.
-/// stroke_color : (float,float,float),  (float,float,float, float), str or LinRgba, optional
-///   The stroke color of the stimulus. Either an sRGB(A) tuple or a LinRgba color.
+/// stroke_color : (float,float,float),  (float,float,float, float), str or Color, optional
+///   The stroke color of the stimulus. Either an sRGB(A) tuple or a Color::new_srgb color.
 /// stroke_width : str or Number, optional
 ///   With of the stroke.
 /// alpha : float, optional
@@ -214,7 +214,7 @@ impl PyGaborStimulus {
         anchor: Anchor,
         color_interpolation: ColorInterpolation,
         stroke_style: Option<StrokeStyle>,
-        stroke_color: Option<LinRgba>,
+        stroke_color: Option<Color>,
         stroke_width: Option<IntoSize>,
         alpha: Option<f64>,
     ) -> (Self, PyStimulus) {
@@ -254,6 +254,7 @@ impl Stimulus for GaborStimulus {
 
         let window_size = window_state.size;
         let screen_props = window_state.physical_screen;
+        let dc = &*window_state.display_characteristics;
 
         // convert physical units to pixels
         let radius = self.params.radius.eval(window_size, screen_props) as f64;
@@ -329,7 +330,8 @@ impl Stimulus for GaborStimulus {
 
         // if the stimulus has a stroke, draw it
         if let Some(stroke_style) = &self.params.stroke_style {
-            let stroke_color = self.params.stroke_color.unwrap_or(LinRgba::new(0.0, 0.0, 0.0, 1.0));
+            let stroke_color = self.params.stroke_color.unwrap_or(Color::new_srgba(0.0, 0.0, 0.0, 1.0));
+            let stroke_color: RGBA = stroke_color.to_display_rgba(dc).into();
             let stroke_brush = Brush::Solid(stroke_color.into());
             let stroke_width = self.params.stroke_width.clone().unwrap_or(Size::Pixels(0.0));
             let stroke_width = stroke_width.eval(window_size, screen_props) as f64;
@@ -366,28 +368,6 @@ impl Stimulus for GaborStimulus {
 
     fn transformation(&self) -> crate::visual::geometry::Transformation2D {
         self.transformation.clone()
-    }
-
-    fn contains(&self, x: Size, y: Size, window: &Window) -> bool {
-        // let cx = self.params.cx.eval(&window.physical_properties);
-        // let cy = self.params.cy.eval(&window.physical_properties);
-        // let radius = self.params.radius.eval(&window.physical_properties);
-        // let trans_mat = self.transformation.eval(&window.physical_properties);
-
-        // let x = x.eval(&window.physical_properties);
-        // let y = y.eval(&window.physical_properties);
-
-        // // apply transformation by multiplying the point with the transformation matrix
-        // let p = nalgebra::Vector3::new(x, y, 1.0);
-        // let p_new = trans_mat * p;
-
-        // // check if the point is inside the circle
-        // let dx = p_new[0] - cx;
-        // let dy = p_new[1] - cy;
-        // let distance = (dx * dx + dy * dy).sqrt();
-
-        // distance <= radius
-        false
     }
 
     fn get_param(&self, name: &str) -> Option<StimulusParamValue> {

@@ -19,6 +19,7 @@ pub struct WgpuRenderer {
     surface_format: TextureFormat,
     render_pipeline: RenderPipeline,
     texture: Texture,
+    texture_format: TextureFormat,
     lut_texture_array: Texture,
     encode_gamma: bool,
     gamma_buffer: Buffer,
@@ -28,94 +29,108 @@ pub struct WgpuRenderer {
 
 impl WgpuRenderer {
     pub async fn new(
-        window: Arc<Window>,
+        window: Arc<Box<dyn Window>>,
         _instance: &Instance,
         device: &Device,
         queue: &Queue,
         surface_format: TextureFormat,
-        lut: Option<image::RgbImage>,
-        encode_gamma: bool,
+        internal_color_format: ColorFormat,
+        // lut: Option<image::RgbImage>,
+        // encode_gamma: bool,
     ) -> Self {
-        let size = window.inner_size();
+        let size = window.surface_size();
         let (width, height) = (size.width, size.height);
+
+        // chose an internal texture format based on the provided internal color format
+        let internal_texture_format = match internal_color_format {
+            ColorFormat::Rgba8 => TextureFormat::Rgba8Unorm,
+            ColorFormat::Rgba10 => TextureFormat::Rgb10a2Unorm,
+            ColorFormat::RgbaF16 => TextureFormat::Rgba16Float,
+        };
+
+        println!(
+            "Creating WGPU renderer with surface format: {:?} and internal texture format: {:?}",
+            surface_format, internal_texture_format
+        );
 
         // create a render pipeline
         let render_pipeline = Self::create_render_pipelie(&device, surface_format);
-        let texture = Self::create_texture(&device, width, height, ColorFormat::RgbaF16);
+        let texture = Self::create_texture(&device, width, height, internal_texture_format);
         let lut_texture_array = Self::create_lut_texture_array(&device, 256, 256);
 
-        // if a LUT is provided, create a texture array and upload the LUT data
-        let lut_texture_data = if let Some(lut) = lut {
-            // make sure the LUT is 128x128
-            assert_eq!(lut.width(), 256);
-            assert_eq!(lut.height(), 256);
-            // get u8 data from the LUT
-            // the desired structure is 128x128 red, 128x128 green, 128x128 blue
-            // the image however has rgb values interleaved
-            let mut lut_texture_data = Vec::with_capacity(256 * 256 * 3);
-            for c in 0..3 {
-                for i in 0..(256 * 256) {
-                    // get the pixel value
-                    let pixel = lut.get_pixel(i % 256, i / 256);
-                    // get the channel value
-                    let channel_value = pixel[c];
-                    // push the value to the texture data
-                    lut_texture_data.push(channel_value);
-                }
-            }
+        // // if a LUT is provided, create a texture array and upload the LUT data
+        // let lut_texture_data = if let Some(lut) = lut {
+        //     // make sure the LUT is 128x128
+        //     assert_eq!(lut.width(), 256);
+        //     assert_eq!(lut.height(), 256);
+        //     // get u8 data from the LUT
+        //     // the desired structure is 128x128 red, 128x128 green, 128x128 blue
+        //     // the image however has rgb values interleaved
+        //     let mut lut_texture_data = Vec::with_capacity(256 * 256 * 3);
+        //     for c in 0..3 {
+        //         for i in 0..(256 * 256) {
+        //             // get the pixel value
+        //             let pixel = lut.get_pixel(i % 256, i / 256);
+        //             // get the channel value
+        //             let channel_value = pixel[c];
+        //             // push the value to the texture data
+        //             lut_texture_data.push(channel_value);
+        //         }
+        //     }
 
-            lut_texture_data
-        } else {
-            // create a default LUT based on the sRGB encoding function
-            // the LUT is 256x256 red, 256x256 green, 256x256 blue
-            let mut lut_texture_data = vec![0u8; 256 * 256 * 3];
-            for i in 0..(256 * 256) {
-                for c in 0..3 {
-                    let x = i as f32 / (256.0 * 256.0);
-                    let y = gamma22_inverse_eotf(x);
-                    let y = (y * 255.0).round() as u8;
-                    lut_texture_data[c * (256 * 256) + i] = y;
-                }
-            }
-            lut_texture_data
-        };
+        //     lut_texture_data
+        // } else {
+        //     // create a default LUT based on the sRGB encoding function
+        //     // the LUT is 256x256 red, 256x256 green, 256x256 blue
+        //     let mut lut_texture_data = vec![0u8; 256 * 256 * 3];
+        //     for i in 0..(256 * 256) {
+        //         for c in 0..3 {
+        //             let x = i as f32 / (256.0 * 256.0);
+        //             let y = gamma22_inverse_eotf(x);
+        //             let y = (y * 255.0).round() as u8;
+        //             lut_texture_data[c * (256 * 256) + i] = y;
+        //         }
+        //     }
+        //     lut_texture_data
+        // };
 
-        queue.write_texture(
-            // Tells wgpu where to copy the pixel data
-            wgpu::TexelCopyTextureInfo {
-                texture: &lut_texture_array,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            // The actual pixel data
-            &lut_texture_data,
-            // The layout of the texture
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(256),
-                rows_per_image: Some(256),
-            },
-            // The size of the texture
-            wgpu::Extent3d {
-                width: 256,
-                height: 256,
-                depth_or_array_layers: 3,
-            },
-        );
+        // queue.write_texture(
+        //     // Tells wgpu where to copy the pixel data
+        //     wgpu::TexelCopyTextureInfo {
+        //         texture: &lut_texture_array,
+        //         mip_level: 0,
+        //         origin: wgpu::Origin3d::ZERO,
+        //         aspect: wgpu::TextureAspect::All,
+        //     },
+        //     // The actual pixel data
+        //     &lut_texture_data,
+        //     // The layout of the texture
+        //     wgpu::TexelCopyBufferLayout {
+        //         offset: 0,
+        //         bytes_per_row: Some(256),
+        //         rows_per_image: Some(256),
+        //     },
+        //     // The size of the texture
+        //     wgpu::Extent3d {
+        //         width: 256,
+        //         height: 256,
+        //         depth_or_array_layers: 3,
+        //     },
+        // );
 
         let gamma_buffer = Self::create_uniform_buffer(&device);
-        let bind_group = Self::create_bind_group(&device, &texture, &lut_texture_array, encode_gamma);
+        let bind_group = Self::create_bind_group(&device, &texture, &lut_texture_array, false);
 
         Self {
             surface_format,
             render_pipeline,
             texture,
             lut_texture_array,
-            encode_gamma,
+            encode_gamma: false,
             gamma_buffer,
             bind_group,
             size,
+            texture_format: internal_texture_format,
         }
     }
 
@@ -157,12 +172,16 @@ impl WgpuRenderer {
     /// Re-size the texture
     pub fn resize(&mut self, width: u32, height: u32, surface: &Surface, device: &Device) {
         self.size = winit::dpi::PhysicalSize::new(width, height);
-        self.texture = Self::create_texture(device, width, height, ColorFormat::RgbaF16);
+        self.texture = Self::create_texture(device, width, height, self.texture_format);
         self.bind_group = Self::create_bind_group(device, &self.texture, &self.lut_texture_array, self.encode_gamma);
         self.configure_surface(surface, device);
     }
 
-    fn create_texture(device: &wgpu::Device, width: u32, height: u32, color_format: ColorFormat) -> wgpu::Texture {
+    fn create_texture(device: &wgpu::Device, width: u32, height: u32, texture_format: TextureFormat) -> wgpu::Texture {
+        println!(
+            "Creating texture with size: {}x{} and format: {:?}",
+            width, height, texture_format
+        );
         device.create_texture(&wgpu::TextureDescriptor {
             size: wgpu::Extent3d {
                 width,
@@ -172,13 +191,13 @@ impl WgpuRenderer {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: color_format.into(),
+            format: texture_format,
             usage: wgpu::TextureUsages::TEXTURE_BINDING
                 | wgpu::TextureUsages::STORAGE_BINDING
                 | wgpu::TextureUsages::RENDER_ATTACHMENT
                 | wgpu::TextureUsages::COPY_DST,
             label: Some("Internal Texture"),
-            view_formats: &[color_format.into()],
+            view_formats: &[texture_format],
         })
     }
 
@@ -266,7 +285,7 @@ impl WgpuRenderer {
                         buffer: &device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                             label: Some("Gamma Buffer"),
                             contents: bytemuck::cast_slice(&[GammaParams {
-                                correction: if encode_gamma { 1 } else { 0 },
+                                correction: 0,
                                 texture_width: 256,
                                 texture_height: 256,
                             }]),
@@ -365,6 +384,8 @@ impl WgpuRenderer {
             cache: None,
         });
 
+        println!("Created render pipeline with surface format: {:?}", format);
+
         render_pipeline
     }
 
@@ -433,16 +454,4 @@ fn srgb_inverse_eotf(c: f32) -> f32 {
 // without the precise handling of the 0.04045 threshold
 fn gamma22_inverse_eotf(c: f32) -> f32 {
     c.powf(1.0 / 2.2)
-}
-
-// allow color_formats::ColorFormat to be used in wgpu
-impl From<ColorFormat> for wgpu::TextureFormat {
-    fn from(format: ColorFormat) -> Self {
-        match format {
-            ColorFormat::Rgba8 => wgpu::TextureFormat::Rgba8Unorm,
-            ColorFormat::Bgra8 => wgpu::TextureFormat::Bgra8Unorm,
-            ColorFormat::Rgba1010102 => wgpu::TextureFormat::Rgb10a2Unorm,
-            ColorFormat::RgbaF16 => wgpu::TextureFormat::Rgba16Float,
-        }
-    }
 }

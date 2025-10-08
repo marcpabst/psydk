@@ -1,12 +1,13 @@
 use std::time::Instant;
 
-use pyo3::{types::PyAnyMethods, Bound, FromPyObject, PyAny, PyResult};
-
 use super::{Stimulus, StimulusParamValue};
+use crate::visual::colors::Color;
+use crate::visual::colors::IntoColor;
 use crate::visual::{
     geometry::Size,
     window::{Window, WindowState},
 };
+use pyo3::{types::PyAnyMethods, Bound, FromPyObject, PyAny, PyResult};
 
 #[derive(FromPyObject, Debug, Clone)]
 pub enum Repeat {
@@ -177,18 +178,18 @@ impl Animation {
                 StimulusParamValue::Size(Size::Pixels(value as f32))
             }
             // for now just animate in linear RGB space
-            (StimulusParamValue::LinRgba(f), StimulusParamValue::LinRgba(t)) => {
-                let value_r = Self::value_f64(f.r as f64, t.r as f64, elapsed, duration, easing);
-                let value_g = Self::value_f64(f.g as f64, t.g as f64, elapsed, duration, easing);
-                let value_b = Self::value_f64(f.b as f64, t.b as f64, elapsed, duration, easing);
-                let value_a = Self::value_f64(f.a as f64, t.a as f64, elapsed, duration, easing);
-                StimulusParamValue::LinRgba(crate::visual::color::LinRgba {
-                    r: value_r as f32,
-                    g: value_g as f32,
-                    b: value_b as f32,
-                    a: value_a as f32,
-                })
-            }
+            // (StimulusParamValue::Color(f), StimulusParamValue::Color(t)) => {
+            //     let value_r = Self::value_f64(f.r as f64, t.r as f64, elapsed, duration, easing);
+            //     let value_g = Self::value_f64(f.g as f64, t.g as f64, elapsed, duration, easing);
+            //     let value_b = Self::value_f64(f.b as f64, t.b as f64, elapsed, duration, easing);
+            //     let value_a = Self::value_f64(f.a as f64, t.a as f64, elapsed, duration, easing);
+            //     StimulusParamValue::Color(crate::visual::colors::Color::new_srgba(
+            //         value_r as f32,
+            //         value_g as f32,
+            //         value_b as f32,
+            //         value_a as f32,
+            //     ))
+            // }
             _ => self.to.clone(),
         }
     }

@@ -2,11 +2,14 @@
 use eframe::egui;
 use egui::Stroke;
 use egui_plot::{AxisHints, GridInput, GridMark, Line, Plot, PlotPoints, Points, VLine};
+use egui_tiles::{TileId, Tiles, Tree};
 use lsl::{Pullable, StreamInfo, StreamInlet, XMLElement};
 use std::collections::VecDeque;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::Duration;
 use std::{f64, thread};
+
+mod log_viewer;
 
 const DEFAULT_TIME_WINDOW_SECONDS: f64 = 2.0; // Show last 10 seconds of data
 const BUFFER_SIZE: i32 = 360;
@@ -33,16 +36,14 @@ enum LslCommand {
     Disconnect,
 }
 
-enum LslResponse {
-    StreamsFound(Vec<StreamData>),
-    Connected(String, Vec<String>), // Stream name and channel names
-    Disconnected,
-    Error(String),
-    Data(DataSample),
+enum Pane {
+    StreamViewer(StreamViewerState),
+    LogViewer(log_viewer::LogViewerState),
+    Tab3,
 }
 
 #[derive(Default)]
-struct LslViewer {
+struct StreamViewerState {
     // Connection state
     available_streams: Vec<StreamData>,
     selected_stream_index: Option<usize>,
@@ -78,6 +79,27 @@ struct LslViewer {
     channel_colors: Vec<egui::Color32>,
 }
 
+enum LslResponse {
+    StreamsFound(Vec<StreamData>),
+    Connected(String, Vec<String>), // Stream name and channel names
+    Disconnected,
+    Error(String),
+    Data(DataSample),
+}
+
+struct LslViewer {
+    // UI Tree
+    tree: Tree<Pane>,
+    data: LslViewerData,
+}
+
+#[derive(Default)]
+struct LslViewerData {}
+
+struct TreeBehavior<'a> {
+    shared_data: &'a mut LslViewerData,
+}
+
 impl LslViewer {
     fn new() -> Self {
         let (cmd_tx, cmd_rx) = mpsc::channel::<LslCommand>();
@@ -88,7 +110,10 @@ impl LslViewer {
             lsl_handler_thread(cmd_rx, resp_tx);
         });
 
-        let o = Self {
+        let mut tiles = Tiles::default();
+
+        // Create panes with initial local data
+        let tab1 = tiles.insert_pane(Pane::StreamViewer(StreamViewerState {
             command_sender: Some(cmd_tx),
             response_receiver: Some(resp_rx),
             auto_refresh: true,
@@ -97,16 +122,31 @@ impl LslViewer {
             last_t: 0.0,
             downsample_factor: DEFAULT_DOWN_SAMPLE_FACTOR,
             reference_channel: None,
-
             ..Default::default()
-        };
+        }));
 
-        // Initial command to refresh streams
-        o.send_command(LslCommand::RefreshStreams);
+        let log_viewer_state = log_viewer::LogViewerState::new();
+        log_viewer_state.run();
+
+        let tab2 = tiles.insert_pane(Pane::LogViewer(log_viewer_state));
+        let tab3 = tiles.insert_pane(Pane::Tab3);
+
+        let tabs = tiles.insert_tab_tile(vec![tab1, tab2, tab3]);
+        let tree = Tree::new("my_tree", tabs, tiles);
+
+        // // Initial command to refresh streams
+        // tab1.data.send_command(LslCommand::RefreshStreams);
+
+        let o = Self {
+            tree: tree,
+            data: LslViewerData {},
+        };
 
         o
     }
+}
 
+impl StreamViewerState {
     fn send_command(&self, command: LslCommand) {
         if let Some(sender) = &self.command_sender {
             let _ = sender.send(command);
@@ -140,8 +180,7 @@ impl LslViewer {
                         if self.available_streams.is_empty() {
                             self.status_message = "No streams found".to_string();
                         } else {
-                            self.status_message =
-                                format!("Found {} stream(s)", self.available_streams.len());
+                            self.status_message = format!("Found {} stream(s)", self.available_streams.len());
                         }
                     }
                     LslResponse::Connected(name, channels) => {
@@ -153,8 +192,7 @@ impl LslViewer {
                         self.channel_baselines = vec![0.0; channel_count];
                         self.channel_names = channels;
                         self.is_connected = true;
-                        self.status_message =
-                            format!("Connected to: {} ({} channels)", name, channel_count);
+                        self.status_message = format!("Connected to: {} ({} channels)", name, channel_count);
                         // asign channel colors
                         self.channel_colors = (0..channel_count)
                             .map(|i| {
@@ -183,11 +221,7 @@ impl LslViewer {
 
                         // Remove old data (older than TIME_WINDOW_SECONDS)
                         let cutoff_time = sample.timestamp - self.time_window_seconds;
-                        let cuttoff_index = self
-                            .timestamp_buffer
-                            .iter()
-                            .rev()
-                            .position(|&t| t <= cutoff_time);
+                        let cuttoff_index = self.timestamp_buffer.iter().rev().position(|&t| t <= cutoff_time);
 
                         if let Some(index) = cuttoff_index {
                             // Remove old timestamps
@@ -213,8 +247,8 @@ impl LslViewer {
             if !channel_data.is_empty() {
                 let mut sum = 0.0;
                 let mut count = 0;
-                let oldest_timestamp_to_inlcude = self.timestamp_buffer.back().unwrap_or(&0.0)
-                    - DEFAULT_BASELINE_TIME_WINDOW as f64;
+                let oldest_timestamp_to_inlcude =
+                    self.timestamp_buffer.back().unwrap_or(&0.0) - DEFAULT_BASELINE_TIME_WINDOW as f64;
                 for (_, &value) in self
                     .timestamp_buffer
                     .iter()
@@ -231,133 +265,15 @@ impl LslViewer {
             }
         }
     }
-}
 
-fn extract_channel_names(info: &mut StreamInfo, expected_count: usize) -> Vec<String> {
-    let mut channel_names = vec![];
-
-    let mut cursor = info.desc().child("channels").child("channel");
-    while cursor.is_valid() {
-        channel_names.push(cursor.child_value_named("label"));
-        cursor = cursor.next_sibling();
-    }
-
-    if channel_names.len() != expected_count {
-        (0..info.channel_count())
-            .map(|i| "Ch ".to_string() + &i.to_string())
-            .collect()
-    } else {
-        channel_names
-    }
-}
-
-fn lsl_handler_thread(cmd_rx: Receiver<LslCommand>, resp_tx: Sender<LslResponse>) {
-    let mut available_streams: Vec<StreamInfo> = Vec::new();
-    let mut inlet: Option<StreamInlet> = None;
-    let mut channel_count = 0;
-
-    loop {
-        // Check for commands
-        match cmd_rx.try_recv() {
-            Ok(LslCommand::RefreshStreams) => match lsl::resolve_streams(3.0) {
-                Ok(streams) => {
-                    available_streams = streams;
-                    let stream_data: Vec<StreamData> = available_streams
-                        .iter()
-                        .map(|s| StreamData {
-                            name: s.stream_name().to_string(),
-                            channel_count: s.channel_count() as usize,
-                            sample_rate: s.nominal_srate(),
-                        })
-                        .collect();
-                    let _ = resp_tx.send(LslResponse::StreamsFound(stream_data));
-                }
-                Err(e) => {
-                    let _ = resp_tx.send(LslResponse::Error(format!(
-                        "Failed to refresh streams: {}",
-                        e
-                    )));
-                }
-            },
-            Ok(LslCommand::Connect(index)) => {
-                if let Some(stream_info) = available_streams.get(index) {
-                    channel_count = stream_info.channel_count() as usize;
-                    match StreamInlet::new(stream_info, BUFFER_SIZE, 0, true) {
-                        Ok(new_inlet) => {
-                            new_inlet
-                                .set_postprocessing(&[
-                                    lsl::ProcessingOption::ClockSync,
-                                    lsl::ProcessingOption::Dejitter,
-                                ])
-                                .expect("Failed to set postprocessing");
-
-                            //
-                            //
-                            let mut info = new_inlet.info(5.0).expect("Failed to get stream info");
-
-                            let channel_names = extract_channel_names(&mut info, channel_count);
-                            inlet = Some(new_inlet);
-                            let _ = resp_tx.send(LslResponse::Connected(
-                                stream_info.stream_name().to_string(),
-                                channel_names.clone(),
-                            ));
-                        }
-                        Err(e) => {
-                            let _ = resp_tx
-                                .send(LslResponse::Error(format!("Failed to connect: {}", e)));
-                        }
-                    }
-                } else {
-                    let _ = resp_tx.send(LslResponse::Error("Invalid stream index".to_string()));
-                }
-            }
-            Ok(LslCommand::Disconnect) => {
-                inlet = None;
-                let _ = resp_tx.send(LslResponse::Disconnected);
-            }
-            Err(mpsc::TryRecvError::Disconnected) => break,
-            Err(mpsc::TryRecvError::Empty) => {}
-        }
-
-        // Pull data if connected
-        if let Some(ref inlet) = inlet {
-            if let Ok((chunk, timestamps)) = inlet.pull_chunk() {
-                if !chunk.is_empty() {
-                    for (i, &timestamp) in timestamps.iter().enumerate() {
-                        let data = DataSample {
-                            timestamp,
-                            values: chunk[i].to_vec(),
-                        };
-
-                        if resp_tx.send(LslResponse::Data(data)).is_err() {
-                            panic!("Failed to send data response");
-                        }
-                    }
-                }
-                thread::sleep(Duration::from_millis(25));
-            } else {
-                panic!("Failed to pull data from LSL inlet");
-            }
-        } else {
-            thread::sleep(Duration::from_millis(25));
-        }
-    }
-}
-
-impl eframe::App for LslViewer {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn update(&mut self, ui: &mut egui::Ui) {
         // Process responses from LSL thread
         self.process_responses();
-
-        // Auto-refresh UI
-        if self.auto_refresh {
-            ctx.request_repaint_after(Duration::from_millis(32)); // ~60 FPS
-        }
 
         // left panel for stream selection and controls
         egui::SidePanel::right("right_panel")
             .default_width(300.0)
-            .show(ctx, |ui| {
+            .show_inside(ui, |ui| {
                 ui.vertical(|ui| {
                     // Connection controls
                     // only show the refresh button if not connected
@@ -381,9 +297,7 @@ impl eframe::App for LslViewer {
                                                 is_selected,
                                                 format!(
                                                     "{} - {} channels @ {} Hz",
-                                                    stream.name,
-                                                    stream.channel_count,
-                                                    stream.sample_rate
+                                                    stream.name, stream.channel_count, stream.sample_rate
                                                 ),
                                             )
                                             .clicked()
@@ -438,26 +352,10 @@ impl eframe::App for LslViewer {
                             egui::ComboBox::from_id_source("time_window")
                                 .selected_text(format!("{} seconds", self.time_window_seconds))
                                 .show_ui(ui, |ui| {
-                                    ui.selectable_value(
-                                        &mut self.time_window_seconds,
-                                        1.0,
-                                        "1 second",
-                                    );
-                                    ui.selectable_value(
-                                        &mut self.time_window_seconds,
-                                        2.0,
-                                        "2 seconds",
-                                    );
-                                    ui.selectable_value(
-                                        &mut self.time_window_seconds,
-                                        5.0,
-                                        "5 seconds",
-                                    );
-                                    ui.selectable_value(
-                                        &mut self.time_window_seconds,
-                                        10.0,
-                                        "10 seconds",
-                                    );
+                                    ui.selectable_value(&mut self.time_window_seconds, 1.0, "1 second");
+                                    ui.selectable_value(&mut self.time_window_seconds, 2.0, "2 seconds");
+                                    ui.selectable_value(&mut self.time_window_seconds, 5.0, "5 seconds");
+                                    ui.selectable_value(&mut self.time_window_seconds, 10.0, "10 seconds");
                                 });
                         });
 
@@ -498,11 +396,7 @@ impl eframe::App for LslViewer {
                                 .show_ui(ui, |ui| {
                                     ui.selectable_value(&mut self.reference_channel, None, "None");
                                     for (i, name) in self.channel_names.iter().enumerate() {
-                                        ui.selectable_value(
-                                            &mut self.reference_channel,
-                                            Some(i),
-                                            name,
-                                        );
+                                        ui.selectable_value(&mut self.reference_channel, Some(i), name);
                                     }
                                 });
                         });
@@ -524,13 +418,12 @@ impl eframe::App for LslViewer {
                 });
             });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             ui.vertical(|ui| {
                 if self.is_connected && self.channel_count > 0 {
                     // Data visualization
                     if !self.data_buffer.is_empty() && self.data_buffer[0].len() > 0 {
-                        let selected_channel_count =
-                            self.selected_channels.iter().filter(|&&x| x).count();
+                        let selected_channel_count = self.selected_channels.iter().filter(|&&x| x).count();
                         let selected_channel_labels: Vec<String> = self
                             .selected_channels
                             .iter()
@@ -544,15 +437,14 @@ impl eframe::App for LslViewer {
                             })
                             .collect();
 
-                        let y_formatter =
-                            |grid_mark: GridMark, _range: &std::ops::RangeInclusive<f64>| {
-                                let index = (-1.0 * grid_mark.value) as usize;
+                        let y_formatter = |grid_mark: GridMark, _range: &std::ops::RangeInclusive<f64>| {
+                            let index = (-1.0 * grid_mark.value) as usize;
 
-                                if index >= selected_channel_labels.len() {
-                                    return "??".to_string();
-                                }
-                                selected_channel_labels[index].to_string()
-                            };
+                            if index >= selected_channel_labels.len() {
+                                return "??".to_string();
+                            }
+                            selected_channel_labels[index].to_string()
+                        };
 
                         let y_grid_spacer = |_grid_input: GridInput| {
                             (0..selected_channel_count)
@@ -576,27 +468,24 @@ impl eframe::App for LslViewer {
 
                         plot.show(ui, |plot_ui| {
                             // Find the most recent timestamp to use as reference
-                            let latest_timestamp =
-                                self.timestamp_buffer.back().cloned().unwrap_or(0.0);
+                            let latest_timestamp = self.timestamp_buffer.back().cloned().unwrap_or(0.0);
 
                             // decide on the current time window to be shown (always n * TIME_WINDOW_SECONDS, where n is an integer)
-                            let t0 =
-                                latest_timestamp - (latest_timestamp % self.time_window_seconds);
+                            let t0 = latest_timestamp - (latest_timestamp % self.time_window_seconds);
 
                             // if we're re-referencing, prepare the reference channel
-                            let ref_channel: Option<(Vec<f32>, f64)> =
-                                if let Some(ref_idx) = self.reference_channel {
-                                    if ref_idx < self.data_buffer.len() {
-                                        Some((
-                                            self.data_buffer[ref_idx].iter().cloned().collect(),
-                                            self.channel_baselines[ref_idx],
-                                        ))
-                                    } else {
-                                        None
-                                    }
+                            let ref_channel: Option<(Vec<f32>, f64)> = if let Some(ref_idx) = self.reference_channel {
+                                if ref_idx < self.data_buffer.len() {
+                                    Some((
+                                        self.data_buffer[ref_idx].iter().cloned().collect(),
+                                        self.channel_baselines[ref_idx],
+                                    ))
                                 } else {
                                     None
-                                };
+                                }
+                            } else {
+                                None
+                            };
 
                             let mut plot_idx = 0;
                             let mut t_last = 0.0;
@@ -623,8 +512,7 @@ impl eframe::App for LslViewer {
                                         let mut t = (timestamp - t0) % self.time_window_seconds;
 
                                         let v = if let Some(ref ref_data) = ref_channel {
-                                            (*value as f64 - baseline)
-                                                - (ref_data.0[i] as f64 - ref_data.1)
+                                            (*value as f64 - baseline) - (ref_data.0[i] as f64 - ref_data.1)
                                         } else {
                                             (*value as f64 - baseline)
                                         };
@@ -657,10 +545,7 @@ impl eframe::App for LslViewer {
                                     // add a vertical line at t_last
                                     plot_ui.vline(
                                         VLine::new("Time Window Start", t_last)
-                                            .stroke(Stroke::new(
-                                                1.0,
-                                                egui::Color32::from_rgb(255, 10, 10),
-                                            ))
+                                            .stroke(Stroke::new(1.0, egui::Color32::from_rgb(255, 10, 10)))
                                             .name("Time Window Start"),
                                     );
                                     plot_idx += 1;
@@ -676,8 +561,7 @@ impl eframe::App for LslViewer {
 
                         // Display some stats
                         ui.horizontal(|ui| {
-                            let total_samples: usize =
-                                self.data_buffer.iter().map(|b| b.len()).sum();
+                            let total_samples: usize = self.data_buffer.iter().map(|b| b.len()).sum();
                             ui.label(format!("Total samples buffered: {}", total_samples));
 
                             if let Some(channel_data) = self.data_buffer.first() {
@@ -694,7 +578,7 @@ impl eframe::App for LslViewer {
         });
 
         // Status bar
-        egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
+        egui::TopBottomPanel::bottom("status_bar").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.horizontal(|ui| {
                     ui.label("Status:");
@@ -707,6 +591,127 @@ impl eframe::App for LslViewer {
                     }
                 });
             });
+        });
+    }
+}
+
+fn extract_channel_names(info: &mut StreamInfo, expected_count: usize) -> Vec<String> {
+    let mut channel_names = vec![];
+
+    let mut cursor = info.desc().child("channels").child("channel");
+    while cursor.is_valid() {
+        channel_names.push(cursor.child_value_named("label"));
+        cursor = cursor.next_sibling();
+    }
+
+    if channel_names.len() != expected_count {
+        (0..info.channel_count())
+            .map(|i| "Ch ".to_string() + &i.to_string())
+            .collect()
+    } else {
+        channel_names
+    }
+}
+
+fn lsl_handler_thread(cmd_rx: Receiver<LslCommand>, resp_tx: Sender<LslResponse>) {
+    let mut available_streams: Vec<StreamInfo> = Vec::new();
+    let mut inlet: Option<StreamInlet> = None;
+    let mut channel_count = 0;
+
+    loop {
+        // Check for commands
+        match cmd_rx.try_recv() {
+            Ok(LslCommand::RefreshStreams) => match lsl::resolve_streams(3.0) {
+                Ok(streams) => {
+                    available_streams = streams;
+                    let stream_data: Vec<StreamData> = available_streams
+                        .iter()
+                        .map(|s| StreamData {
+                            name: s.stream_name().to_string(),
+                            channel_count: s.channel_count() as usize,
+                            sample_rate: s.nominal_srate(),
+                        })
+                        .collect();
+                    let _ = resp_tx.send(LslResponse::StreamsFound(stream_data));
+                }
+                Err(e) => {
+                    let _ = resp_tx.send(LslResponse::Error(format!("Failed to refresh streams: {}", e)));
+                }
+            },
+            Ok(LslCommand::Connect(index)) => {
+                if let Some(stream_info) = available_streams.get(index) {
+                    channel_count = stream_info.channel_count() as usize;
+                    match StreamInlet::new(stream_info, BUFFER_SIZE, 0, true) {
+                        Ok(new_inlet) => {
+                            new_inlet
+                                .set_postprocessing(&[
+                                    lsl::ProcessingOption::ClockSync,
+                                    lsl::ProcessingOption::Dejitter,
+                                ])
+                                .expect("Failed to set postprocessing");
+
+                            //
+                            //
+                            let mut info = new_inlet.info(5.0).expect("Failed to get stream info");
+
+                            let channel_names = extract_channel_names(&mut info, channel_count);
+                            inlet = Some(new_inlet);
+                            let _ = resp_tx.send(LslResponse::Connected(
+                                stream_info.stream_name().to_string(),
+                                channel_names.clone(),
+                            ));
+                        }
+                        Err(e) => {
+                            let _ = resp_tx.send(LslResponse::Error(format!("Failed to connect: {}", e)));
+                        }
+                    }
+                } else {
+                    let _ = resp_tx.send(LslResponse::Error("Invalid stream index".to_string()));
+                }
+            }
+            Ok(LslCommand::Disconnect) => {
+                inlet = None;
+                let _ = resp_tx.send(LslResponse::Disconnected);
+            }
+            Err(mpsc::TryRecvError::Disconnected) => break,
+            Err(mpsc::TryRecvError::Empty) => {}
+        }
+
+        // Pull data if connected
+        if let Some(ref inlet) = inlet {
+            if let Ok((chunk, timestamps)) = inlet.pull_chunk() {
+                if !chunk.is_empty() {
+                    for (i, &timestamp) in timestamps.iter().enumerate() {
+                        let data = DataSample {
+                            timestamp,
+                            values: chunk[i].to_vec(),
+                        };
+
+                        if resp_tx.send(LslResponse::Data(data)).is_err() {
+                            panic!("Failed to send data response");
+                        }
+                    }
+                }
+                thread::sleep(Duration::from_millis(25));
+            } else {
+                panic!("Failed to pull data from LSL inlet");
+            }
+        } else {
+            thread::sleep(Duration::from_millis(25));
+        }
+    }
+}
+
+impl eframe::App for LslViewer {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Auto-refresh UI
+        ctx.request_repaint_after(Duration::from_millis(32)); // ~60 FPS
+
+        egui::CentralPanel::default().show(ctx, |ui| {
+            let mut behavior = TreeBehavior {
+                shared_data: &mut self.data,
+            };
+            self.tree.ui(&mut behavior, ui);
         });
     }
 }
@@ -724,4 +729,28 @@ fn main() -> eframe::Result {
         options,
         Box::new(|_cc| Ok(Box::new(LslViewer::new()))),
     )
+}
+
+impl<'a> egui_tiles::Behavior<Pane> for TreeBehavior<'a> {
+    fn pane_ui(&mut self, ui: &mut egui::Ui, _tile_id: TileId, pane: &mut Pane) -> egui_tiles::UiResponse {
+        match pane {
+            Pane::StreamViewer(state) => {
+                state.update(ui);
+                egui_tiles::UiResponse::None
+            }
+            Pane::LogViewer(state) => state.update(ui),
+            Pane::Tab3 => {
+                ui.label("Camera tab content goes here.");
+                egui_tiles::UiResponse::None
+            }
+        }
+    }
+
+    fn tab_title_for_pane(&mut self, pane: &Pane) -> egui::WidgetText {
+        match pane {
+            Pane::StreamViewer(..) => "Stream".into(),
+            Pane::LogViewer(..) => "Log".into(),
+            Pane::Tab3 => "Camera".into(),
+        }
+    }
 }

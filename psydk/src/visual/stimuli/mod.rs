@@ -17,7 +17,10 @@ use super::{
     geometry::{IntoSize, Size, Transformation2D},
     window::{Frame, Window, WindowState},
 };
-use crate::{input::Event, visual::color::LinRgba};
+use crate::{
+    input::Event,
+    visual::{colors::Color, colors::IntoColor},
+};
 
 pub mod animations;
 mod helpers;
@@ -40,7 +43,7 @@ pub enum StimulusParamValue {
     String(String),
     bool(bool),
     i64(i64),
-    LinRgba(LinRgba),
+    Color(Color),
     Shape(super::geometry::Shape),
     StrokeStyle(StrokeStyle),
 }
@@ -116,8 +119,8 @@ impl<'py> FromPyObject<'py> for IntoStimulusParamValue {
         if let Ok(value) = ob.extract::<i64>() {
             return Ok(Self(StimulusParamValue::i64(value)));
         }
-        if let Ok(value) = ob.extract::<LinRgba>() {
-            return Ok(Self(StimulusParamValue::LinRgba(value)));
+        if let Ok(value) = ob.extract::<Color>() {
+            return Ok(Self(StimulusParamValue::Color(value)));
         }
         if let Ok(value) = ob.extract::<Size>() {
             return Ok(Self(StimulusParamValue::Size(value)));
@@ -147,7 +150,7 @@ pub trait Stimulus: downcast_rs::Downcast + std::fmt::Debug + Send {
     }
 
     /// Check if the stimulus contains a specific Point.
-    fn contains(&self, x: Size, y: Size, window: &Window) -> bool {
+    fn contains(&self, x: Size, y: Size, window_state: &WindowState) -> bool {
         // by default, stimuli will report false for contains
         false
     }
@@ -284,7 +287,11 @@ pub trait Stimulus: downcast_rs::Downcast + std::fmt::Debug + Send {
 
     /// Dispatch an event to the stimulus. Return true if the event was consumed.
     fn dispatch_event(&mut self, event: &Event, window_state: &WindowState) -> bool {
-        // by default, stimuli will do nothing.
+        return false;
+    }
+
+    /// Returns true if the stimulus was clicked (i.e. a mouse down event occurred within its bounds).
+    fn clicked(&mut self) -> bool {
         false
     }
 }
@@ -382,7 +389,7 @@ macro_rules! impl_pystimulus_for_wrapper {
                         .unbind()
                         .into_any()),
                     Some(StimulusParamValue::i64(val)) => Ok(val.into_pyobject(py)?.unbind().into_any()),
-                    Some(StimulusParamValue::LinRgba(val)) => Ok(val.into_pyobject(py)?.unbind().into_any()),
+                    Some(StimulusParamValue::Color(val)) => Ok(val.into_pyobject(py)?.unbind().into_any()),
                     Some(StimulusParamValue::Shape(val)) => Ok(val.into_pyobject(py)?.unbind().into_any()),
                     Some(StimulusParamValue::StrokeStyle(val)) => Ok(val.into_pyobject(py)?.unbind().into_any()),
                     Some(StimulusParamValue::Shape(val)) => Ok(val.into_pyobject(py)?.unbind().into_any()),
@@ -462,9 +469,9 @@ macro_rules! impl_pystimulus_for_wrapper {
 
                         return Ok(());
                     }
-                    StimulusParamValue::LinRgba(_) => {
-                        let value = value.extract::<crate::visual::color::IntoLinRgba>(py)?;
-                        let value = StimulusParamValue::LinRgba(value.into());
+                    StimulusParamValue::Color(_) => {
+                        let value = value.extract::<crate::visual::colors::IntoColor>(py)?;
+                        let value = StimulusParamValue::Color(value.into());
 
                         py.allow_threads(move || {
                             let mut ds = dynamic_stimulus.0.lock().unwrap();
@@ -533,9 +540,9 @@ macro_rules! impl_pystimulus_for_wrapper {
                 downcast_stimulus!(slf, $name).visible()
             }
 
-            fn contains(mut slf: PyRefMut<'_, Self>, x: IntoSize, y: IntoSize, window: &Window) -> bool {
-                downcast_stimulus!(slf, $name).contains(x.into(), y.into(), window)
-            }
+            // fn contains(mut slf: PyRefMut<'_, Self>, x: IntoSize, y: IntoSize, window_state: &WindowState) -> bool {
+            //     downcast_stimulus!(slf, $name).contains(x.into(), y.into(), window_state)
+            // }
 
             /// Animate a parameter of the stimulus.
             /// The parameter must be a valid parameter of the stimulus.
@@ -570,8 +577,8 @@ macro_rules! impl_pystimulus_for_wrapper {
                     StimulusParamValue::i64(_) => {
                         StimulusParamValue::i64(to.extract::<i64>(slf.py()).expect("invalid value"))
                     }
-                    StimulusParamValue::LinRgba(_) => StimulusParamValue::LinRgba(
-                        to.extract::<crate::visual::color::IntoLinRgba>(slf.py())
+                    StimulusParamValue::Color(_) => StimulusParamValue::Color(
+                        to.extract::<crate::visual::colors::IntoColor>(slf.py())
                             .expect("invalid value")
                             .into(),
                     ),

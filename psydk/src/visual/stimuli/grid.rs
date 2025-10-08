@@ -15,7 +15,7 @@ use uuid::Uuid;
 
 use renderer::vello_backend::VelloFont;
 
-use super::LinRgba;
+use super::Color::new_srgb;
 
 #[derive(StimulusParams, Clone, Debug)]
 pub struct GridParams {

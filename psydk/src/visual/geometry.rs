@@ -654,10 +654,13 @@ impl Shape {
                     && (y >= sy && y <= sy + height.eval(window_size, window_props));
             }
             Shape::Circle { x: cx, y: cy, radius } => {
+                println!("Checking circle at ({:?}, {:?}) with radius {:?}", cx, cy, radius);
                 let cx = cx.eval(window_size, window_props);
                 let cy = cy.eval(window_size, window_props);
                 let radius = radius.eval(window_size, window_props);
-                ((x - cx).powi(2) + (y - cy).powi(2)) <= radius.powi(2)
+                let b = ((x - cx).powi(2) + (y - cy).powi(2)) <= radius.powi(2);
+                println!("Point is inside circle: {}", b);
+                return b;
             }
             Shape::Line {
                 x1: x1s,

@@ -1,10 +1,10 @@
-use std::sync::{Arc, Mutex};
-
 use super::helpers;
 use super::{
     animations::Animation, impl_pystimulus_for_wrapper, PyStimulus, Stimulus, StimulusParamValue, StimulusParams,
 };
 use crate::context::ExperimentContext;
+use crate::visual::colors::Color;
+use crate::visual::colors::IntoColor;
 use crate::visual::geometry::Transformation2D;
 use crate::visual::geometry::{Anchor, Size};
 use cosmic_text::Buffer as CosmicBuffer;
@@ -15,14 +15,13 @@ use cosmic_text::Stretch as CosmicStretch;
 use cosmic_text::Style as CosmicStyle;
 use cosmic_text::Weight as CosmicWeight;
 use cosmic_text::{Attrs as ComsicAttrs, CacheKeyFlags};
+use std::sync::{Arc, Mutex};
 
 use psydk_proc::{FromPyStr, StimulusParams};
 use renderer::DynamicScene;
 use strum::EnumString;
 use uuid::Uuid;
 
-use crate::visual::color::IntoLinRgba;
-use crate::visual::color::LinRgba;
 use crate::visual::window::{Frame, WindowState};
 use renderer::affine::Affine;
 use renderer::brushes::Brush;
@@ -65,7 +64,7 @@ pub struct TextParams {
     pub y: Size,
     pub text: String,
     pub font_size: Size,
-    pub fill_color: LinRgba,
+    pub fill_color: Color,
     pub alpha: f64,
 }
 
@@ -94,7 +93,7 @@ impl TextStimulus {
         font_size: Size,
         font_family: &str,
         font_weight: FontWeight,
-        fill_color: LinRgba,
+        fill_color: Color,
         alpha: f64,
         transform: Transformation2D,
         context: &ExperimentContext,
@@ -174,7 +173,7 @@ impl PyTextStimulus {
         anchor = Anchor::Center,
         x = IntoSize(Size::Pixels(0.0)),
         y = IntoSize(Size::Pixels(0.0)),
-        fill_color = IntoLinRgba::new(0.0, 0.0, 0.0, 1.0),
+        fill_color = IntoColor::default(),
         transform = Transformation2D::Identity(),
         context = None,
     ))]
@@ -189,7 +188,7 @@ impl PyTextStimulus {
         anchor: Anchor,
         x: IntoSize,
         y: IntoSize,
-        fill_color: IntoLinRgba,
+        fill_color: IntoColor,
         transform: Transformation2D,
         context: Option<ExperimentContext>,
     ) -> (Self, PyStimulus) {
@@ -228,6 +227,7 @@ impl Stimulus for TextStimulus {
 
         let window_size = window_state.size;
         let screen_props = window_state.physical_screen;
+        let dc = &*window_state.display_characteristics;
         let mut font_manager = self.font_manager.lock().unwrap();
 
         // convert physical units to pixels
@@ -237,7 +237,7 @@ impl Stimulus for TextStimulus {
 
         let trans_mat = self.transform.eval(window_size, screen_props);
 
-        let fill_color: RGBA = self.params.fill_color.into();
+        let fill_color = self.params.fill_color.to_display_rgba(dc);
 
         // Set a size for the text buffer, in pixels
         self.buffer.set_size(&mut font_manager, None, None);
@@ -277,7 +277,7 @@ impl Stimulus for TextStimulus {
             }
         }
 
-        let brush = Brush::Solid(fill_color);
+        let brush = Brush::Solid(fill_color.into());
 
         scene.draw_glyphs(
             (new_x, -new_y).into(),

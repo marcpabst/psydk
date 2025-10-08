@@ -1,8 +1,5 @@
-use std::{
-    ops::Deref,
-    sync::{Arc, Mutex},
-};
-
+use crate::visual::colors::Color;
+use crate::visual::colors::IntoColor;
 use num_traits::Bounded;
 use numpy::{PyReadonlyArray2, PyReadonlyArray3, PyReadonlyArray4, PyUntypedArrayMethods};
 use psydk_proc::StimulusParams;
@@ -14,6 +11,10 @@ use renderer::{
     shapes::Shape,
     styles::ImageFitMode,
     DynamicBitmap, DynamicScene,
+};
+use std::{
+    ops::Deref,
+    sync::{Arc, Mutex},
 };
 use uuid::Uuid;
 
@@ -358,9 +359,7 @@ impl Stimulus for ImageStimulus {
         self.transformation.clone()
     }
 
-    fn contains(&self, x: Size, y: Size, window: &Window) -> bool {
-        let window_state = window.state.lock().unwrap();
-        let window_state = window_state.as_ref().unwrap();
+    fn contains(&self, x: Size, y: Size, window_state: &WindowState) -> bool {
         let window_size = window_state.size;
         let screen_props = window_state.physical_screen;
 

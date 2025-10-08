@@ -451,7 +451,9 @@ impl Stream {
                         sender.send(Status::Playing).unwrap();
                     }
                     StreamCommand::GetLatency(sender) => {
-                        sender.send(stream.latency()).unwrap();
+                        // sender.send(stream.latency()).unwrap();
+                        // for now, we return None
+                        sender.send(None).unwrap();
                     }
                     StreamCommand::Close => {
                         callback_sender.send(CallbackCommand::RemoveAudioObject).unwrap();

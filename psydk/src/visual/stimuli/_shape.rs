@@ -12,7 +12,7 @@ use super::{
 };
 use crate::visual::window::WindowState;
 use crate::visual::{
-    color::{IntoLinRgba, LinRgba},
+    colors::{Color, Color::new_srgb},
     geometry::{Shape, Size, Transformation2D},
     window::Frame,
 };
@@ -22,9 +22,9 @@ pub struct ShapeParams {
     pub shape: Shape,
     pub x: Size,
     pub y: Size,
-    pub fill_color: Option<LinRgba>,
+    pub fill_color: Option<Color>,
     pub stroke_style: Option<StrokeStyle>,
-    pub stroke_color: Option<LinRgba>,
+    pub stroke_color: Option<Color>,
     pub stroke_width: Option<Size>,
     pub alpha: Option<f64>,
 }
@@ -44,9 +44,9 @@ impl ShapeStimulus {
         shape: Shape,
         x: Size,
         y: Size,
-        fill_color: Option<LinRgba>,
+        fill_color: Option<Color>,
         stroke_style: Option<StrokeStyle>,
-        stroke_color: Option<LinRgba>,
+        stroke_color: Option<Color>,
         stroke_width: Option<Size>,
         alpha: Option<f64>,
 
@@ -83,11 +83,11 @@ impl ShapeStimulus {
 ///     The x-coordinate of the center of the shape.
 /// y : Size, optional
 ///     The y-coordinate of the center of the shape.
-/// fill_color : Union[LinRgba, (float, float, float), (float, float, float, float), str], optional
+/// fill_color : Union[Color, (float, float, float), (float, float, float, float), str], optional
 ///    The fill color of the shape.
 /// stroke_style : StrokeStyle, optional
 ///    The stroke style of the shape.
-/// stroke_color : Union[LinRgba, (float, float, float), (float, float, float, float), str], optional
+/// stroke_color : Union[Color, (float, float, float), (float, float, float, float), str], optional
 ///   The stroke color of the shape.
 /// stroke_width : Union[Size, float], optional
 ///  The stroke width of the shape.
@@ -121,11 +121,11 @@ impl PyShapeStimulus {
     ///     The x-coordinate of the center of the shape.
     /// y : Size, optional
     ///     The y-coordinate of the center of the shape.
-    /// fill_color : Union[LinRgba, (float, float, float), (float, float, float, float), str], optional
+    /// fill_color : Union[Color, (float, float, float), (float, float, float, float), str], optional
     ///    The fill color of the shape.
     /// stroke_style : StrokeStyle, optional
     ///    The stroke style of the shape.
-    /// stroke_color : Union[LinRgba, (float, float, float), (float, float, float, float), str], optional
+    /// stroke_color : Union[Color, (float, float, float), (float, float, float, float), str], optional
     ///   The stroke color of the shape.
     /// stroke_width : Union[Size, float], optional
     ///    The stroke width of the shape.
@@ -137,9 +137,9 @@ impl PyShapeStimulus {
         shape: Shape,
         x: IntoSize,
         y: IntoSize,
-        fill_color: Option<IntoLinRgba>,
+        fill_color: Option<IntoColor>,
         stroke_style: Option<StrokeStyle>,
-        stroke_color: Option<IntoLinRgba>,
+        stroke_color: Option<IntoColor>,
         stroke_width: Option<IntoSize>,
         alpha: Option<f64>,
         transform: Transformation2D,
@@ -195,7 +195,7 @@ impl Stimulus for ShapeStimulus {
             &None,
         );
 
-        let stroke_color = self.params.stroke_color.unwrap_or(LinRgba::new(0.0, 0.0, 0.0, 0.0));
+        let stroke_color = self.params.stroke_color.unwrap_or(Color::new(0.0, 0.0, 0.0, 0.0));
 
         let stroke_brush = renderer::brushes::Brush::Solid(stroke_color.into());
 

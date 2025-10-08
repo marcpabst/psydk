@@ -1,4 +1,5 @@
-use std::sync::Arc;
+use crate::visual::colors::Color;
+use crate::visual::colors::IntoColor;
 
 use psydk_proc::{FromPyStr, StimulusParams};
 use renderer::{
@@ -9,6 +10,7 @@ use renderer::{
     styles::ImageFitMode,
     DynamicBitmap, DynamicScene,
 };
+use std::sync::Arc;
 use strum::EnumString;
 use uuid::Uuid;
 
@@ -21,7 +23,6 @@ use super::{
 use crate::{
     context::ExperimentContext,
     visual::{
-        color::{IntoLinRgba, LinRgba},
         geometry::{Anchor, Shape, Size, Transformation2D},
         stimuli::text::{FontWeight, TextAlignment, TextStimulus},
         window::{Frame, WindowState},
@@ -36,16 +37,16 @@ pub struct ButtonParams {
     pub height: Size,
     pub text: String,
     pub text_size: Size,
-    pub text_color: LinRgba,
-    pub text_color_hover: LinRgba,
-    pub text_color_pressed: LinRgba,
-    pub text_color_disabled: LinRgba,
-    pub fill_color: LinRgba,
-    pub fill_color_hover: LinRgba,
-    pub fill_color_pressed: LinRgba,
-    pub fill_color_disabled: LinRgba,
+    pub text_color: Color,
+    pub text_color_hover: Color,
+    pub text_color_pressed: Color,
+    pub text_color_disabled: Color,
+    pub fill_color: Color,
+    pub fill_color_hover: Color,
+    pub fill_color_pressed: Color,
+    pub fill_color_disabled: Color,
     pub stroke_style: StrokeStyle,
-    pub stroke_color: LinRgba,
+    pub stroke_color: Color,
     pub stroke_width: Size,
     pub alpha: Option<f64>,
 }
@@ -80,16 +81,16 @@ impl ButtonStimulus {
         height: Size,
         text: String,
         text_size: Size,
-        text_color: LinRgba,
-        text_color_hover: Option<LinRgba>,
-        text_color_pressed: Option<LinRgba>,
-        text_color_disabled: Option<LinRgba>,
-        fill_color: LinRgba,
-        fill_color_hover: Option<LinRgba>,
-        fill_color_pressed: Option<LinRgba>,
-        fill_color_disabled: Option<LinRgba>,
+        text_color: Color,
+        text_color_hover: Option<Color>,
+        text_color_pressed: Option<Color>,
+        text_color_disabled: Option<Color>,
+        fill_color: Color,
+        fill_color_hover: Option<Color>,
+        fill_color_pressed: Option<Color>,
+        fill_color_disabled: Option<Color>,
         stroke_style: StrokeStyle,
-        stroke_color: LinRgba,
+        stroke_color: Color,
         stroke_width: Size,
         alpha: Option<f64>,
         transform: Transformation2D,
@@ -123,11 +124,11 @@ impl ButtonStimulus {
                 text_color,
                 text_color_hover: text_color_hover.unwrap_or(text_color.lighten(0.2)),
                 text_color_pressed: text_color_pressed.unwrap_or(text_color.darken(0.2)),
-                text_color_disabled: text_color_disabled.unwrap_or(LinRgba::default()),
+                text_color_disabled: text_color_disabled.unwrap_or(Color::default()),
                 fill_color,
                 fill_color_hover: fill_color_hover.unwrap_or(fill_color.lighten(0.2)),
                 fill_color_pressed: fill_color_pressed.unwrap_or(fill_color.darken(0.2)),
-                fill_color_disabled: fill_color_disabled.unwrap_or(LinRgba::default()),
+                fill_color_disabled: fill_color_disabled.unwrap_or(Color::default()),
                 stroke_style,
                 stroke_color,
                 stroke_width,
@@ -157,11 +158,11 @@ impl ButtonStimulus {
 ///     The x-coordinate of the center of the shape.
 /// y : Size, optional
 ///     The y-coordinate of the center of the shape.
-/// fill_color : Union[LinRgba, (float, float, float), (float, float, float, float), str], optional
+/// fill_color : Union[Color, (float, float, float), (float, float, float, float), str], optional
 ///    The fill color of the shape.
 /// stroke_style : StrokeStyle, optional
 ///    The stroke style of the shape.
-/// stroke_color : Union[LinRgba, (float, float, float), (float, float, float, float), str], optional
+/// stroke_color : Union[Color, (float, float, float), (float, float, float, float), str], optional
 ///   The stroke color of the shape.
 /// stroke_width : Union[Size, float], optional
 ///  The stroke width of the shape.
@@ -181,16 +182,16 @@ impl PyButtonStimulus {
         height = IntoSize(Size::Pixels(50.0)),
         text = String::new(),
         text_size = IntoSize(Size::Pixels(12.0)),
-        text_color = IntoLinRgba(LinRgba::default()),
+        text_color = IntoColor::default(),
         text_color_hover = None,
         text_color_pressed = None,
         text_color_disabled = None,
-        fill_color = IntoLinRgba(LinRgba::default()),
+        fill_color = IntoColor::default(),
         fill_color_hover = None,
         fill_color_pressed = None,
         fill_color_disabled = None,
         stroke_style = StrokeStyle::default(),
-        stroke_color = IntoLinRgba(LinRgba::default()),
+        stroke_color = IntoColor(Color::default()),
         stroke_width = IntoSize(Size::Pixels(0.0)),
         alpha = None,
         transform = Transformation2D::Identity(),
@@ -206,11 +207,11 @@ impl PyButtonStimulus {
     ///     The x-coordinate of the center of the shape.
     /// y : Size, optional
     ///     The y-coordinate of the center of the shape.
-    /// fill_color : Union[LinRgba, (float, float, float), (float, float, float, float), str], optional
+    /// fill_color : Union[Color, (float, float, float), (float, float, float, float), str], optional
     ///    The fill color of the shape.
     /// stroke_style : StrokeStyle, optional
     ///    The stroke style of the shape.
-    /// stroke_color : Union[LinRgba, (float, float, float), (float, float, float, float), str], optional
+    /// stroke_color : Union[Color, (float, float, float), (float, float, float, float), str], optional
     ///   The stroke color of the shape.
     /// stroke_width : Union[Size, float], optional
     ///    The stroke width of the shape.
@@ -226,16 +227,16 @@ impl PyButtonStimulus {
         height: IntoSize,
         text: String,
         text_size: IntoSize,
-        text_color: IntoLinRgba,
-        text_color_hover: Option<IntoLinRgba>,
-        text_color_pressed: Option<IntoLinRgba>,
-        text_color_disabled: Option<IntoLinRgba>,
-        fill_color: IntoLinRgba,
-        fill_color_hover: Option<IntoLinRgba>,
-        fill_color_pressed: Option<IntoLinRgba>,
-        fill_color_disabled: Option<IntoLinRgba>,
+        text_color: IntoColor,
+        text_color_hover: Option<IntoColor>,
+        text_color_pressed: Option<IntoColor>,
+        text_color_disabled: Option<IntoColor>,
+        fill_color: IntoColor,
+        fill_color_hover: Option<IntoColor>,
+        fill_color_pressed: Option<IntoColor>,
+        fill_color_disabled: Option<IntoColor>,
         stroke_style: StrokeStyle,
-        stroke_color: IntoLinRgba,
+        stroke_color: IntoColor,
         stroke_width: IntoSize,
         alpha: Option<f64>,
         transform: Transformation2D,
@@ -302,6 +303,7 @@ impl Stimulus for ButtonStimulus {
 
         let windows_size = window_state.size;
         let screen_props = window_state.physical_screen;
+        let dc = &*window_state.display_characteristics;
 
         let renderer_factory = &window_state.shared_renderer_state;
 
@@ -309,15 +311,15 @@ impl Stimulus for ButtonStimulus {
         let y_origin = self.params.y.eval(windows_size, screen_props) as f64;
 
         let fill_color = match self.state {
-            ButtonState::Normal => self.params.fill_color,
-            ButtonState::Hovered => self.params.fill_color_hover,
-            ButtonState::Pressed => self.params.fill_color_pressed,
-            ButtonState::Disabled => self.params.fill_color_disabled,
+            ButtonState::Normal => self.params.fill_color.to_display_rgba(dc),
+            ButtonState::Hovered => self.params.fill_color_hover.to_display_rgba(dc),
+            ButtonState::Pressed => self.params.fill_color_pressed.to_display_rgba(dc),
+            ButtonState::Disabled => self.params.fill_color_disabled.to_display_rgba(dc),
         };
 
         let fill_brush = Brush::Solid(fill_color.into());
 
-        let stroke_color = self.params.stroke_color;
+        let stroke_color = self.params.stroke_color.to_display_rgba(dc);
 
         let stroke_brush = renderer::brushes::Brush::Solid(stroke_color.into());
 
@@ -327,10 +329,10 @@ impl Stimulus for ButtonStimulus {
 
         // draw the text
         let text_color = match self.state {
-            ButtonState::Normal => self.params.text_color,
-            ButtonState::Hovered => self.params.text_color_hover,
-            ButtonState::Pressed => self.params.text_color_pressed,
-            ButtonState::Disabled => self.params.text_color_disabled,
+            ButtonState::Normal => self.params.text_color.to_display_rgba(dc),
+            ButtonState::Hovered => self.params.text_color_hover.to_display_rgba(dc),
+            ButtonState::Pressed => self.params.text_color_pressed.to_display_rgba(dc),
+            ButtonState::Disabled => self.params.text_color_disabled.to_display_rgba(dc),
         };
 
         let width = self.params.width.eval(windows_size, screen_props) as f64;
@@ -379,6 +381,7 @@ impl Stimulus for ButtonStimulus {
 
     fn dispatch_event(&mut self, event: &crate::input::Event, window_state: &WindowState) -> bool {
         // if this is a mouse move event, we check if the mouse is over the button
+
         match event {
             crate::input::Event::CursorMoved { position, .. } | crate::input::Event::TouchMove { position, .. } => {
                 self.handle_mouse_move(position, window_state)

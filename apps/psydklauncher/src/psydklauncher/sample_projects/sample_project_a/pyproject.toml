@@ -1,0 +1,12 @@
+[project]
+name = "Cheese 26"
+version = "0.1.0"
+description = "A very simple project"
+requires-python = ">=3.8"
+authors = [
+  { name = "Your Name", email = "you@example.com" }
+]
+
+[tool.psydk.tasks.my_taaask]
+fun = "tmod:main_function"
+options = { drag_mouse = true, start_tolerance = 400 }

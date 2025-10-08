@@ -5,9 +5,8 @@ pub enum ColorFormat {
     /// 8-bit unsigned integer per channel
     Rgba8,
     /// 8-bit unsigned integer per channel in brga order
-    Bgra8,
     /// 10-bit unsigned integer per channel + 2-bit alpha
-    Rgba1010102,
+    Rgba10,
     /// 16-bit floating point per channel
     RgbaF16,
 }
@@ -18,6 +17,4 @@ pub enum ColorEncoding {
     Linear,
     /// RGB color space with sRGB transfer function.
     Srgb,
-    /// Not specified. Usually defaults to linear.
-    Unspecified,
 }
