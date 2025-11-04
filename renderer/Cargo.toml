@@ -23,8 +23,8 @@ bytemuck = "1.20.0"
 psydk-proc = { path = "../psydk-proc" }
 foreign-types-shared = "0.3.1"
 cosmic-text = "0.12.1"
-winit = { git = "https://github.com/rust-windowing/winit", rev = "fa0795a" }
-#winit = { path = "../../winit/winit" }
+#winit = { git = "https://github.com/rust-windowing/winit", rev = "fa0795a" }
+winit = { path = "../../winit/winit" }
 windows-core = "0.61.2"
 
 # vello

@@ -1,0 +1,26 @@
+[workspace]
+members = [
+    "shared",
+    "shared_types",
+]
+resolver = "1"
+
+[workspace.package]
+edition = "2021"
+authors = ["Me"]
+repository = "n/a"
+
+license = "Apache-2.0"
+keywords = ["crux", "crux_core", "cross-platform-ui", "ffi", "wasm"]
+rust-version = "1.80"
+
+[workspace.dependencies]
+anyhow = "1.0.100"
+crux_core = { path = "../../crux/crux_core" }
+crux_http = { path = "../../crux/crux_http" }
+# crux_core = "0.14"
+# crux_http = "0.13"
+serde = "1.0.228"
+
+[workspace.metadata.bin]
+cargo-xcode = { version = "=1.7.0" }

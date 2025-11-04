@@ -104,7 +104,7 @@ impl ButtonStimulus {
             TextAlignment::Center,
             Anchor::Center,
             text_size.clone(),
-            "Mali",
+            "Noto Sans",
             FontWeight::Regular,
             text_color.clone(),
             1.0,

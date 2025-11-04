@@ -517,9 +517,13 @@ impl ExperimentContext {
         let action =
             EventLoopAction::CreateNewWindow(window_options.clone(), experiment_config, display_config, sender);
 
+        println!("Sending CreateNewWindow action to event loop");
+
         // send action and wake up the event loop
         self.action_sender.send(action).unwrap();
         self.event_loop_proxy.wake_up();
+
+        println!("Waiting for window to be created");
 
         // wait for response
         let mut window = receiver.recv().expect("Failed to create window");
@@ -559,6 +563,8 @@ impl ExperimentContext {
 
     /// Retrive available monitors.
     pub fn get_available_monitors(&self) -> Vec<Monitor> {
+        println!("Getting available monitors");
+        log::debug!("Requesting available monitors from event loop");
         let (sender, receiver) = channel();
         self.action_sender
             .send(EventLoopAction::GetAvailableMonitors(sender.clone()))
@@ -847,7 +853,7 @@ pub fn py_run_experiment(
 
     // make app static by leaking it into a static variable
     // todo: is this necessary?
-    let app = Box::leak(Box::new(app));
+    // let app = Box::leak(Box::new(app));
 
     // ** black magic ahead **
 

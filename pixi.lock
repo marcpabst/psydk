@@ -138,7 +138,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/f9/49/6abb616eb3cbab6a7cca303dc02fdf3836de2e0b834bf966a7f5271a34d8/beautifulsoup4-4.13.3-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/24/7e/f7b6f453e6481d1e233540262ccbfcf89adcd43606f44a028d7f5fae5eb2/binaryornot-0.4.4-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/4b/02/8db98cdc1a58e0abd6716d5e63244658e6e63513c65f469f34b6f1053fd0/bracex-2.5.post1-py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/7a/ef/9b1cea0a54466a0d75cb0825d1211be353c1f52f02c3ece1973f30fc9406/briefcase-0.3.24-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/51/ba/657177303ee14a2c44b3402dd1a48b232ce9d3f671296afadd3e6785f12f/briefcase-0.3.25-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/84/c2/80633736cd183ee4a62107413def345f7e6e3c01563dbca1417363cf957e/build-1.2.2.post1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/38/6f/f5fbc992a329ee4e0f288c1fe0e2ad9485ed064cac731ed2fe47dcc38cbf/chardet-5.2.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/ff/11/e6f62de014ba38067b4607e2e9ff1416e13b3ee23525187794535fad894d/cibuildwheel-2.23.0-py3-none-any.whl
@@ -307,7 +307,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/f9/49/6abb616eb3cbab6a7cca303dc02fdf3836de2e0b834bf966a7f5271a34d8/beautifulsoup4-4.13.3-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/24/7e/f7b6f453e6481d1e233540262ccbfcf89adcd43606f44a028d7f5fae5eb2/binaryornot-0.4.4-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/4b/02/8db98cdc1a58e0abd6716d5e63244658e6e63513c65f469f34b6f1053fd0/bracex-2.5.post1-py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/7a/ef/9b1cea0a54466a0d75cb0825d1211be353c1f52f02c3ece1973f30fc9406/briefcase-0.3.24-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/51/ba/657177303ee14a2c44b3402dd1a48b232ce9d3f671296afadd3e6785f12f/briefcase-0.3.25-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/84/c2/80633736cd183ee4a62107413def345f7e6e3c01563dbca1417363cf957e/build-1.2.2.post1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/38/6f/f5fbc992a329ee4e0f288c1fe0e2ad9485ed064cac731ed2fe47dcc38cbf/chardet-5.2.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/ff/11/e6f62de014ba38067b4607e2e9ff1416e13b3ee23525187794535fad894d/cibuildwheel-2.23.0-py3-none-any.whl
@@ -494,18 +494,17 @@ packages:
   version: 2.5.post1
   sha256: 13e5732fec27828d6af308628285ad358047cec36801598368cb28bc631dbaf6
   requires_python: '>=3.8'
-- pypi: https://files.pythonhosted.org/packages/7a/ef/9b1cea0a54466a0d75cb0825d1211be353c1f52f02c3ece1973f30fc9406/briefcase-0.3.24-py3-none-any.whl
+- pypi: https://files.pythonhosted.org/packages/51/ba/657177303ee14a2c44b3402dd1a48b232ce9d3f671296afadd3e6785f12f/briefcase-0.3.25-py3-none-any.whl
   name: briefcase
-  version: 0.3.24
-  sha256: 16948ab5113fd0700e16243ee8875cf5b17f4e3d3378fae194aba5c943333469
+  version: 0.3.25
+  sha256: 813bbf3d4d28080c115fa93ac35a11f050c8d394ad76b9a2e54a4be4773b5c8b
   requires_dist:
-  - importlib-metadata>=4.4 ; python_full_version < '3.10'
   - packaging>=24.2
   - pip>=24.3
   - setuptools>=60
   - wheel>=0.37
   - build>=0.10
-  - truststore>=0.10.1 ; python_full_version >= '3.10'
+  - truststore>=0.10.1
   - cookiecutter>=2.6.0,<3.0
   - dmgbuild>=1.6.4,<2.0 ; sys_platform == 'darwin'
   - gitpython>=3.1,<4.0
@@ -516,21 +515,22 @@ packages:
   - rich>=12.6,<15.0
   - tomli>=2.0,<3.0 ; python_full_version < '3.11'
   - tomli-w>=1.0,<2.0
-  - coverage[toml]==7.9.2 ; extra == 'dev'
+  - coverage[toml]==7.10.5 ; extra == 'dev'
   - coverage-conditional-plugin==0.9.0 ; extra == 'dev'
-  - pre-commit==4.2.0 ; extra == 'dev'
+  - httpx-retries==0.4.1 ; extra == 'dev'
+  - pre-commit==4.3.0 ; extra == 'dev'
   - pytest==8.4.1 ; extra == 'dev'
   - pytest-xdist==3.8.0 ; extra == 'dev'
-  - setuptools-scm==8.3.1 ; extra == 'dev'
-  - tox==4.27.0 ; extra == 'dev'
-  - furo==2024.8.6 ; extra == 'docs'
+  - setuptools-scm==9.2.0 ; extra == 'dev'
+  - tox==4.28.4 ; extra == 'dev'
+  - furo==2025.7.19 ; extra == 'docs'
   - pyenchant==3.2.2 ; extra == 'docs'
   - sphinx==8.2.3 ; extra == 'docs'
   - sphinx-tabs==3.4.7 ; extra == 'docs'
   - sphinx-autobuild==2024.10.3 ; extra == 'docs'
   - sphinx-copybutton==0.5.2 ; extra == 'docs'
   - sphinxcontrib-spelling==8.0.1 ; extra == 'docs'
-  requires_python: '>=3.9'
+  requires_python: '>=3.10'
 - conda: https://conda.anaconda.org/conda-forge/osx-arm64/brotli-python-1.1.0-py312hd8f9ff3_3.conda
   sha256: 35df7079768b4c51764149c42b14ccc25c4415e4365ecc06c38f74562d9e4d16
   md5: c7c728df70dc05a443f1e337c28de22d

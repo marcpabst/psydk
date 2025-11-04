@@ -19,10 +19,7 @@ sources = [
 test_sources = [
     "tests",
 ]
-
-requires = [
-    # Add your cross-platform app requirements here
-]
+requires = ["numpy<2", "pandas<2", "pillow<12", "colour-science"]
 test_requires = [
     # Add your cross-platform test requirements here
 ]
@@ -87,10 +84,8 @@ requires = [
 # Mobile deployments
 [tool.briefcase.app.psydklauncher.iOS]
 requires = [
-    "--find-links=/Users/marc/repos/psydk/psydk/target/wheels/",
-    "psydk",
-    "--find-links=/Users/marc/repos/psydk/psydk-launcher/target/wheels/",
-    "psydk_launcher",
+     "--find-links=/Users/marc/repos/psydk/psydk/target/wheels/",
+     "psydk",
 ]
 
 [tool.briefcase.app.psydklauncher.android]

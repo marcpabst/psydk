@@ -10,6 +10,7 @@ use futures_lite::{future::block_on, Future};
 use pyo3::types::{PyDict, PyList, PyTuple, PyType};
 use pyo3::{prelude::*, py_run};
 use renderer::wgpu_renderer;
+use std::env;
 use std::thread;
 use std::{
     pin::Pin,
@@ -55,7 +56,13 @@ macro_rules! new_submodule {
 /// This module is implemented in Rust.
 #[pymodule]
 fn psydk(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    std::env::set_var("RUST_BACKTRACE", "full");
+    // set debug to debug
+    if env::var("RUST_LOG").is_err() {
+        env::set_var("RUST_LOG", "info");
+        std::env::set_var("RUST_BACKTRACE", "full");
+    }
+    env_logger::init();
+
     m.add_function(wrap_pyfunction!(py_run_experiment, m)?);
     m.add_class::<ExperimentContext>()?;
     m.add_class::<config::ExperimentConfig>()?;

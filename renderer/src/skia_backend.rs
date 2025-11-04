@@ -481,10 +481,10 @@ impl SkiaRenderer {
             &texture_info,
         );
 
-        println!(
-            "Creating skia surface from metal texture with color encoding {:?} and color format {:?}",
-            color_encoding, color_format
-        );
+        // println!(
+        //     "Creating skia surface from metal texture with color encoding {:?} and color format {:?}",
+        //     color_encoding, color_format
+        // );
 
         // panic!("Color format: {:?}, wgpu_texture: {:?}", color_format, texture);
 

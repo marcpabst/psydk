@@ -38,8 +38,8 @@ psydk-proc = { path = "../psydk-proc" }
 
 raw-window-handle = "0.6"
 #winit = "0.30.11"
-winit = { git = "https://github.com/rust-windowing/winit", rev = "fa0795a" }
-#winit = { path = "../../winit/winit" }
+#winit = { git = "https://github.com/rust-windowing/winit", rev = "fa0795a" }
+winit = { path = "../../winit/winit" }
 bytemuck = { version = "1.14.0", features = ["derive"] }
 nalgebra = "0.33.0"
 web-time = "1.0.0"
@@ -95,6 +95,7 @@ atomic_float = "1.1.0"
 lcms2 = "6.1.1"
 serde_json = "1.0.145"
 ndarray = "0.16.1"
+env_logger = "0.10.2"
 # tikv-jemallocator = { version = "0.5.4", features = ["profiling"] }
 
 # Windows dependencies

@@ -112,6 +112,8 @@ impl TextStimulus {
             style: attrs.style,
         };
 
+        println!("Font query: {:?}", query);
+
         let font_manager_clone = context.font_manager().clone();
 
         let renderer_factory = context.renderer_factory();

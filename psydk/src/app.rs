@@ -1,13 +1,3 @@
-use std::{
-    collections::{HashMap, VecDeque},
-    sync::{
-        atomic::{AtomicU32, AtomicU64},
-        mpsc::{Receiver, Sender},
-        Arc, Mutex,
-    },
-    thread,
-};
-
 use crate::visual::colors::display_charactersitics::GenericDisplayCharacteristics;
 use atomic_float::AtomicF64;
 use derive_debug::Dbg;
@@ -22,6 +12,16 @@ use renderer::{
     renderer::SharedRendererState,
     wgpu::TextureFormat,
 };
+use std::{
+    collections::{HashMap, VecDeque},
+    sync::{
+        atomic::{AtomicU32, AtomicU64},
+        mpsc::{Receiver, Sender},
+        Arc, Mutex,
+    },
+    thread,
+};
+use winit::platform::ios::EventLoopExtIOS;
 
 use crate::visual::colors::Color;
 use wgpu::MemoryHints;
@@ -187,6 +187,7 @@ impl App {
         winit_window.focus_window();
 
         log::debug!("Window created: {:?}", winit_window);
+        println!("Window created: {:?}", winit_window);
 
         let winit_window = Arc::new(winit_window);
 
@@ -492,7 +493,7 @@ impl App {
     // }
 
     /// Starts the experiment. This will block until the experiment is finished.
-    pub fn run_experiment<F>(&mut self, experiment_fn: F, config: ExperimentConfig) -> Result<(), errors::PsydkError>
+    pub fn run_experiment<F>(self, experiment_fn: F, config: ExperimentConfig) -> Result<(), errors::PsydkError>
     where
         F: FnOnce(ExperimentContext) -> Result<(), errors::PsydkError> + 'static + Send,
     {
@@ -539,8 +540,12 @@ impl App {
             }
         });
 
+        // put self in a Box and leak it to get a 'static reference
+        let slf = Box::new(self);
+        let slf: &'static mut App = Box::leak(slf);
+
         // start event loop
-        let _ = event_loop.run_app(self);
+        let _ = event_loop.spawn_app(slf);
 
         // check if there was an error
         let error = error_mutex.lock().unwrap().take();
