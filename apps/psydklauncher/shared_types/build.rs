@@ -1,5 +1,5 @@
 use crux_core::typegen::TypeGen;
-use shared::App;
+use shared::{App, TaskOptionValue};
 use std::path::PathBuf;
 
 fn main() -> anyhow::Result<()> {
@@ -8,6 +8,8 @@ fn main() -> anyhow::Result<()> {
     let mut gen = TypeGen::new();
 
     gen.register_app::<App>()?;
+
+    gen.register_type::<TaskOptionValue>()?;
 
     let output_root = PathBuf::from("./generated");
 

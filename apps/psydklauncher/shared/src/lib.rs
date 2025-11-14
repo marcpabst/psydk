@@ -5,7 +5,6 @@ use std::sync::LazyLock;
 
 pub use crux_core::bridge::{Bridge, Request};
 pub use crux_core::{Core, ResolveError};
-pub use crux_http as http;
 
 pub use app::*;
 pub use capabilities::sse;

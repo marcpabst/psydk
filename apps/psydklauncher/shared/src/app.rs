@@ -23,6 +23,37 @@ pub struct Model {
     pub selected_session: Option<Session>,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub enum TaskOptionValue {
+    String {
+        value: String,
+    },
+    Literal {
+        value: String,
+        choices: Vec<String>,
+    },
+    Float {
+        value: f32,
+        min: Option<f32>,
+        max: Option<f32>,
+    },
+    Int {
+        value: usize,
+        min: Option<usize>,
+        max: Option<usize>,
+    },
+    Bool {
+        value: bool,
+    },
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct TaskOption {
+    pub name: String,
+    pub label: String,
+    pub value: TaskOptionValue,
+}
+
 #[derive(Serialize, Deserialize, Clone, Default, Debug, PartialEq, Eq)]
 pub struct Count {
     pub value: isize,
@@ -57,13 +88,14 @@ pub struct Session {
     name: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Task {
     id: u128,
     name: String,
+    options: Vec<TaskOption>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Experiment {
     id: u128,
     directory: PathBuf,
@@ -76,7 +108,7 @@ pub struct Experiment {
     default_task: Task,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum Event {
     // events from the shell
     LoadExperiments(Vec<String>),
@@ -172,7 +204,125 @@ impl Model {
         }
     }
 
+    fn get_task_options(val: &toml::Value) -> Vec<TaskOption> {
+        let mut options = vec![];
+        if let Some(opts_table) = val.as_table() {
+            for (opt_name, opt_value) in opts_table.iter() {
+                let value = if let Some(t) = opt_value.as_table() {
+                    // if it's a table, we look at the type field
+                    let type_str = t.get("type").and_then(|ty| ty.as_str()).unwrap_or("string");
+                    match type_str {
+                        "string" => {
+                            let val = t.get("default").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                            TaskOptionValue::String { value: val }
+                        }
+                        "literal" => {
+                            let val = t.get("default").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                            let choices = t
+                                .get("options")
+                                .and_then(|c| c.as_array())
+                                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+                                .unwrap_or_default();
+                            TaskOptionValue::Literal { value: val, choices }
+                        }
+                        "int" => {
+                            let val = t.get("default").and_then(|v| v.as_integer()).unwrap_or(0) as usize;
+                            let min = t.get("min").and_then(|m| m.as_integer()).map(|m| m as usize);
+                            let max = t.get("max").and_then(|m| m.as_integer()).map(|m| m as usize);
+                            TaskOptionValue::Int { value: val, min, max }
+                        }
+                        "float" => {
+                            let val = t.get("default").and_then(|v| v.as_float()).unwrap_or(0.0) as f32;
+                            let min = t.get("min").and_then(|m| m.as_float()).map(|m| m as f32);
+                            let max = t.get("max").and_then(|m| m.as_float()).map(|m| m as f32);
+                            TaskOptionValue::Float { value: val, min, max }
+                        }
+                        "bool" => {
+                            let val = t.get("default").and_then(|v| v.as_bool()).unwrap_or(false);
+                            TaskOptionValue::Bool { value: val }
+                        }
+                        _ => TaskOptionValue::String {
+                            value: opt_value.to_string(),
+                        },
+                    }
+                } else if let Some(s) = opt_value.as_str() {
+                    TaskOptionValue::String { value: s.to_string() }
+                } else if let Some(i) = opt_value.as_integer() {
+                    TaskOptionValue::Int {
+                        value: i as usize,
+                        min: None,
+                        max: None,
+                    }
+                } else if let Some(f) = opt_value.as_float() {
+                    TaskOptionValue::Float {
+                        value: f as f32,
+                        min: None,
+                        max: None,
+                    }
+                } else if let Some(b) = opt_value.as_bool() {
+                    TaskOptionValue::Bool { value: b }
+                } else {
+                    TaskOptionValue::String {
+                        value: opt_value.to_string(),
+                    }
+                };
+                options.push(TaskOption {
+                    name: opt_name.clone(),
+                    label: opt_name.clone(),
+                    value,
+                });
+            }
+        }
+        options
+    }
+
+    fn try_get_task(val: &toml::Value, global_options: &Vec<TaskOption>) -> Option<Task> {
+        if let Some(task_table) = val.as_table() {
+            let task_name = task_table
+                .get("name")
+                .and_then(|n| n.as_str())
+                .unwrap_or("default")
+                .to_string();
+
+            let options = {
+                let mut opts = Model::get_task_options(
+                    task_table
+                        .get("options")
+                        .unwrap_or(&toml::Value::Table(toml::map::Map::new())),
+                );
+                // merge with global options
+
+                for gopt in global_options.iter() {
+                    // only add if not already present
+                    if !opts.iter().any(|o| o.name == gopt.name) {
+                        opts.push(gopt.clone());
+                    }
+                }
+
+                opts
+            };
+
+            println!("Loaded task: {}", task_name);
+            println!("With options: {:#?}", options);
+
+            Some(Task {
+                id: rand::thread_rng().random(),
+                name: task_name,
+                options,
+            })
+        } else if let Some(task_name) = val.as_str() {
+            Some(Task {
+                id: rand::thread_rng().random(),
+                name: task_name.to_string(),
+                options: global_options.clone(),
+            })
+        } else {
+            None
+        }
+    }
+
     fn try_load_experiment_from_path(path: &Path) -> Result<Experiment, String> {
+        println!("5Trying to load experiment from path: {:?}", path);
         // try to read the pyproject.toml file
         if let Ok(contents) = std::fs::read_to_string(path.join("pyproject.toml")) {
             // parse the toml
@@ -198,23 +348,30 @@ impl Model {
                         .unwrap_or("")
                         .to_string();
 
+                    let global_options = psydk_section
+                        .get("options")
+                        .and_then(|opts| opts.as_table())
+                        .map(|opts_table| Model::get_task_options(&toml::Value::Table(opts_table.clone())));
+
+                    println!("Global task options: {:#?}", global_options);
+
                     let mut tasks = psydk_section
                         .get("tasks")
                         .and_then(|t| t.as_array())
                         .unwrap_or(&vec![])
                         .iter()
-                        .filter_map(|task| {
-                            task.as_str().map(|name| Task {
-                                id: rand::thread_rng().gen(),
-                                name: name.to_string(),
-                            })
+                        .filter_map(|task_val| {
+                            Model::try_get_task(task_val, &global_options.clone().unwrap_or_default())
                         })
                         .collect::<Vec<Task>>();
 
+                    println!("Loaded tasks: {:#?}", tasks);
+
                     if tasks.is_empty() {
                         tasks.push(Task {
-                            id: rand::thread_rng().gen(),
+                            id: rand::thread_rng().random(),
                             name: "default".to_string(),
+                            options: vec![],
                         });
                     }
 
@@ -256,7 +413,7 @@ impl Model {
                                                     // remove the ses- prefix for the session label
                                                     let sess_label = sess_name.trim_start_matches("ses-");
                                                     Some(Session {
-                                                        id: rand::thread_rng().gen(),
+                                                        id: rand::thread_rng().random(),
                                                         directory: sess_path.to_path_buf(),
                                                         name: sess_label.to_string(),
                                                     })
@@ -270,7 +427,7 @@ impl Model {
                                         .collect::<Vec<Session>>();
 
                                     Some(Subject {
-                                        id: rand::thread_rng().gen(),
+                                        id: rand::thread_rng().random(),
                                         directory: path.to_path_buf(),
                                         name: subj_label.to_string(),
                                         sessions,
@@ -286,7 +443,7 @@ impl Model {
 
                     // create Experiment struct
                     return Ok(Experiment {
-                        id: rand::thread_rng().gen(),
+                        id: rand::thread_rng().random(),
                         directory: path.to_path_buf(),
                         name: name.to_string(),
                         icon_path: None,
@@ -341,7 +498,7 @@ impl crux_core::App for App {
                         match std::fs::create_dir_all(&target_dir) {
                             Ok(_) => {
                                 experiment.subjects.push(Subject {
-                                    id: rand::thread_rng().gen(),
+                                    id: rand::thread_rng().random(),
                                     directory: target_dir,
                                     name: name.clone(),
                                     sessions: vec![],
@@ -377,7 +534,7 @@ impl crux_core::App for App {
                         match std::fs::create_dir_all(&target_dir) {
                             Ok(_) => {
                                 existing_subj.sessions.push(Session {
-                                    id: rand::thread_rng().gen(),
+                                    id: rand::thread_rng().random(),
                                     directory: target_dir,
                                     name: name.clone(),
                                 });

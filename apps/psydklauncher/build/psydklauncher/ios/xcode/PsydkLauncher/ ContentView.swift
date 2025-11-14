@@ -7,7 +7,163 @@ extension SharedTypes.Subject: Identifiable {}
 extension SharedTypes.Session: Identifiable {}
 extension SharedTypes.Task: Identifiable {}
 
+// Top-level view that chooses the proper input for the provided value.
+struct OptionValueInput: View {
+    let value: TaskOptionValue
+    let onChange: (TaskOptionValue) -> Void
 
+    var body: some View {
+        switch value {
+        case .string(let v):
+            StringInput(initial: v) { new in
+                onChange(.string(value: new))
+            }
+
+        case .literal(let v, let choices):
+            LiteralInput(initial: v, choices: choices) { new in
+                onChange(.literal(value: new, choices: choices))
+            }
+
+        case .float(let v, let min, let max):
+            FloatInput(initial: v, min: min, max: max) { new in
+                onChange(.float(value: new, min: min, max: max))
+            }
+
+        case .int(let v, let min, let max):
+            UInt64Input(initial: v, min: min, max: max) { new in
+                onChange(.int(value: new, min: min, max: max))
+            }
+
+        case .bool(let v):
+            BoolInput(initial: v) { new in
+                onChange(.bool(value: new))
+            }
+        }
+    }
+}
+
+// MARK: - Per-type inputs
+
+private struct StringInput: View {
+    @State private var text: String
+    let onChange: (String) -> Void
+
+    init(initial: String, onChange: @escaping (String) -> Void) {
+        _text = State(initialValue: initial)
+        self.onChange = onChange
+    }
+
+    var body: some View {
+        TextField("", text: $text)
+            .textFieldStyle(.roundedBorder)
+            .onChange(of: text, perform: onChange)
+    }
+}
+
+private struct LiteralInput: View {
+    @State private var selection: String
+    let choices: [String]
+    let onChange: (String) -> Void
+
+    init(initial: String, choices: [String], onChange: @escaping (String) -> Void) {
+        _selection = State(initialValue: initial)
+        self.choices = choices
+        self.onChange = onChange
+    }
+
+    var body: some View {
+        Picker("", selection: $selection) {
+            ForEach(choices, id: \.self) { choice in
+                Text(choice).tag(choice)
+            }
+        }
+        .pickerStyle(.menu)
+        .onChange(of: selection, perform: onChange)
+    }
+}
+
+private struct FloatInput: View {
+    @State private var value: Double
+    let min: Double?
+    let max: Double?
+    let onChange: (Float) -> Void
+
+    init(initial: Float, min: Float?, max: Float?, onChange: @escaping (Float) -> Void) {
+        _value = State(initialValue: Double(initial))
+        self.min = min.map(Double.init)
+        self.max = max.map(Double.init)
+        self.onChange = onChange
+    }
+
+    var body: some View {
+        Group {
+            if let lower = min, let upper = max {
+                HStack {
+                    Slider(value: $value, in: lower...upper)
+                    Text("\(value, specifier: "%.3f")")
+                        .frame(minWidth: 60, alignment: .trailing)
+                        .monospacedDigit()
+                }
+            } else {
+                HStack {
+                    TextField("", value: $value, format: .number)
+                        .textFieldStyle(.roundedBorder)
+                    Text("\(value, specifier: "%.3f")")
+                        .monospacedDigit()
+                }
+            }
+        }
+        .onChange(of: value) { onChange(Float($0)) }
+    }
+}
+
+private struct UInt64Input: View {
+    @State private var value: UInt64
+    let min: UInt64?
+    let max: UInt64?
+    let onChange: (UInt64) -> Void
+
+    init(initial: UInt64, min: UInt64?, max: UInt64?, onChange: @escaping (UInt64) -> Void) {
+        _value = State(initialValue: initial)
+        self.min = min
+        self.max = max
+        self.onChange = onChange
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let lower = min, let upper = max {
+                Stepper(value: $value, in: lower...upper, step: 1) {
+                    Text("\(value)")
+                        .monospacedDigit()
+                }
+            } else {
+                Stepper(value: $value, step: 1) {
+                    Text("\(value)")
+                        .monospacedDigit()
+                }
+            }
+        
+        }
+        .onChange(of: value, perform: onChange)
+    }
+}
+
+private struct BoolInput: View {
+    @State private var isOn: Bool
+    let onChange: (Bool) -> Void
+
+    init(initial: Bool, onChange: @escaping (Bool) -> Void) {
+        _isOn = State(initialValue: initial)
+        self.onChange = onChange
+    }
+
+    var body: some View {
+        Toggle("", isOn: $isOn)
+            .labelsHidden()
+            .onChange(of: isOn, perform: onChange)
+    }
+}
 
 
 struct ContentView: View {
@@ -243,12 +399,7 @@ struct ContentView: View {
                                 }
                                 .textCase(nil)
                                 .contentMargins(0)
-                                
-                                
-                                
                             }
-                            
-                            
                         }
                         .listStyle(.inset)
                         .listSectionSpacing(0)
@@ -274,6 +425,31 @@ struct ContentView: View {
                                         }
                                     }
                                     .pickerStyle(.segmented)
+                                    
+                                    
+                                        let ttask = selected_task ?? experiment.default_task
+                                        Text(ttask.name)
+                                    
+                                    ForEach(ttask.options, id:\.name) { opt in
+                                        HStack {
+                                            Text(opt.label)
+                                            OptionValueInput(value: opt.value) { newValue in
+                                                        // Handle the updated value; no need for two-way binding
+                                                   
+                                                        print("New value:", newValue)
+                                                    }
+                                                    .padding()
+                                        }
+                                        
+                                        }
+                                        
+                                    
+                                    
+                                    Text("Experiment: \(selected_experiment?.name ?? "None")")
+                                    Text("Subject: \(selected_subject?.name ?? "None")")
+                                    Text("Session: \(selected_session?.name ?? "None")")
+            
+                                    
                                     Button("Start new run", systemImage: "play", action: {
                                         isPythonRunning = true
                                         let env: [String: String] = [
@@ -293,14 +469,8 @@ struct ContentView: View {
                                     }).buttonStyle(.borderedProminent)
                                         .tint(.green)
                                         .disabled(isPythonRunning || selected_experiment == nil || selected_subject == nil || selected_session == nil)
-                                    
-                                    
-                                    
-                                    Text("Experiment: \(selected_experiment?.name ?? "None")")
-                                    Text("Subject: \(selected_subject?.name ?? "None")")
-                                    Text("Session: \(selected_session?.name ?? "None")")
-                                    //Text("Task: \(selected_task.name ?? "None")")
                                 }
+                                .navigationTitle("Experiment")
                             }
                         
                     }
