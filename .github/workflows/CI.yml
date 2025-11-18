@@ -68,7 +68,7 @@ jobs:
 
       # - uses: actions-rust-lang/setup-rust-toolchain@v1
       - name: Build wheels
-        working-directory: ./psydk
+        working-directory: ./crates/psydk
         run: python -m cibuildwheel --output-dir wheelhouse
         env:
           FORCE_SKIA_BUILD: "1"
@@ -97,7 +97,7 @@ jobs:
       - uses: actions/upload-artifact@v4.6.2
         with:
           name: wheels-${{ matrix.name }}
-          path: ./psydk/wheelhouse/*.whl
+          path: ./crates/psydk/wheelhouse/*.whl
 
   make_sdist:
     name: Make SDist
@@ -109,13 +109,13 @@ jobs:
           submodules: true # Optional, use if you have submodules
 
       - name: Build SDist
-        working-directory: ./psydk
+        working-directory: ./crates/psydk
         run: pipx run build --sdist
 
       - uses: actions/upload-artifact@v4
         with:
           name: cibw-sdist
-          path: ./psydk/dist/*.tar.gz
+          path: ./crates/psydk/dist/*.tar.gz
 
   release:
     name: Release
