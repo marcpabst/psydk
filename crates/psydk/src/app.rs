@@ -6,6 +6,10 @@ use pyo3::{
     types::{PyDict, PyTuple},
     Py, PyAny, Python,
 };
+
+#[cfg(target_os = "ios")]
+use winit::platform::ios::EventLoopBuilderExtIOS;
+
 use renderer::{
     color_formats::{ColorEncoding, ColorFormat},
     cosmic_text,
@@ -21,7 +25,7 @@ use std::{
     },
     thread,
 };
-use winit::platform::ios::EventLoopExtIOS;
+// use winit::platform::ios::EventLoopExtIOS;
 
 use crate::visual::colors::Color;
 use wgpu::MemoryHints;
@@ -499,8 +503,14 @@ impl App {
     {
         log::debug!("Main task is running on thread {:?}", std::thread::current().id());
 
+        // for most platforms, we can just create the event loop and run it
+        #[cfg(not(target_os = "ios"))]
         let event_loop = EventLoop::new().unwrap();
-        event_loop.set_control_flow(ControlFlow::Wait);
+        // on iOS, we need to use the iOS-specific event loop
+        #[cfg(target_os = "ios")]
+        let event_loop = {
+            unsafe {EventLoop::builder().with_main_thread_marker(objc2::MainThreadMarker::new_unchecked()).build().unwrap()}
+        };
 
         let event_loop_proxy = event_loop.create_proxy();
         let event_loop_proxy2 = event_loop.create_proxy();
@@ -540,12 +550,20 @@ impl App {
             }
         });
 
-        // put self in a Box and leak it to get a 'static reference
-        let slf = Box::new(self);
-        let slf: &'static mut App = Box::leak(slf);
+        #[cfg(target_os = "ios")]
+        {
+            // put self in a Box and leak it to get a 'static reference
+            let slf = Box::new(self);
+            let slf: &'static mut App = Box::leak(slf);
 
-        // start event loop
-        let _ = event_loop.spawn_app(slf);
+            // start event loop
+            let _ = event_loop.run_app(slf);
+        }
+        #[cfg(not(target_os = "ios"))]
+        {
+            // start event loop
+            let _ = event_loop.run_app(self);
+        }
 
         // check if there was an error
         let error = error_mutex.lock().unwrap().take();

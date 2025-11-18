@@ -420,9 +420,6 @@ impl EventTryFrom<winit_event::WindowEvent> for Event {
                     winit_event::ButtonSource::Mouse(winit_event::MouseButton::Middle) => MouseButton::Middle(),
                     winit_event::ButtonSource::Mouse(winit_event::MouseButton::Back) => MouseButton::Back(),
                     winit_event::ButtonSource::Mouse(winit_event::MouseButton::Forward) => MouseButton::Forward(),
-                    winit_event::ButtonSource::Mouse(winit_event::MouseButton::Other(index)) => {
-                        MouseButton::Other(index)
-                    }
                     _ => MouseButton::Other(0), // Default case, should not happen
                 };
 

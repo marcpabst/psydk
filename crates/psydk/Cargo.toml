@@ -33,13 +33,13 @@ crate-type = ["cdylib"]
 #
 wgpu = { git = "https://github.com/marcpabst/wgpu", rev = "91d8339" }
 serde = { version = "1.0", features = ["derive"] }
-renderer = { path = "../renderer" }
+renderer = { path = "../psydk-renderer" }
 psydk-proc = { path = "../psydk-proc" }
 
 raw-window-handle = "0.6"
 #winit = "0.30.11"
-#winit = { git = "https://github.com/rust-windowing/winit", rev = "fa0795a" }
-winit = { path = "../../winit/winit" }
+winit = { git = "https://github.com/marcpabst/winit", rev = "6c390d5" }
+#winit = { path = "../../../winit/winit" }
 bytemuck = { version = "1.14.0", features = ["derive"] }
 nalgebra = "0.33.0"
 web-time = "1.0.0"
@@ -127,7 +127,7 @@ objc2-core-foundation = "0.3.1"
 block2 = "0.6.1"
 
 [features]
-default = ["metal", "dx12", "gst"]
+default = ["metal", "dx12"]
 gst = ["dep:glib", "dep:gstreamer", "dep:gstreamer-app", "dep:gstreamer-video"]
 metal = []
 dx12 = []

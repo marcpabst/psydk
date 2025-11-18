@@ -84,9 +84,10 @@ requires = [
 # Mobile deployments
 [tool.briefcase.app.psydklauncher.iOS]
 requires = [
-     "--find-links=/Users/marc/repos/psydk/psydk/target/wheels/",
+     "--find-links=/Users/marc/repos/psydk/crates/psydk/target/wheels/",
      "psydk",
 ]
+min_os_version = "18.0"
 
 [tool.briefcase.app.psydklauncher.android]
 requires = [

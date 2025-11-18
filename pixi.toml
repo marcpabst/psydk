@@ -8,7 +8,7 @@ version = "0.1.0"
 [tasks]
 "build-py" = { cwd = "psydk", cmd = "maturin build", env = { CARGO_BUILD_TARGET = "aarch64-apple-darwin", SKIA_SOURCE_DIR = "/Users/marc/repos/skia-builder/build/src/skia" } }
 
-"build-py-ios" = { cwd = "psydk", env = { FORCE_SKIA_BUILD="1", PYTHON_VERSION = "3.10", PYTHONDIR = "$PIXI_PROJECT_ROOT/psydk/dependencies/build_helpers/iphoneos/" }, cmd = "dependencies/build_helpers/build_ios.sh" }
+"build-py-ios" = { cwd = "crates/psydk", env = { FORCE_SKIA_BUILD="1", PYTHON_VERSION = "3.10", PYTHONDIR = "$PIXI_PROJECT_ROOT/psydk/dependencies/build_helpers/iphoneos/" }, cmd = "dependencies/build_helpers/build_ios.sh" }
 "build-docs" = "sphinx-build -M html docs/source/ docs/build/ -W -a -j auto -n --keep-going"
 
 "dev-py" = { cwd = "psydk", cmd = "maturin develop" }
@@ -35,7 +35,7 @@ clang-16 = ">=16.0.6,<17"
 
 [pypi-dependencies]
 maturin = ">=1.7.4, <2"
-cibuildwheel = ">=2.23.0, <3"
+cibuildwheel = ">=3.3.0, <4"
 sphinxcontrib-napoleon = ">=0.7, <0.8"
 sphinx-rtd-theme = ">=3.0.2, <4"
 pydata-sphinx-theme = ">=0.16.1, <0.17"
