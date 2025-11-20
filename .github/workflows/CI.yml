@@ -3,19 +3,18 @@ name: CI
 on: [push, pull_request]
 
 jobs:
-
   build_wheels:
     name: Build wheels for ${{ matrix.name }} on ${{ matrix.runs-on }}
     runs-on: ${{ matrix.runs-on }}
     strategy:
       fail-fast: false
       matrix:
-        name: [ "macOS (arm64)", "iOS", "Linux (x86_64)", "Linux (arm64)", "Windows (x86_64)" ] # Android, Windows (x86_64), Windows (arm64)
+        name: [ "macOS (arm64)", "iOS", "Linux (x86_64)", "Linux (arm64)", "Windows (x86_64)" ]
         include:
         - name: macOS (arm64)
           platform: macos
           runs-on: macos-latest
-          archs: arm64
+          archs: auto
         - name: Linux (x86_64)
           platform: linux
           runs-on: ubuntu-24.04
@@ -24,18 +23,10 @@ jobs:
           platform: linux
           runs-on: ubuntu-24.04-arm
           archs: auto
-        # - name: Android
-        #   platform: android
-        #   runs-on: macos-latest
-        #   archs: auto
         - name: Windows (x86_64)
           platform: windows
           runs-on: windows-latest
           archs: auto
-        # - name: Windows (arm64)
-        #   platform: windows
-        #   runs-on: windows-latest-arm??
-        #   archs: auto
     steps:
       - uses: actions/checkout@v4
 
