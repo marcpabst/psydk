@@ -34,7 +34,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5.5.0
         with:
-          python-version: "3.x"
+          python-version: "3.13"
 
       - name: Install cibuildwheel
         run: |
@@ -60,7 +60,9 @@ jobs:
           CIBW_ARCHS: ${{ matrix.archs }}
           CIBW_BUILD: "cp*"
           CIBW_BEFORE_ALL_LINUX: curl -sSf https://sh.rustup.rs | sh -s -- -y
-          CIBW_BEFORE_ALL_WINDOWS: rustup target add i686-pc-windows-msvc
+          CIBW_BEFORE_ALL_WINDOWS: |
+            git config --system core.longpaths true
+            rustup target add i686-pc-windows-msvc
           CIBW_ENVIRONMENT_LINUX: "PATH=$HOME/.cargo/bin:$PATH"
           CIBW_BEFORE_ALL_IOS: |
             export PYTHONDIR="./dependencies/build_helpers/iphoneos/" && \
