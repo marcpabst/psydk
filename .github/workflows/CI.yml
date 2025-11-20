@@ -15,11 +15,7 @@ jobs:
         - name: macOS (arm64)
           platform: macos
           runs-on: macos-latest
-          archs: "arm64"
-        - name: iOS
-          platform: ios
-          runs-on: macos-latest
-          archs: auto
+          archs: arm64
         - name: Linux (x86_64)
           platform: linux
           runs-on: ubuntu-24.04
