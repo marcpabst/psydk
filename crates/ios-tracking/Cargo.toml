@@ -1,0 +1,17 @@
+[package]
+name = "psydk-sensors"
+version = "0.1.1"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "psydk_sensors"
+crate-type = ["cdylib"]
+
+[dependencies]
+libc = "0.2.177"
+nalgebra = "0.34.1"
+objc2 = "0.6.3"
+objc2-ar-kit = "0.3.2"
+objc2-foundation = "0.3.2"
+pyo3 = {version = "0.27.1", features = ["abi3-py310"]}
