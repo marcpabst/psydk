@@ -1,0 +1,12 @@
+prefix=/opt/homebrew/Cellar/gstreamer/1.24.11
+exec_prefix=${prefix}
+libdir=${prefix}/lib
+includedir=${prefix}/include
+
+Name: gstsodium
+Description: GStreamer plugin for libsodium-based file encryption and decryption
+Version: 0.12.11
+Libs: -L${libdir}/gstreamer-1.0 -lgstsodium
+Cflags: 
+Libs.private: -lgstbase-1.0 -lgstreamer-1.0 -lgobject-2.0 -lglib-2.0 -lintl -lsodium -lgio-2.0 -liconv -lSystem -lc -lm
+Requires.private: gstreamer-1.0, gstreamer-base-1.0, gobject-2.0, glib-2.0, gmodule-2.0, libsodium

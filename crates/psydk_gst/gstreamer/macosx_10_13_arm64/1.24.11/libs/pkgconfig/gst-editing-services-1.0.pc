@@ -1,0 +1,12 @@
+prefix=/opt/homebrew/Cellar/gstreamer/1.24.11
+includedir=${prefix}/include
+libdir=${prefix}/lib
+
+Name: gst-editing-services-1.0
+Description: GStreamer Editing Services
+Version: 1.24.11
+Requires: gstreamer-1.0, gstreamer-base-1.0, gstreamer-pbutils-1.0, gstreamer-controller-1.0
+Requires.private: gstreamer-video-1.0, gstreamer-audio-1.0, gstreamer-tag-1.0, gstreamer-validate-1.0, gstreamer-check-1.0, gstreamer-app-1.0, glib-2.0 >=  2.64.0, gobject-2.0, gmodule-no-export-2.0, orc-0.4 >=  0.4.24, zlib, gio-2.0, libxml-2.0 >=  2.8, json-glib-1.0 >= 1.6.6, python-3.13-embed
+Libs: -L${libdir} -lges-1.0
+Libs.private: -lm -ldl
+Cflags: -I${includedir}/gstreamer-1.0

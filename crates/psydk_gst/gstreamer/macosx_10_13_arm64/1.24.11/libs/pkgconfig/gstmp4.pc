@@ -1,0 +1,12 @@
+prefix=/opt/homebrew/Cellar/gstreamer/1.24.11
+exec_prefix=${prefix}
+libdir=${prefix}/lib
+includedir=${prefix}/include
+
+Name: gstmp4
+Description: GStreamer Rust MP4 Plugin
+Version: 0.12.11
+Libs: -L${libdir}/gstreamer-1.0 -lgstmp4
+Cflags: 
+Libs.private: -lgstpbutils-1.0 -lgstvideo-1.0 -lgstaudio-1.0 -lgstbase-1.0 -lgstreamer-1.0 -lgobject-2.0 -lglib-2.0 -lintl -lgio-2.0 -liconv -lSystem -lc -lm
+Requires.private: gstreamer-1.0, gstreamer-base-1.0, gstreamer-audio-1.0, gstreamer-video-1.0, gobject-2.0, glib-2.0, gmodule-2.0
