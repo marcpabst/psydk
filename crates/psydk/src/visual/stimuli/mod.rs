@@ -29,6 +29,7 @@ pub mod button;
 pub mod gabor;
 pub mod image;
 pub mod pattern;
+pub mod svg;
 // pub mod sprite;
 pub mod text;
 // pub mod vector;

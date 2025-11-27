@@ -82,6 +82,10 @@ impl PhysicalScreen {
     pub fn set_pixel_density(&mut self, width_px: u32, width_mm: f32) {
         self.pixel_density = width_px as f32 / width_mm;
     }
+
+    pub fn set_viewing_distance(&mut self, viewing_distance: f32) {
+        self.viewing_distance = viewing_distance;
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -613,6 +617,30 @@ impl Window {
             .winit_window
             .set_ime_allowed(allowed);
     }
+
+    fn viewing_distance(&self) -> f32 {
+        let state = self.state.lock().unwrap();
+        let state = state.as_ref().unwrap();
+        state.physical_screen.viewing_distance
+    }
+
+    fn set_viewing_distance(&self, viewing_distance: f32) {
+        let mut state = self.state.lock().unwrap();
+        let mut state = state.as_mut().unwrap();
+        state.physical_screen.set_viewing_distance(viewing_distance);
+    }
+
+    fn pixel_density(&self) -> f32 {
+        let state = self.state.lock().unwrap();
+        let state = state.as_ref().unwrap();
+        state.physical_screen.pixel_density
+    }
+
+    fn set_pixel_density(&self, pixel_density: f32) {
+        let mut state = self.state.lock().unwrap();
+        let mut state = state.as_mut().unwrap();
+        state.physical_screen.pixel_density = pixel_density;
+    }
 }
 
 #[pymethods]
@@ -749,6 +777,30 @@ impl Window {
     fn py_set_soft_keyboard_shown(&self, allowed: bool, py: Python) {
         let self_wrapper = SendWrapper::new(self);
         py.allow_threads(move || self_wrapper.set_soft_keyboard_shown(allowed));
+    }
+
+    /// Get/set the viewing distance in meters.
+    #[getter(viewing_distance)]
+    fn py_get_viewing_distance(&self, py: Python) -> f32 {
+        let self_wrapper = SendWrapper::new(self);
+        py.allow_threads(move || self_wrapper.viewing_distance())
+    }
+    #[setter(viewing_distance)]
+    fn py_set_viewing_distance(&self, py: Python, viewing_distance: f32) {
+        let self_wrapper = SendWrapper::new(self);
+        py.allow_threads(move || self_wrapper.set_viewing_distance(viewing_distance));
+    }
+
+    /// Get/set the pixel density in pixels per millimeter.
+    #[getter(pixel_density)]
+    fn py_get_pixel_density(&self, py: Python) -> f32 {
+        let self_wrapper = SendWrapper::new(self);
+        py.allow_threads(move || self_wrapper.pixel_density())
+    }
+    #[setter(pixel_density)]
+    fn py_set_pixel_density(&self, py: Python, pixel_density: f32) {
+        let self_wrapper = SendWrapper::new(self);
+        py.allow_threads(move || self_wrapper.set_pixel_density(pixel_density));
     }
 
     // allows Window to be used as a context manager

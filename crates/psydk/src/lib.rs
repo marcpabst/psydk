@@ -32,6 +32,7 @@ pub mod context;
 pub mod errors;
 pub mod git;
 pub mod input;
+pub mod sensors;
 pub mod time;
 pub mod utils;
 pub mod visual;
@@ -76,6 +77,7 @@ fn psydk(m: &Bound<'_, PyModule>) -> PyResult<()> {
             m.add_class::<visual::stimuli::PyStimulus>()?;
             m.add_class::<visual::stimuli::gabor::PyGaborStimulus>()?;
             m.add_class::<visual::stimuli::image::PyImageStimulus>()?;
+            m.add_class::<visual::stimuli::svg::PySVGStimulus>()?;
             m.add_class::<visual::stimuli::pattern::PyPatternStimulus>()?;
             m.add_class::<visual::stimuli::text::PyTextStimulus>()?;
             m.add_class::<visual::stimuli::button::PyButtonStimulus>()?;
@@ -116,6 +118,7 @@ fn psydk(m: &Bound<'_, PyModule>) -> PyResult<()> {
             let m = new_submodule!(m, "psydk.visual", "color");
             m.add_function(wrap_pyfunction!(visual::colors::py_rgb, &m)?)?;
             m.add_function(wrap_pyfunction!(visual::colors::py_linrgb, &m)?)?;
+            m.add_function(wrap_pyfunction!(visual::colors::py_nativergb, &m)?)?;
             m.add_function(wrap_pyfunction!(visual::colors::py_luv, &m)?)?;
             m.add_function(wrap_pyfunction!(visual::colors::py_xyz, &m)?)?;
             m
@@ -162,6 +165,17 @@ fn psydk(m: &Bound<'_, PyModule>) -> PyResult<()> {
     };
 
     m.add_submodule(&m_utils)?;
+
+    let m_sensors = {
+        let m = new_submodule!(m, "psydk", "sensors");
+        #[cfg(target_os = "ios")]
+        {
+            m.add_class::<sensors::face_tracking::FaceTracker>()?;
+        }
+        m
+    };
+
+    m.add_submodule(&m_sensors)?;
 
     Ok(())
 }

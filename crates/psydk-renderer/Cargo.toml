@@ -27,20 +27,15 @@ winit = { git = "https://github.com/marcpabst/winit", rev = "6c390d5" }
 
 windows-core = "0.61.2"
 
-# vello
-# skrifa = { version = "0.26.5", optional = true }
-# vello = { git = "https://github.com/linebender/vello.git", rev = "4ec6b24", optional = true }
-# vello_svg = { version = "0.6.0", optional = true }
-
-# macOS only
+# macOS & ios only
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 metal = "0.31.0"
-skia-safe = { git = "https://github.com/marcpabst/rust-skia", rev = "2acb894", features = ["metal"], optional = true }
+skia-safe = { git = "https://github.com/marcpabst/rust-skia", rev = "2acb894", features = ["metal", "svg"], optional = true }
 
 
 # windows only
 [target.'cfg(target_os = "windows")'.dependencies]
-skia-safe = { git = "https://github.com/marcpabst/rust-skia", rev = "2acb894", features = ["d3d"], optional = true }
+skia-safe = { git = "https://github.com/marcpabst/rust-skia", rev = "2acb894", features = ["d3d", "svg"], optional = true }
 windows = { version = "0.61", features = [
     "Win32",
     "Win32_Graphics",

@@ -103,6 +103,17 @@ impl DynamicScene {
             position, glyphs, font_face, font_size, brush, alpha, transform, blend_mode,
         );
     }
+
+    pub fn draw_svg(
+        &mut self,
+        svg: &crate::svg::DynamicSVG,
+        position: Point,
+        width: f32,
+        height: f32,
+        blend_mode: Option<BlendMode>,
+    ) {
+        self.inner().draw_svg(svg, position, width, height, blend_mode);
+    }
 }
 
 pub trait Scene: Any {
@@ -171,4 +182,13 @@ pub trait Scene: Any {
     );
     fn set_bg_color(&mut self, color: RGBA);
     fn bg_color(&self) -> RGBA;
+
+    fn draw_svg(
+        &mut self,
+        svg: &crate::svg::DynamicSVG,
+        position: Point,
+        width: f32,
+        height: f32,
+        blend_mode: Option<BlendMode>,
+    );
 }

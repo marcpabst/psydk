@@ -386,7 +386,20 @@ impl Stimulus for PatternStimulus {
                 radius_x,
                 radius_y,
             } => {
-                todo!("Render ellipse")
+                let x = x.eval(windows_size, screen_props) as f64;
+                let y = y.eval(windows_size, screen_props) as f64;
+                let radius_x = radius_x.eval(windows_size, screen_props) as f64;
+                let radius_y = radius_y.eval(windows_size, screen_props) as f64;
+
+                // move by x_origin and y_origin
+                let x = x + x_origin;
+                let y = y + y_origin;
+
+                let shape = renderer::shapes::Shape::ellipse((x, y), radius_x, radius_y);
+
+                scene.draw_shape_fill(shape.clone(), fill_brush.clone(), None, None);
+
+                scene.draw_shape_stroke(shape, stroke_brush, stroke_options, None, None);
             }
             Shape::Line { x1, y1, x2, y2 } => {
                 let x1 = x1.eval(windows_size, screen_props) as f64;
@@ -490,7 +503,6 @@ impl Stimulus for PatternStimulus {
         return match event {
             crate::input::Event::MouseButtonPress { position, .. }
             | crate::input::Event::TouchStart { position, .. } => {
-                println!("Mouse click at position: {:?}", position);
                 let (x, y) = (Size::Pixels(position.0 as f32), Size::Pixels(position.1 as f32));
                 if self.contains(x, y, window_state) {
                     self.params.flag_clicked = true;
@@ -506,6 +518,7 @@ impl Stimulus for PatternStimulus {
     fn contains(&self, x: Size, y: Size, window_state: &WindowState) -> bool {
         let windows_size = window_state.size;
         let screen_props = window_state.physical_screen;
+
         // translate x and y by the stimulus position
         let x = -x + self.params.x.clone();
         let y = -y + self.params.y.clone();

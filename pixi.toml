@@ -11,9 +11,10 @@ version = "0.1.0"
 "build-py-ios" = { cwd = "crates/psydk", env = { FORCE_SKIA_BUILD="1", PYTHON_VERSION = "3.10", PYTHONDIR = "$PIXI_PROJECT_ROOT/psydk/dependencies/build_helpers/iphoneos/" }, cmd = "dependencies/build_helpers/build_ios.sh" }
 "build-docs" = "sphinx-build -M html docs/source/ docs/build/ -W -a -j auto -n --keep-going"
 
-"dev-py" = { cwd = "psydk", cmd = "maturin develop" }
+"dev-py" = { cwd = "crates/psydk", cmd = "maturin develop" }
 
-"launcher-build-py-ios" = { cwd = "psydk-launcher", env = { PYTHON_VERSION = "3.10", PYTHONDIR = "$PIXI_PROJECT_ROOT/psydk/dependencies/build_helpers/iphoneos/" }, cmd = "dependencies/build_helpers/build_ios.sh" }
+# "launcher-build-py-ios" = { cwd = "psydk-launcher", env = { PYTHON_VERSION = "3.10", PYTHONDIR = "$PIXI_PROJECT_ROOT/psydk/dependencies/build_helpers/iphoneos/" }, cmd = "dependencies/build_helpers/build_ios.sh" }
+
 
 
 [dependencies]
@@ -42,3 +43,5 @@ pydata-sphinx-theme = ">=0.16.1, <0.17"
 briefcase = ">=0.3.24, <0.4"
 myst-parser = ">=4.0.1, <5"
 sphinxcontrib-mermaid = ">=1.0.0, <2"
+twine = ">=6.2.0, <7"
+psydk-gst = ">=1.24.11.post2, <2"

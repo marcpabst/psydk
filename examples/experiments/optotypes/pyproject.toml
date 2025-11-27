@@ -1,0 +1,8 @@
+[project]
+name = "Letter Chart"
+version = "0.0.1"
+description = "A standard letter chart."
+
+[tool.psydk]
+data_directory = "./data"
+tasks = ["default"]

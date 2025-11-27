@@ -124,6 +124,7 @@ objc2 = { version = "0.6.1" }
 objc2-ui-kit = { version = "0.3.1" }
 objc2-foundation = "0.3.1"
 objc2-core-foundation = "0.3.1"
+objc2-ar-kit = { version = "0.3.2" }
 block2 = "0.6.1"
 
 [features]

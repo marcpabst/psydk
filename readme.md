@@ -14,9 +14,12 @@ psydk is a framework for psychophysics, neuroscience and general congitive exper
 
 - **Accurate timing**: psydk uses the best available timing APIs on each platform to ensure that stimuli are presented at the right time and that you can synchronize your experiment with external devices (currently only supported on Windows and Mac OS).
 - **High performance**: psydk is pretty fast. It uses the GPU (via the very mature Skia library) to render vector and raster stimuli.
-- **Cross-platform**: psydk runs on Windows, Mac OS, Linux, Android, and iOS (and maybe the web in the future?).
+- **Cross-platform**: psydk runs on Windows, Mac OS, Linux, and iOS (and maybe the web in the future?).
 - **Easy to use**: psydk is designed to be easy to use. You can write your experiment in Python and use the provided tools to run it on any platform.
 - **Open-source**: psydk is open-source and free to use. You can use it for commercial and non-commercial projects.
+- **No external dependencies**: psydk does not require any external\* dependencies.
+
+\* `psydk-gst` will provide GStreamer libraries on suppoerted platforms. Some platforms might need an external installation of GStreamer (e.g. currently Linux).
 
 ## Getting Started
 

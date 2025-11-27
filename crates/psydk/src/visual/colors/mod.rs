@@ -9,9 +9,9 @@ use pyo3::{prelude::*, types::PyTuple};
 use std::sync::Arc;
 
 mod conversion;
-pub mod display_charactersitics;
+pub mod display_characteristics;
 use conversion::{hsl_to_rgb, rgb_to_hsl};
-pub use display_charactersitics::DisplayCharacteristics;
+pub use display_characteristics::DisplayCharacteristics;
 pub mod psydk_1;
 
 #[pyclass]
@@ -192,51 +192,33 @@ impl Color {
         }
     }
 
+    /// Check if the color is in RGB color space
     pub fn is_rgb(&self) -> bool {
         matches!(self, Color::RGBA(_))
     }
 
+    /// Check if the color is in CIE 1931 XYZ color space
     pub fn is_xyz(&self) -> bool {
         matches!(self, Color::XYZA(_))
     }
 
+    /// Check if the color is in Luv color space
     pub fn is_luv(&self) -> bool {
         matches!(self, Color::LuvA(_))
     }
 
+    /// Check if the color is in Lab color space
     pub fn is_lab(&self) -> bool {
         matches!(self, Color::LabA(_))
     }
 
-    pub fn lighten(&self, amount: f32) -> Self {
-        match self {
-            Color::RGBA(rgba) => {
-                let hsl = rgb_to_hsl(rgba.r, rgba.g, rgba.b);
-                let new_l = (hsl.2 + amount).clamp(0.0, 1.0);
-                let (r, g, b) = hsl_to_rgb(hsl.0, hsl.1, new_l);
-                Color::RGBA(RGBA {
-                    r,
-                    g,
-                    b,
-                    a: rgba.a,
-                    space: rgba.space,
-                })
-            }
-            Color::XYZA(_) | Color::LuvA(_) | Color::LabA(_) => {
-                // For non-RGB colors, we can convert to RGB first
-                todo!("Lightening for non-RGB colors not implemented yet")
-            }
-        }
-    }
-
-    pub fn darken(&self, amount: f32) -> Self {
-        self.lighten(-amount)
-    }
-
+    /// Convert the color to CIE 1931 XYZ color space.
     pub fn to_xyz(&self) -> Result<Vector3<f32>, String> {
         match self {
             Color::RGBA(rgba) => {
+                // for RGB colors, conveersion depends on the color space
                 match rgba.space {
+                    // standard sRGB
                     RGBColorSpace::SRGB => {
                         // Convert sRGB to linear RGB
                         let r_lin = if rgba.r <= 0.04045 {
@@ -259,6 +241,7 @@ impl Color {
                         let xyz = SRGB_TO_XYZ * rgb;
                         Ok([xyz.x, xyz.y, xyz.z])
                     }
+                    // linear sRGB
                     RGBColorSpace::SRGBLinear => {
                         // Directly convert linear RGB to XYZ using the sRGB matrix
                         let rgb = Vector3::new(rgba.r, rgba.g, rgba.b);
@@ -275,7 +258,7 @@ impl Color {
         .map(|arr| Vector3::new(arr[0], arr[1], arr[2]))
     }
 
-    pub fn to_display_rgba(&self, dc: &dyn DisplayCharacteristics) -> DisplayRGBA {
+    pub fn to_display_rgba(&self, dc: &dyn DisplayCharacteristics) -> Result<DisplayRGBA, String> {
         /// If Native, just return the RGBA values directly
         if let Color::RGBA(rgba) = self {
             if rgba.space == RGBColorSpace::Native {
@@ -283,19 +266,18 @@ impl Color {
             }
         }
 
-        let xyz = self.to_xyz().unwrap_or_else(|err| {
-            eprintln!("Error converting color to XYZ: {}", err);
-            Vector3::new(0.0, 0.0, 0.0)
-        });
+        let xyz = self.to_xyz()?;
+
         // Convert XYZ to display RGB using the display characteristics
         let display_rgb = dc.xyz_to_rgb(&xyz);
-        return DisplayRGBA::new(display_rgb.x, display_rgb.y, display_rgb.z, self.alpha());
+
+        DisplayRGBA::new(display_rgb.x, display_rgb.y, display_rgb.z, self.alpha())
     }
 }
 
 impl Default for Color {
     fn default() -> Self {
-        Color::new_rgba(0.0, 0.0, 0.0, 1.0, RGBColorSpace::SRGB)
+        Color::new_rgba(1.0, 1.0, 1.0, 1.0, RGBColorSpace::SRGB)
     }
 }
 
@@ -338,23 +320,25 @@ impl<'py> FromPyObject<'py> for IntoColor {
             Ok(Self(color))
         }
         // try to extract a tuple of 3 (alpha implicitly set to 1.0)
-        // we assume sRGB color space for tuples
+        // we assume native color space for tuples
         else if let Ok((r, g, b)) = ob.extract() {
-            Ok(Self(Color::new_rgba(r, g, b, 1.0, RGBColorSpace::SRGB)))
+            Ok(Self(Color::new_rgba(r, g, b, 1.0, RGBColorSpace::Native)))
         }
         // try to extract a tuple of 4
-        // we assume sRGB color space for tuples
+        // we assume b sRGB color space for tuples
         else if let Ok((r, g, b, a)) = ob.extract() {
-            Ok(Self(Color::new_rgba(r, g, b, a, RGBColorSpace::SRGB)))
+            Ok(Self(Color::new_rgba(r, g, b, a, RGBColorSpace::Native)))
         }
-        // // try to extract from a string
-        // else if let Ok(css_color_str) = ob.extract::<String>() {
-        //     Ok(Self(DisplayRGBA::from_str(&css_color_str)))
-        // }
+        // try to extract from a string
+        else if let Ok(color_str) = ob.extract::<String>() {
+            name_to_color(&color_str)
+                .map(|c| Self(c))
+                .ok_or_else(|| PyErr::new::<PyValueError, _>(format!("Unknown color name: {}", color_str)))
+        }
         // otherwise, raise an error
         else {
             Err(pyo3::exceptions::PyTypeError::new_err(
-                "Expected a tuple of 3 or 4 floats, a Color, or a CSS color string",
+                "Expected a Color, a tuple of 3 or 4 floats, or a color name string",
             ))
         }
     }
@@ -382,7 +366,7 @@ impl<'py> FromPyObject<'py> for IntoColor {
 /// (r, g, b, a) : tuple
 ///   The RGB color as a tuple of 4 floats.
 pub fn py_rgb(r: f32, g: f32, b: f32, a: f32) -> Color {
-    Color::new_rgba(r, g, b, a, RGBColorSpace::SRGB)
+    Color::new_rgba(r, g, b, a, RGBColorSpace::Native)
 }
 
 #[pyfunction]
@@ -406,6 +390,22 @@ pub fn py_rgb(r: f32, g: f32, b: f32, a: f32) -> Color {
 /// (r, g, b, a) : tuple
 ///   The linear RGB color as a tuple of 4 floats.
 pub fn py_linrgb(r: f32, g: f32, b: f32, a: f32) -> Color {
+    Color::new_rgba(r, g, b, a, RGBColorSpace::NativeLinear)
+}
+
+#[pyfunction]
+#[pyo3(name = "srgb")]
+#[pyo3(signature = (r, g, b, a = 1.0))]
+/// A color in the standard sRGB color space.
+pub fn py_srgb(r: f32, g: f32, b: f32, a: f32) -> Color {
+    Color::new_rgba(r, g, b, a, RGBColorSpace::SRGB)
+}
+
+#[pyfunction]
+#[pyo3(name = "linsrgb")]
+#[pyo3(signature = (r, g, b, a = 1.0))]
+/// A color in the linear sRGB color space.
+pub fn py_linsrgb(r: f32, g: f32, b: f32, a: f32) -> Color {
     Color::new_rgba(r, g, b, a, RGBColorSpace::SRGBLinear)
 }
 
@@ -477,3 +477,61 @@ const SRGB_TO_XYZ_DEBUG: Matrix3<f32> = Matrix3::new(
     0.4124564, 0.3575761, 0.1804375, // R
     0.2126729, 0.7151522, 0.0721750, // G
 );
+
+/// convert CSS stadard color name to Color
+fn name_to_color(name: &str) -> Option<Color> {
+    match name.to_lowercase().as_str() {
+        "transparent" => Some(Color::new_srgb(0.0, 0.0, 0.0, 0.0)),
+        "black" => Some(Color::new_srgb(0.0, 0.0, 0.0, 1.0)),
+        "silver" => Some(Color::new_srgb(0.75, 0.75, 0.75, 1.0)),
+        "gray" | "grey" => Some(Color::new_srgb(0.5, 0.5, 0.5, 1.0)),
+        "white" => Some(Color::new_srgb(1.0, 1.0, 1.0, 1.0)),
+        "maroon" => Some(Color::new_srgb(0.5, 0.0, 0.0, 1.0)),
+        "red" => Some(Color::new_srgb(1.0, 0.0, 0.0, 1.0)),
+        "purple" => Some(Color::new_srgb(0.5, 0.0, 0.5, 1.0)),
+        "fuchsia" => Some(Color::new_srgb(1.0, 0.0, 1.0, 1.0)),
+        "green" => Some(Color::new_srgb(0.0, 0.5, 0.0, 1.0)),
+        "lime" => Some(Color::new_srgb(0.0, 1.0, 0.0, 1.0)),
+        "olive" => Some(Color::new_srgb(0.5, 0.5, 0.0, 1.0)),
+        "yellow" => Some(Color::new_srgb(1.0, 1.0, 0.0, 1.0)),
+        "navy" => Some(Color::new_srgb(0.0, 0.0, 0.5, 1.0)),
+        "blue" => Some(Color::new_srgb(0.0, 0.0, 1.0, 1.0)),
+        "teal" => Some(Color::new_srgb(0.0, 0.5, 0.5, 1.0)),
+        "aqua" => Some(Color::new_srgb(0.0, 1.0, 1.0, 1.0)),
+        _ => {
+            // try to parse as hex color
+            if let Ok((r, g, b)) = parse_hex_color(name) {
+                Some(Color::new_srgb(
+                    r as f32 / 255.0,
+                    g as f32 / 255.0,
+                    b as f32 / 255.0,
+                    1.0,
+                ))
+            } else {
+                None
+            }
+        }
+    }
+}
+
+// parse a hex color string (#RRGGBB or #RGB) into (r, g, b) u8 values
+fn parse_hex_color(hex: &str) -> Result<(u8, u8, u8), &'static str> {
+    let hex = hex.trim_start_matches('#');
+
+    match hex.len() {
+        3 => {
+            let r = u8::from_str_radix(&hex[0..1], 16).map_err(|_| "Invalid hex")?;
+            let g = u8::from_str_radix(&hex[1..2], 16).map_err(|_| "Invalid hex")?;
+            let b = u8::from_str_radix(&hex[2..3], 16).map_err(|_| "Invalid hex")?;
+            // Multiply by 17 to expand 0xF to 0xFF (15 * 17 = 255)
+            Ok((r * 17, g * 17, b * 17))
+        }
+        6 => {
+            let r = u8::from_str_radix(&hex[0..2], 16).map_err(|_| "Invalid hex")?;
+            let g = u8::from_str_radix(&hex[2..4], 16).map_err(|_| "Invalid hex")?;
+            let b = u8::from_str_radix(&hex[4..6], 16).map_err(|_| "Invalid hex")?;
+            Ok((r, g, b))
+        }
+        _ => Err("Invalid hex color"),
+    }
+}

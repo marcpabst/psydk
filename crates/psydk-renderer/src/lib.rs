@@ -10,8 +10,9 @@ pub mod scenes;
 pub mod shapes;
 pub mod skia_backend;
 pub mod styles;
+pub mod svg;
 mod utils;
-// pub mod vello_backend;
+
 pub mod wgpu_renderer;
 
 pub use cosmic_text;
@@ -27,9 +28,4 @@ pub use wgpu;
 
 pub enum Backend {
     Vello,
-    Skia,
 }
-
-// pub mod prelude {
-//     pub use super::{affine::*, brushes::*, colors::*, scenes::*, shapes::*, styles::*, text::*};
-// }

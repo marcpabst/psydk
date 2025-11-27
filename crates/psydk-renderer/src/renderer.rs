@@ -100,6 +100,13 @@ pub trait Renderer {
     }
 
     fn create_bitmap_from_wgpu_texture(&self, texture: wgpu::Texture, color_encoding: ColorEncoding) -> DynamicBitmap;
+
+    fn create_svg(&self, svg_data: &str) -> crate::svg::DynamicSVG;
+
+    fn create_svg_from_file(&self, path: &str) -> Result<crate::svg::DynamicSVG, std::io::Error> {
+        let svg_data = std::fs::read_to_string(path)?;
+        Ok(self.create_svg(&svg_data))
+    }
 }
 
 /// A SharedRendererState is a trait that provides methods to create renderers, bitmaps, and font faces.
@@ -129,6 +136,13 @@ pub trait SharedRendererState: Send + Sync {
     fn as_any_mut(&mut self) -> &mut dyn Any;
 
     fn create_bitmap_from_wgpu_texture(&self, texture: wgpu::Texture, color_encoding: ColorEncoding) -> DynamicBitmap;
+
+    fn create_svg(&self, svg_data: &str) -> crate::svg::DynamicSVG;
+
+    fn create_svg_from_file(&self, path: &str) -> Result<crate::svg::DynamicSVG, std::io::Error> {
+        let svg_data = std::fs::read_to_string(path)?;
+        Ok(self.create_svg(&svg_data))
+    }
 
     // Returns the render resources
     fn render_resources(&self) -> Option<DynamicRenderResources>;

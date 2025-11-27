@@ -42,6 +42,7 @@ use crate::{
     scenes::Scene,
     shapes::{Point, Shape},
     styles::{BlendMode, ImageFitMode, StrokeStyle},
+    svg::SVG,
 };
 
 #[derive(Debug)]
@@ -69,6 +70,11 @@ pub struct SkiaBitmap {
 pub struct SkiaTexture {
     image: SkImage,
     texture: wgpu::Texture,
+}
+
+#[derive(Debug)]
+pub struct SkiaSVG {
+    pub dom: skia_safe::svg::Dom,
 }
 
 impl Typeface for SkTypeface {
@@ -355,6 +361,36 @@ impl Scene for SkiaScene {
         self.picture_recorder.recording_canvas().unwrap().clear(bg_color);
     }
 
+    fn draw_svg(
+        &mut self,
+        svg: &crate::svg::DynamicSVG,
+        position: Point,
+        width: f32,
+        height: f32,
+        blend_mode: Option<BlendMode>,
+    ) {
+        // get the dom
+        let skia_svg = svg.try_as::<SkiaSVG>().unwrap();
+        let dom = &skia_svg.dom;
+        let mut root = dom.root();
+        let canvas = self.picture_recorder.recording_canvas().unwrap();
+        canvas.save();
+        canvas.translate((position.x as scalar, position.y as scalar));
+
+        root.set_width(skia_safe::svg::Length::new(
+            width.into(),
+            skia_safe::svg::LengthUnit::PX,
+        ));
+        root.set_height(skia_safe::svg::Length::new(
+            height.into(),
+            skia_safe::svg::LengthUnit::PX,
+        ));
+
+        dom.render(canvas);
+
+        canvas.restore();
+    }
+
     fn bg_color(&self) -> RGBA {
         self.bg_color
     }
@@ -447,6 +483,10 @@ impl Renderer for SkiaRenderer {
 
     fn create_bitmap_from_wgpu_texture(&self, texture: wgpu::Texture, color_encoding: ColorEncoding) -> DynamicBitmap {
         create_bitmap_from_wgpu_texture(&mut self.shared_state.context.borrow_mut(), texture, color_encoding)
+    }
+
+    fn create_svg(&self, svg_data: &str) -> crate::svg::DynamicSVG {
+        skia_create_svg(svg_data, self.shared_state.font_manager.clone()).expect("Failed to create SVG")
     }
 }
 
@@ -594,6 +634,16 @@ impl Bitmap for SkiaTexture {
     }
 }
 
+impl SVG for SkiaSVG {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
 // convert a color to a skia color
 impl From<RGBA> for skia_safe::Color4f {
     fn from(color: RGBA) -> Self {
@@ -620,6 +670,10 @@ impl From<&Brush<'_>> for skia_safe::Paint {
                 // paint.set_color4f(skia_color, &skia_color_space);
 
                 // use color shader instead of set_color4f to full precision
+                println!(
+                    "Creating solid color brush with color: {:?} and color space: {:?}",
+                    skia_color, skia_color_space
+                );
                 let shader = skia_safe::shaders::color_in_space(skia_color, &skia_color_space);
                 paint.set_shader(shader);
                 paint.set_blend_mode(skia_safe::BlendMode::Src);
@@ -962,6 +1016,10 @@ impl SharedRendererState for SkiaSharedRendererState {
         create_bitmap_from_wgpu_texture(&mut self.context.borrow_mut(), texture, color_encoding)
     }
 
+    fn create_svg(&self, svg_data: &str) -> crate::svg::DynamicSVG {
+        skia_create_svg(svg_data, self.font_manager.clone()).unwrap()
+    }
+
     fn render_resources(&self) -> Option<crate::renderer::DynamicRenderResources> {
         todo!()
     }
@@ -1027,6 +1085,13 @@ fn skia_create_bitmap_f32(
         image,
         data: boxed_buffer,
     }))
+}
+
+fn skia_create_svg(svg_data: &str, font_manager: skia_safe::FontMgr) -> Result<crate::svg::DynamicSVG, String> {
+    use skia_safe::svg::Dom;
+
+    let dom = Dom::from_str(svg_data, font_manager).map_err(|e| format!("Failed to parse SVG data: {:?}", e))?;
+    Ok(crate::svg::DynamicSVG(Box::new(SkiaSVG { dom })))
 }
 
 // allow a colorpace to be converted to a skia color space
