@@ -1,4 +1,4 @@
-use crate::visual::colors::display_charactersitics::GenericDisplayCharacteristics;
+use crate::visual::colors::display_characteristics::GenericDisplayCharacteristics;
 use atomic_float::AtomicF64;
 use derive_debug::Dbg;
 use pyo3::{
@@ -509,7 +509,12 @@ impl App {
         // on iOS, we need to use the iOS-specific event loop
         #[cfg(target_os = "ios")]
         let event_loop = {
-            unsafe {EventLoop::builder().with_main_thread_marker(objc2::MainThreadMarker::new_unchecked()).build().unwrap()}
+            unsafe {
+                EventLoop::builder()
+                    .with_main_thread_marker(objc2::MainThreadMarker::new_unchecked())
+                    .build()
+                    .unwrap()
+            }
         };
 
         let event_loop_proxy = event_loop.create_proxy();

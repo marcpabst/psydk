@@ -395,7 +395,7 @@ impl Stimulus for PatternStimulus {
                 let x = x + x_origin;
                 let y = y + y_origin;
 
-                let shape = renderer::shapes::Shape::ellipse((x, y), radius_x, radius_y);
+                let shape = renderer::shapes::Shape::ellipse((x, y), radius_x, radius_y, 0.0);
 
                 scene.draw_shape_fill(shape.clone(), fill_brush.clone(), None, None);
 

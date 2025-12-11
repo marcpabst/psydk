@@ -725,8 +725,8 @@ impl Shape {
 
                 for i in 0..n {
                     let j = (i + n - 1) % n;
-                    let (xi, yi) = points[i];
-                    let (xj, yj) = points[j];
+                    let (xi, yi) = &points[i];
+                    let (xj, yj) = &points[j];
 
                     let xi = xi.eval(window_size, window_props);
                     let yi = yi.eval(window_size, window_props);

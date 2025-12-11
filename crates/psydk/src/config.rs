@@ -1,5 +1,5 @@
 use crate::visual::colors::{
-    display_charactersitics::GenericDisplayCharacteristics, psydk_1::Psydk1DisplayCharacteristics,
+    display_characteristics::GenericDisplayCharacteristics, psydk_1::Psydk1DisplayCharacteristics,
     DisplayCharacteristics,
 };
 use pyo3::prelude::*;

@@ -4,6 +4,7 @@ use std::io::BufReader;
 use ndarray::{arr1, s, Array1, Array2, Axis};
 use serde::Deserialize;
 
+use crate::visual::colors::display_characteristics::EOTF;
 use crate::visual::colors::DisplayCharacteristics;
 
 #[derive(Deserialize)]
@@ -242,7 +243,7 @@ impl DisplayCharacteristics for Psydk1DisplayCharacteristics {
         None
     }
 
-    fn eotf(&self) -> Option<[super::display_charactersitics::EOTF; 3]> {
+    fn eotf(&self) -> Option<[EOTF; 3]> {
         None
     }
 

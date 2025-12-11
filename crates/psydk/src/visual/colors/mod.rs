@@ -159,6 +159,16 @@ impl Color {
         })
     }
 
+    pub fn new_srgb(r: f32, g: f32, b: f32) -> Self {
+        Color::RGBA(RGBA {
+            r,
+            g,
+            b,
+            a: 1.0,
+            space: RGBColorSpace::SRGB,
+        })
+    }
+
     pub fn new_xyza(x: f32, y: f32, z: f32, a: f32) -> Self {
         Color::XYZA(XYZA { x, y, z, a })
     }
@@ -258,7 +268,7 @@ impl Color {
         .map(|arr| Vector3::new(arr[0], arr[1], arr[2]))
     }
 
-    pub fn to_display_rgba(&self, dc: &dyn DisplayCharacteristics) -> Result<DisplayRGBA, String> {
+    pub fn to_display_rgba(&self, dc: &dyn DisplayCharacteristics) -> DisplayRGBA {
         /// If Native, just return the RGBA values directly
         if let Color::RGBA(rgba) = self {
             if rgba.space == RGBColorSpace::Native {
@@ -266,12 +276,29 @@ impl Color {
             }
         }
 
-        let xyz = self.to_xyz()?;
+        let xyz = self.to_xyz().expect("Failed to convert color to XYZ");
 
         // Convert XYZ to display RGB using the display characteristics
         let display_rgb = dc.xyz_to_rgb(&xyz);
 
         DisplayRGBA::new(display_rgb.x, display_rgb.y, display_rgb.z, self.alpha())
+    }
+
+    /// Returns the luminance of the color in the respective display color space
+    pub fn luminance(&self, dc: &dyn DisplayCharacteristics) -> f32 {
+        let display_rgba = self.to_display_rgba(dc);
+        // Calculate luminance using Rec. 709 coefficients
+        0.2126 * display_rgba.r + 0.7152 * display_rgba.g + 0.0722 * display_rgba.b
+    }
+
+    /// Return true if the the colour is lighter than mid-grey in luminance
+    pub fn is_light(&self, dc: &dyn DisplayCharacteristics) -> bool {
+        self.luminance(dc) > 0.5
+    }
+
+    /// Return true if the the colour is darker than mid-grey in luminance
+    pub fn is_dark(&self, dc: &dyn DisplayCharacteristics) -> bool {
+        self.luminance(dc) <= 0.5
     }
 }
 
@@ -481,27 +508,27 @@ const SRGB_TO_XYZ_DEBUG: Matrix3<f32> = Matrix3::new(
 /// convert CSS stadard color name to Color
 fn name_to_color(name: &str) -> Option<Color> {
     match name.to_lowercase().as_str() {
-        "transparent" => Some(Color::new_srgb(0.0, 0.0, 0.0, 0.0)),
-        "black" => Some(Color::new_srgb(0.0, 0.0, 0.0, 1.0)),
-        "silver" => Some(Color::new_srgb(0.75, 0.75, 0.75, 1.0)),
-        "gray" | "grey" => Some(Color::new_srgb(0.5, 0.5, 0.5, 1.0)),
-        "white" => Some(Color::new_srgb(1.0, 1.0, 1.0, 1.0)),
-        "maroon" => Some(Color::new_srgb(0.5, 0.0, 0.0, 1.0)),
-        "red" => Some(Color::new_srgb(1.0, 0.0, 0.0, 1.0)),
-        "purple" => Some(Color::new_srgb(0.5, 0.0, 0.5, 1.0)),
-        "fuchsia" => Some(Color::new_srgb(1.0, 0.0, 1.0, 1.0)),
-        "green" => Some(Color::new_srgb(0.0, 0.5, 0.0, 1.0)),
-        "lime" => Some(Color::new_srgb(0.0, 1.0, 0.0, 1.0)),
-        "olive" => Some(Color::new_srgb(0.5, 0.5, 0.0, 1.0)),
-        "yellow" => Some(Color::new_srgb(1.0, 1.0, 0.0, 1.0)),
-        "navy" => Some(Color::new_srgb(0.0, 0.0, 0.5, 1.0)),
-        "blue" => Some(Color::new_srgb(0.0, 0.0, 1.0, 1.0)),
-        "teal" => Some(Color::new_srgb(0.0, 0.5, 0.5, 1.0)),
-        "aqua" => Some(Color::new_srgb(0.0, 1.0, 1.0, 1.0)),
+        "transparent" => Some(Color::new_srgba(0.0, 0.0, 0.0, 0.0)),
+        "black" => Some(Color::new_srgba(0.0, 0.0, 0.0, 1.0)),
+        "silver" => Some(Color::new_srgba(0.75, 0.75, 0.75, 1.0)),
+        "gray" | "grey" => Some(Color::new_srgba(0.5, 0.5, 0.5, 1.0)),
+        "white" => Some(Color::new_srgba(1.0, 1.0, 1.0, 1.0)),
+        "maroon" => Some(Color::new_srgba(0.5, 0.0, 0.0, 1.0)),
+        "red" => Some(Color::new_srgba(1.0, 0.0, 0.0, 1.0)),
+        "purple" => Some(Color::new_srgba(0.5, 0.0, 0.5, 1.0)),
+        "fuchsia" => Some(Color::new_srgba(1.0, 0.0, 1.0, 1.0)),
+        "green" => Some(Color::new_srgba(0.0, 0.5, 0.0, 1.0)),
+        "lime" => Some(Color::new_srgba(0.0, 1.0, 0.0, 1.0)),
+        "olive" => Some(Color::new_srgba(0.5, 0.5, 0.0, 1.0)),
+        "yellow" => Some(Color::new_srgba(1.0, 1.0, 0.0, 1.0)),
+        "navy" => Some(Color::new_srgba(0.0, 0.0, 0.5, 1.0)),
+        "blue" => Some(Color::new_srgba(0.0, 0.0, 1.0, 1.0)),
+        "teal" => Some(Color::new_srgba(0.0, 0.5, 0.5, 1.0)),
+        "aqua" => Some(Color::new_srgba(0.0, 1.0, 1.0, 1.0)),
         _ => {
             // try to parse as hex color
             if let Ok((r, g, b)) = parse_hex_color(name) {
-                Some(Color::new_srgb(
+                Some(Color::new_srgba(
                     r as f32 / 255.0,
                     g as f32 / 255.0,
                     b as f32 / 255.0,
