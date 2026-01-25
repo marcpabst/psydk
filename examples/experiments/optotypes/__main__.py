@@ -1,12 +1,12 @@
 from psydk.utils import now
-from psydk.visual.color import linrgb, luv, xyz
+from psydk.visual.color import rgb
 from psydk.visual.geometry import cm, deg, px, rectangle, vh, vw, circle
 from psydk.visual.stimuli import (
     PatternStimulus,
     TextStimulus,
     SVGStimulus,
 )
-from psydk import run_experiment, DisplayConfig, ExperimentConfig
+from psydk import run_experiment, WindowConfig, ExperimentConfig
 
 from typing import Callable, List, Tuple
 
@@ -51,7 +51,7 @@ def run(ctx, *args, **kwargs):
             x=-vw(0.5),     # Positioned left of center
             y=-vh(0.5),     # Positioned below center
             pattern="uniform",
-            fill_color=linrgb(1, 1, 1)  # White color
+            fill_color=rgb(1, 1, 1)  # White color
         )
 
         # Set working directory to module directory for loading SVG files
@@ -63,7 +63,7 @@ def run(ctx, *args, **kwargs):
             x=0.,                           # Centered horizontally
             y=vh(0.5)-cm(2),               # Positioned near top
             font_size=cm(0.5),             # Font size of 0.5cm
-            fill_color=linrgb(0, 0, 0),    # Black text
+            fill_color=rgb(0, 0, 0),    # Black text
         )
 
         # Randomly select letters to display

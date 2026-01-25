@@ -1,8 +1,8 @@
 use crate::{
-    app::{App, ArcMutex, GPUState},
     audio::{PyDevice, PyHost, PyStream},
-    config::{DisplayConfig, ExperimentConfig},
+    config::{ExperimentConfig, WindowConfig},
     errors::{self, PsydkError, PsydkResult},
+    experiment::{ArcMutex, Experiment, GPUState},
     git::PyRepository,
     visual::window::Window,
 };
@@ -25,7 +25,7 @@ use sysinfo::System;
 use winit::event_loop::EventLoopProxy;
 
 pub enum EventLoopAction {
-    CreateNewWindow(WindowOptions, ExperimentConfig, DisplayConfig, Sender<Window>),
+    CreateNewWindow(WindowOptions, ExperimentConfig, WindowConfig, Sender<Window>),
     GetAvailableMonitors(Sender<Vec<Monitor>>),
     RunInEventLoop(Box<dyn FnOnce() + Send>),
     Exit(Option<errors::PsydkError>),
@@ -205,6 +205,23 @@ impl ExperimentContext {
         let mut font_manager = self.font_manager.lock().unwrap();
         font_manager.db_mut().load_fonts_dir(path);
         Ok(())
+    }
+
+    pub fn set_idle_timer_disabled(&self, disabled: bool) {
+        #[cfg(target_os = "ios")]
+        {
+            // let app = unsafe { objc2_ui_kit::UIApplication::sharedApplication() };
+            // app.setIdleTimerDisabled(true);
+
+            // this needs to be called on the main thread
+            self.run_in_event_loop(move || {
+                use objc2::MainThreadMarker;
+                use objc2_ui_kit::UIApplication;
+                let main_thread = MainThreadMarker::new().unwrap();
+                let app = unsafe { UIApplication::sharedApplication(main_thread) };
+                app.setIdleTimerDisabled(disabled);
+            });
+        }
     }
 
     pub fn renderer_factory(&self) -> &Arc<dyn SharedRendererState> {
@@ -510,7 +527,7 @@ impl ExperimentContext {
         &self,
         window_options: &WindowOptions,
         experiment_config: ExperimentConfig,
-        display_config: DisplayConfig,
+        display_config: WindowConfig,
     ) -> Window {
         // set up window by dispatching a new CreateNewWindow action
         let (sender, receiver) = channel();
@@ -540,7 +557,7 @@ impl ExperimentContext {
         &self,
         fullscreen: bool,
         monitor: Option<u32>,
-        display_config: Option<DisplayConfig>,
+        display_config: Option<WindowConfig>,
     ) -> Window {
         let monitors = self.get_available_monitors();
         // get the first monitor if available, otherwise use the first one
@@ -630,19 +647,14 @@ impl ExperimentContext {
     ///   Whether to create a fullscreen window. Defaults to `false`.
     /// monitor : int, optional
     ///   The index of the monitor to use. Defaults to 0.
-    /// config : DisplayConfig, optional
+    /// config : WindowConfig, optional
     ///  The display configuration to use. If not provided, the default configuration will be used.
     ///
     /// Returns
     /// -------
     /// Window
     ///  The new window.
-    fn py_create_default_window(
-        &self,
-        fullscreen: bool,
-        monitor: Option<u32>,
-        config: Option<DisplayConfig>,
-    ) -> Window {
+    fn py_create_default_window(&self, fullscreen: bool, monitor: Option<u32>, config: Option<WindowConfig>) -> Window {
         self.create_default_window(fullscreen, monitor, config)
     }
 
@@ -722,6 +734,20 @@ impl ExperimentContext {
     ///  The path to the font file.
     fn py_load_font_file(&self, path: &str) -> PyResult<()> {
         self.load_font_file(path)?;
+        Ok(())
+    }
+
+    #[pyo3(name = "set_idle_timer_disabled")]
+    /// Disable the idle timer on mobile platforms to prevent the screen from
+    /// dimming or locking during the experiment. This function has no effect on
+    /// desktop platforms.
+    ///
+    /// Parameters
+    /// ----------
+    /// disabled : bool
+    ///  Whether to disable the idle timer. Set to `True` to disable, `False` to enable.
+    fn py_set_idle_timer_disabled(&self, disabled: bool) -> PyResult<()> {
+        self.set_idle_timer_disabled(disabled);
         Ok(())
     }
 
@@ -845,11 +871,11 @@ pub fn py_run_experiment(
     config: Option<ExperimentConfig>,
     args: Py<PyTuple>,
     kwargs: Option<Py<PyDict>>,
-) -> PyResult<()> {
+) -> PsydkResult<()> {
     let config = config.unwrap_or_default();
 
     // create the app
-    let mut app = App::new(config.clone());
+    let mut experiment = Experiment::new(config.clone())?;
 
     // make app static by leaking it into a static variable
     // todo: is this necessary?
@@ -861,7 +887,7 @@ pub fn py_run_experiment(
     // this will allow functions to create renderer-specific objects
     // without having to pass the renderer object
     let globals = PyDict::new(py);
-    let renderer_factory = PyRendererFactory(app.shared_renderer_state.cloned());
+    let renderer_factory = PyRendererFactory(experiment.shared_renderer_state.cloned());
 
     // create the Rust function that will be passed to the experiment thread
     let rust_experiment_fn = move |em: ExperimentContext| -> Result<(), errors::PsydkError> {
@@ -896,6 +922,6 @@ pub fn py_run_experiment(
     };
 
     // actually run the experiment in a separate thread
-    py.allow_threads(move || app.run_experiment(rust_experiment_fn, config))?; // run the experiment
+    py.allow_threads(move || experiment.run_experiment(rust_experiment_fn, config))?; // run the experiment
     Ok(())
 }

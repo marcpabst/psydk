@@ -1,6 +1,6 @@
 [package]
 name = "psydk"
-version = "0.1.904"
+version = "0.1.906"
 edition = "2021"
 rust-version = "1.70"
 authors = ["Marc Pabst"]
@@ -41,7 +41,7 @@ raw-window-handle = "0.6"
 winit = { git = "https://github.com/marcpabst/winit", rev = "6c390d5" }
 #winit = { path = "../../../winit/winit" }
 bytemuck = { version = "1.14.0", features = ["derive"] }
-nalgebra = "0.33.0"
+nalgebra = {version = "0.33.0", features = ["serde-serialize"] }
 web-time = "1.0.0"
 image = "0.24.7"
 fontdb = "0.16.0"

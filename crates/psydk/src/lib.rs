@@ -25,7 +25,7 @@ use winit::{
     monitor::VideoMode,
 };
 
-pub mod app;
+pub mod experiment;
 pub mod audio;
 pub mod config;
 pub mod context;
@@ -67,7 +67,7 @@ fn psydk(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(py_run_experiment, m)?);
     m.add_class::<ExperimentContext>()?;
     m.add_class::<config::ExperimentConfig>()?;
-    m.add_class::<config::DisplayConfig>()?;
+    m.add_class::<config::WindowConfig>()?;
 
     let m_visual = {
         let m = new_submodule!(m, "psydk", "visual");

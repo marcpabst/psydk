@@ -60,6 +60,10 @@ pub enum PsydkError {
     // #[error("The index {0} is out of bounds for an array or vector of length {1}.")]
     // IndexOutOfBoundsError(usize, usize),
 
+    // a GPU error
+    #[error("GPU error: {0}")]
+    GPUError(String),
+
     // single image error
     #[error("Only one image was provided. This is currently not supported.")]
     SingleImageError,

@@ -1,176 +1,208 @@
-use nalgebra::{Matrix3, Vector3};
+use super::display::DisplayCharacteristics;
+use super::{Color, RGBColorSpace};
+use nalgebra::{Matrix3, Vector3, Vector4};
+/// Converts an sRGB color to CIE XYZ color space.
+///
+/// # Arguments
+/// * `srgb` - A Vector4 containing sRGB values in the range [0.0, 1.0]
+///
+/// # Returns
+/// A Vector4 containing XYZ values (typically in range [0.0, 1.0] for standard colors)
+pub fn srgba_to_xyz(srgb: impl Into<Vector4<f32>>) -> Vector4<f32> {
+    let srgb_vec = srgb.into();
 
-/// Convert from CIE 1976 L*u*v* to CIE 1931 XYZ
-pub fn luv_to_xyz(luv: &[f32; 3], white_point: &[f32; 3]) -> [f32; 3] {
-    let (l, u, v) = (luv[0], luv[1], luv[2]);
-
-    if l == 0.0 {
-        return [0.0, 0.0, 0.0];
-    }
-
-    let y = if l > 8.0 {
-        let y = ((l + 16.0) / 116.0).powi(3);
-        if y > 0.008856 {
-            y
+    // Step 1: Apply inverse gamma correction (sRGB to linear RGB)
+    let linear_rgb = srgb_vec.xyz().map(|component| {
+        if component <= 0.04045 {
+            component / 12.92
         } else {
-            (l / 903.3)
+            ((component + 0.055) / 1.055).powf(2.4)
         }
+    });
+
+    // Step 2: Apply the sRGB to XYZ transformation matrix
+    // Using D65 illuminant (standard for sRGB)
+    let transform_matrix = Matrix3::new(
+        0.4124564, 0.3575761, 0.1804375, 0.2126729, 0.7151522, 0.0721750, 0.0193339, 0.1191920, 0.9503041,
+    );
+
+    let xyz = transform_matrix * linear_rgb;
+    Vector4::new(xyz.x, xyz.y, xyz.z, srgb_vec.w)
+}
+
+/// Converts linear sRGB color to CIE XYZ color space.
+/// # Arguments
+/// * `srgb_linear` - A Vector4 containing linear sRGB values in the range [0.0, 1.0]
+/// # Returns
+/// A Vector4 containing XYZ values + alpha
+pub fn srgba_linear_to_xyz(srgb_linear: impl Into<Vector4<f32>>) -> Vector4<f32> {
+    let srgb_vec = srgb_linear.into();
+
+    // Step 1: Apply the sRGB to XYZ transformation matrix
+    // Using D65 illuminant (standard for sRGB)
+    let transform_matrix = Matrix3::new(
+        0.4124564, 0.3575761, 0.1804375, 0.2126729, 0.7151522, 0.0721750, 0.0193339, 0.1191920, 0.9503041,
+    );
+
+    let xyz = transform_matrix * srgb_vec.xyz();
+    Vector4::new(xyz.x, xyz.y, xyz.z, srgb_vec.w)
+}
+
+/// Converts CIE L*u*v* color to CIE XYZ color space.
+fn luva_to_xyza(luv: impl Into<Vector4<f32>>, white_point: impl Into<Vector3<f32>>) -> Vector4<f32> {
+    let luv = luv.into();
+    let white_point = white_point.into();
+
+    let l = luv.x;
+    let u = luv.y;
+    let v = luv.z;
+    let a = luv.w;
+
+    // Handle the special case where L = 0 (black)
+    if l <= 0.0 {
+        return Vector4::new(0.0, 0.0, 0.0, a);
+    }
+
+    // Calculate Y from L
+    let y = if l > 8.0 {
+        white_point.y * ((l + 16.0) / 116.0).powi(3)
     } else {
-        l / 903.3
+        white_point.y * l * (3.0f32 / 29.0f32).powi(3)
     };
 
-    let ref_u = (4.0 * white_point[0]) / (white_point[0] + 15.0 * white_point[1] + 3.0 * white_point[2]);
-    let ref_v = (9.0 * white_point[1]) / (white_point[0] + 15.0 * white_point[1] + 3.0 * white_point[2]);
+    // Calculate reference u' and v' from white point
+    let denom_ref = white_point.x + 15.0 * white_point.y + 3.0 * white_point.z;
+    let u_ref = (4.0 * white_point.x) / denom_ref;
+    let v_ref = (9.0 * white_point.y) / denom_ref;
 
-    let a = (1.0 / 3.0) * ((52.0 * l) / (u + 13.0 * l * ref_u) - 1.0);
-    let b = -5.0 * y;
-    let c = -1.0 / 3.0;
-    let d = y * ((39.0 * l) / (v + 13.0 * l * ref_v) - 5.0);
+    // Calculate u' and v' from u and v
+    let u_prime = u / (13.0 * l) + u_ref;
+    let v_prime = v / (13.0 * l) + v_ref;
 
-    let x = (d - b) / (a - c);
-    let z = x * a + b;
+    // Calculate X and Z from u', v', and Y
+    let x = y * (9.0 * u_prime) / (4.0 * v_prime);
+    let z = y * (12.0 - 3.0 * u_prime - 20.0 * v_prime) / (4.0 * v_prime);
 
-    [x, y, z]
+    Vector4::new(x, y, z, a)
 }
 
-/// Convert from CIE 1931 XYZ to CIE 1976 L*u*v*
-pub fn XYZ_to_Luv(xyz: &[f32; 3], white_point: &[f32; 3]) -> [f32; 3] {
-    let (x, y, z) = (xyz[0], xyz[1], xyz[2]);
+/// Converts CIE L*a*b* color to CIE XYZ color space.
+fn laba_to_xyza(laba: impl Into<Vector4<f32>>, white_point: impl Into<Vector3<f32>>) -> Vector4<f32> {
+    // Get white point
+    let white_point = white_point.into();
+    let xn = white_point.x;
+    let yn = white_point.y;
+    let zn = white_point.z;
 
-    let denom = x + 15.0 * y + 3.0 * z;
-    let (u_prime, v_prime) = if denom != 0.0 {
-        (4.0 * x / denom, 9.0 * y / denom)
-    } else {
-        (0.0, 0.0)
-    };
+    let lab = laba.into();
 
-    let y_ratio = y / white_point[1];
-    let l = if y_ratio > 0.008856 {
-        116.0 * y_ratio.cbrt() - 16.0
-    } else {
-        903.3 * y_ratio
-    };
+    let alpha = lab.w;
 
-    if l == 0.0 {
-        return [0.0, 0.0, 0.0];
-    }
+    let l = lab.x;
+    let a = lab.y;
+    let b = lab.z;
 
-    let ref_denom = white_point[0] + 15.0 * white_point[1] + 3.0 * white_point[2];
-    let (ref_u, ref_v) = if ref_denom != 0.0 {
-        (4.0 * white_point[0] / ref_denom, 9.0 * white_point[1] / ref_denom)
-    } else {
-        (0.0, 0.0)
-    };
+    // Calculate f(Y/Yn) from L*
+    let fy = (l + 16.0) / 116.0;
 
-    let u = 13.0 * l * (u_prime - ref_u);
-    let v = 13.0 * l * (v_prime - ref_v);
+    // Calculate f(X/Xn) and f(Z/Zn)
+    let fx = a / 500.0 + fy;
+    let fz = fy - b / 200.0;
 
-    [l, u, v]
+    // Define the threshold and conversion constants
+    const DELTA: f32 = 6.0 / 29.0;
+    const DELTA_CUBED: f32 = DELTA * DELTA * DELTA; // (6/29)³
+    const FACTOR: f32 = 3.0 * DELTA * DELTA; // 3 * (6/29)²
+
+    // Convert f values to XYZ using inverse transformation
+    let x = xn
+        * if fx > DELTA {
+            fx.powi(3)
+        } else {
+            (fx - 16.0 / 116.0) * FACTOR
+        };
+
+    let y = yn
+        * if l > 8.0 {
+            fy.powi(3)
+        } else {
+            l * (DELTA / 2.0).powi(3) // Equivalent to L * (3/29)³
+        };
+
+    let z = zn
+        * if fz > DELTA {
+            fz.powi(3)
+        } else {
+            (fz - 16.0 / 116.0) * FACTOR
+        };
+
+    Vector4::new(x, y, z, alpha)
 }
 
-/// Convert from xyY to CIE 1931 XYZ
-pub fn xyY_to_XYZ(xyY: &[f32; 3]) -> [f32; 3] {
-    let (x, y, Y) = (xyY[0], xyY[1], xyY[2]);
-
-    if y == 0.0 {
-        return [0.0, 0.0, 0.0];
-    }
-
-    let X = (x * Y) / y;
-    let Z = ((1.0 - x - y) * Y) / y;
-
-    [X, Y, Z]
+/// Convert a Color to device space RGBA with EOTFs applied.
+///
+/// This function:
+/// 1. Converts the color to linear device RGB (if needed)
+/// 2. Applies the appropriate EOTF (Electro-Optical Transfer Function)
+/// 3. Returns a Vector4 with RGBA components in device space
+pub fn color_to_device_rgba(color: Color, dc: &dyn DisplayCharacteristics) -> Vector4<f32> {
+    let lunear_device_rgb = color_to_linear_device_rgba(color, dc);
+    // Apply EOTF
+    dc.apply_eotf(&lunear_device_rgb)
 }
 
-/// Convert from CIE 1931 XYZ to xyY
-pub fn XYZ_to_xyY(xyz: &[f32; 3]) -> [f32; 3] {
-    let (X, Y, Z) = (xyz[0], xyz[1], xyz[2]);
-    let sum = X + Y + Z;
+/// Convert a Color to device space RGBA with EOTFs applied.
+///
+/// This function:
+/// 1. Converts the color to linear device RGB (if needed)
+/// 2. Applies the appropriate EOTF (Electro-Optical Transfer Function)
+/// 3. Returns a Vector4 with RGBA components in device space
+pub fn color_to_linear_device_rgba(color: Color, dc: &dyn DisplayCharacteristics) -> Vector4<f32> {
+    match color {
+        Color::RGBA(rgba) => {
+            let rgba = match rgba.space {
+                // Already in device space with EOTF applied
+                RGBColorSpace::Device => (Vector4::new(rgba.r, rgba.g, rgba.b, rgba.a)),
 
-    if sum == 0.0 {
-        return [0.0, 0.0, 0.0];
+                // Linear device space - apply EOTF
+                RGBColorSpace::DeviceLinear => dc.apply_eotf(&Vector4::new(rgba.r, rgba.g, rgba.b, rgba.a)),
+
+                // sRGB with encoding - convert to linear, transform to device, apply EOTF
+                RGBColorSpace::SRGB => {
+                    // Transform from linear sRGB to linear device RGB
+                    let xyza = srgba_to_xyz(Vector4::new(rgba.r, rgba.g, rgba.b, rgba.a));
+                    dc.xyza_to_device_rgba(&xyza)
+                }
+
+                // Linear sRGB - transform to device, apply EOTF
+                RGBColorSpace::SRGBLinear => {
+                    // Transform from linear sRGB to linear device RGB
+                    let xyza = srgba_linear_to_xyz(Vector4::new(rgba.r, rgba.g, rgba.b, rgba.a));
+                    dc.xyza_to_linear_device_rgba(&xyza)
+                }
+            };
+            rgba
+        }
+
+        // For other color spaces, convert to XYZ, then to device RGB
+        Color::XYZA(xyza) => {
+            let xyza = Vector4::new(xyza.x, xyza.y, xyza.z, xyza.a);
+            dc.xyza_to_device_rgba(&xyza)
+        }
+
+        Color::LuvA(luva) => {
+            // Convert Luv to XYZ first
+            let white_point = luva.white_point;
+            let luva = Vector4::new(luva.l, luva.u, luva.v, luva.a);
+            let xyza = luva_to_xyza(luva, white_point);
+            dc.xyza_to_linear_device_rgba(&xyza)
+        }
+
+        Color::LabA(laba) => {
+            // Convert Lab to XYZ first
+            let xyza = laba_to_xyza(Vector4::new(laba.l, laba.a, laba.b, laba.a), laba.white_point);
+            let device_linear = dc.xyza_to_linear_device_rgba(&xyza);
+            dc.apply_eotf(&device_linear)
+        }
     }
-
-    let x = X / sum;
-    let y = Y / sum;
-
-    [x, y, Y]
-}
-
-pub fn rgb_to_hsl(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
-    let max = r.max(g.max(b));
-    let min = r.min(g.min(b));
-    let l = (max + min) / 2.0;
-
-    if max == min {
-        return (0.0, 0.0, l); // achromatic
-    }
-
-    let d = max - min;
-    let s = if l > 0.5 {
-        d / (2.0 - max - min)
-    } else {
-        d / (max + min)
-    };
-
-    let h = if max == r {
-        (g - b) / d + if g < b { 6.0 } else { 0.0 }
-    } else if max == g {
-        (b - r) / d + 2.0
-    } else {
-        (r - g) / d + 4.0
-    } / 6.0;
-
-    (h, s, l)
-}
-
-pub fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (f32, f32, f32) {
-    if s == 0.0 {
-        return (l, l, l); // achromatic
-    }
-
-    let q = if l < 0.5 { l * (1.0 + s) } else { l + s - l * s };
-    let p = 2.0 * l - q;
-
-    let r = hue_to_rgb(p, q, h + 1.0 / 3.0);
-    let g = hue_to_rgb(p, q, h);
-    let b = hue_to_rgb(p, q, h - 1.0 / 3.0);
-
-    (r, g, b)
-}
-
-fn hue_to_rgb(p: f32, q: f32, mut t: f32) -> f32 {
-    if t < 0.0 {
-        t += 1.0;
-    }
-    if t > 1.0 {
-        t -= 1.0;
-    }
-    if t < 1.0 / 6.0 {
-        p + (q - p) * 6.0 * t
-    } else if t < 1.0 / 2.0 {
-        q
-    } else if t < 2.0 / 3.0 {
-        p + (q - p) * (2.0 / 3.0 - t) * 6.0
-    } else {
-        p
-    }
-}
-
-pub fn lab_to_xyz(lab: &[f32; 3], white_point: &[f32; 3]) -> [f32; 3] {
-    let (l, a, b) = (lab[0], lab[1], lab[2]);
-
-    let y = (l + 16.0) / 116.0;
-    let x = a / 500.0 + y;
-    let z = y - b / 200.0;
-
-    let y3 = y.powi(3);
-    let x3 = x.powi(3);
-    let z3 = z.powi(3);
-
-    let y = if y3 > 0.008856 { y3 } else { (y - 16.0 / 116.0) / 7.787 };
-    let x = if x3 > 0.008856 { x3 } else { (x - 16.0 / 116.0) / 7.787 };
-    let z = if z3 > 0.008856 { z3 } else { (z - 16.0 / 116.0) / 7.787 };
-
-    [x * white_point[0], y * white_point[1], z * white_point[2]]
 }

@@ -64,7 +64,8 @@ pub(crate) fn create_fill_brush2<'a>(
 ) -> Result<Brush<'a>, crate::errors::PsydkError> {
     let fill_origin = fill_origin.unwrap_or((0.0, 0.0));
     if let Some(pattern) = pattern {
-        let fill_color = fill_color.as_ref().unwrap_or_default();
+        let default_fill_color = DisplayRGBA::default();
+        let fill_color = fill_color.as_ref().unwrap_or(&default_fill_color);
         Ok(create_fill_brush_pattern(fill_color, pattern, fill_origin))
     } else if let Some(gradient) = gradient {
         Ok(Brush::Gradient(gradient.clone()))

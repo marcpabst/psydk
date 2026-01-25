@@ -35,7 +35,7 @@ use super::{
     stimuli::{DynamicStimulus, Stimulus},
 };
 use crate::{
-    app::GPUState,
+    experiment::GPUState,
     context::Monitor,
     errors::{PsydkError, PsydkResult},
     input::{Event, EventHandler, EventHandlerId, EventHandlingExt, EventKind, EventReceiver},
@@ -618,6 +618,23 @@ impl Window {
             .set_ime_allowed(allowed);
     }
 
+    fn set_status_bar_shown(&self, shown: bool) {
+        // only works on ios
+
+        #[cfg(target_os = "ios")]
+        {
+            use winit::platform::ios::WindowExtIOS;
+            let win = self
+                .state
+                .lock()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .winit_window
+                .set_prefers_status_bar_hidden(!shown);
+        }
+    }
+
     fn viewing_distance(&self) -> f32 {
         let state = self.state.lock().unwrap();
         let state = state.as_ref().unwrap();
@@ -777,6 +794,13 @@ impl Window {
     fn py_set_soft_keyboard_shown(&self, allowed: bool, py: Python) {
         let self_wrapper = SendWrapper::new(self);
         py.allow_threads(move || self_wrapper.set_soft_keyboard_shown(allowed));
+    }
+
+    /// Set the visibility of the status bar (iOS only, has no effect on other platforms).
+    #[pyo3(name = "set_status_bar_shown")]
+    fn py_set_status_bar_shown(&self, shown: bool, py: Python) {
+        let self_wrapper = SendWrapper::new(self);
+        py.allow_threads(move || self_wrapper.set_status_bar_shown(shown));
     }
 
     /// Get/set the viewing distance in meters.

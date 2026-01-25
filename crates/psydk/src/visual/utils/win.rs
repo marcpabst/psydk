@@ -5,7 +5,7 @@ use windows::Wdk::Graphics::Direct3D::{
     D3DKMT_OPENADAPTERFROMLUID,
 };
 
-use windows::Win32::Devices::Display::DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME;
+use windows::Win32::Devices::Display::WindowConfig_DEVICE_INFO_GET_SOURCE_NAME;
 use windows::Win32::Graphics::Direct3D12::ID3D12Device;
 use windows::Win32::Graphics::Gdi::HMONITOR;
 use windows::{
@@ -23,9 +23,9 @@ use windows::{
 use windows::{
     core::Error,
     Win32::Devices::Display::{
-        DisplayConfigGetDeviceInfo, QueryDisplayConfig, DISPLAYCONFIG_DEVICE_INFO_HEADER,
-        DISPLAYCONFIG_DEVICE_INFO_TYPE, DISPLAYCONFIG_MODE_INFO, DISPLAYCONFIG_PATH_INFO,
-        DISPLAYCONFIG_SOURCE_DEVICE_NAME, QDC_ONLY_ACTIVE_PATHS,
+        WindowConfigGetDeviceInfo, QueryWindowConfig, WindowConfig_DEVICE_INFO_HEADER,
+        WindowConfig_DEVICE_INFO_TYPE, WindowConfig_MODE_INFO, WindowConfig_PATH_INFO,
+        WindowConfig_SOURCE_DEVICE_NAME, QDC_ONLY_ACTIVE_PATHS,
     },
     Win32::Graphics::{
         Dxgi::{IDXGIAdapter, IDXGIOutput, IDXGISwapChain, DXGI_ADAPTER_DESC, DXGI_OUTPUT_DESC},
@@ -105,14 +105,14 @@ pub fn get_adapter_and_vidpn_source(swap_chain: &IDXGISwapChain) -> Win32Result<
 
     println!("Monitor device name: {}", device_name);
 
-    // 3. Use QueryDisplayConfig to find the VidPnSourceId for this device
+    // 3. Use QueryWindowConfig to find the VidPnSourceId for this device
     let mut num_paths = 128u32;
     let mut num_modes = 128u32;
 
-    let mut paths = vec![DISPLAYCONFIG_PATH_INFO::default(); num_paths as usize];
-    let mut modes = vec![DISPLAYCONFIG_MODE_INFO::default(); num_modes as usize];
+    let mut paths = vec![WindowConfig_PATH_INFO::default(); num_paths as usize];
+    let mut modes = vec![WindowConfig_MODE_INFO::default(); num_modes as usize];
     unsafe {
-        QueryDisplayConfig(
+        QueryWindowConfig(
             QDC_ONLY_ACTIVE_PATHS,
             &mut num_paths,
             paths.as_mut_ptr(),
@@ -123,7 +123,7 @@ pub fn get_adapter_and_vidpn_source(swap_chain: &IDXGISwapChain) -> Win32Result<
     }
 
     println!(
-        "QueryDisplayConfig returned {} paths and {} modes",
+        "QueryWindowConfig returned {} paths and {} modes",
         num_paths, num_modes
     );
 
@@ -137,18 +137,18 @@ pub fn get_adapter_and_vidpn_source(swap_chain: &IDXGISwapChain) -> Win32Result<
         let source_id = path.sourceInfo.id;
         let adapter_id = path.sourceInfo.adapterId;
 
-        let mut source_name = DISPLAYCONFIG_SOURCE_DEVICE_NAME {
-            header: DISPLAYCONFIG_DEVICE_INFO_HEADER {
-                r#type: DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME,
-                size: std::mem::size_of::<DISPLAYCONFIG_SOURCE_DEVICE_NAME>() as u32,
+        let mut source_name = WindowConfig_SOURCE_DEVICE_NAME {
+            header: WindowConfig_DEVICE_INFO_HEADER {
+                r#type: WindowConfig_DEVICE_INFO_GET_SOURCE_NAME,
+                size: std::mem::size_of::<WindowConfig_SOURCE_DEVICE_NAME>() as u32,
                 adapterId: adapter_id,
                 id: source_id,
             },
             viewGdiDeviceName: [0; 32],
         };
 
-        let status = unsafe { DisplayConfigGetDeviceInfo(&mut source_name as *mut _ as _) };
-        println!("DisplayConfigGetDeviceInfo status: {}", status);
+        let status = unsafe { WindowConfigGetDeviceInfo(&mut source_name as *mut _ as _) };
+        println!("WindowConfigGetDeviceInfo status: {}", status);
         if status == 0 {
             let dev_name = String::from_utf16_lossy(
                 &source_name

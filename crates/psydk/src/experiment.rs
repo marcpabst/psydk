@@ -1,4 +1,4 @@
-use crate::visual::colors::display_characteristics::GenericDisplayCharacteristics;
+use crate::visual::colors::display::GenericDisplayCharacteristics;
 use atomic_float::AtomicF64;
 use derive_debug::Dbg;
 use pyo3::{
@@ -25,7 +25,6 @@ use std::{
     },
     thread,
 };
-// use winit::platform::ios::EventLoopExtIOS;
 
 use crate::visual::colors::Color;
 use wgpu::MemoryHints;
@@ -38,7 +37,7 @@ use winit::{
 };
 
 use crate::{
-    config::{DisplayConfig, ExperimentConfig, PixelDepth},
+    config::{ColorType, ExperimentConfig, WindowConfig},
     context::{EventLoopAction, ExperimentContext, Monitor, WindowOptions},
     errors,
     input::Event,
@@ -49,6 +48,7 @@ use crate::{
 pub type ArcMutex<T> = Arc<Mutex<T>>;
 
 #[derive(Debug)]
+/// Holds the GPU state (instance, adapter, device, queue)s
 pub struct GPUState {
     pub instance: wgpu::Instance,
     pub adapter: wgpu::Adapter,
@@ -57,7 +57,8 @@ pub struct GPUState {
 }
 
 #[derive(Dbg)]
-pub struct App {
+/// The main experiment (which serves as the wini nt application handler)
+pub struct Experiment {
     pub windows: Vec<Window>,
     pub gpu_state: ArcMutex<GPUState>,
     pub action_receiver: Receiver<EventLoopAction>,
@@ -68,9 +69,9 @@ pub struct App {
     pub font_manager: ArcMutex<renderer::cosmic_text::FontSystem>,
 }
 
-impl App {
-    /// Create a new app with the given configuration.
-    pub fn new(config: ExperimentConfig) -> Self {
+impl Experiment {
+    /// Create a new experiment with the given configuration.
+    pub fn new(config: ExperimentConfig) -> Result<Self, errors::PsydkError> {
         // the main event loop is running on the main thread, but our experiment code will run in a separate thread
         // so we need to create a channel to communicate between the two threads
         let (action_sender, action_receiver) = std::sync::mpsc::channel();
@@ -103,13 +104,12 @@ impl App {
             force_fallback_adapter: false,
             compatible_surface: None, // idealy we would use the surface here, but we don't have it yet
         }))
-        .expect("Failed to find an suitable graphics adapter. This is likely a bug, please report it.");
+        .map_err(|e| errors::PsydkError::GPUError(format!("Failed to request graphics adapter: {}", e)))?;
 
         log::debug!("Selected graphics adapter: {:?}", adapter.get_info());
 
-        // TODO: check if its really necessary to request these limits
         let mut limits = wgpu::Limits::downlevel_defaults();
-        limits.max_storage_buffers_per_shader_stage = 16;
+        limits.max_storage_buffers_per_shader_stage = 16; // do we need to request this
 
         // we want to use higher-bit color formats if possible
         let features =
@@ -124,7 +124,7 @@ impl App {
             memory_hints: MemoryHints::Performance,
             trace: wgpu::Trace::Off,
         }))
-        .expect("Failed to create device. This is likely a bug, please report it.");
+        .map_err(|e| errors::PsydkError::GPUError(format!("Failed to create graphics device: {}", e)))?;
 
         log::debug!("Created graphics device: {:?}", device);
 
@@ -136,10 +136,11 @@ impl App {
         };
 
         // set the pixel format/texture format used for internal rendering
-        let internal_color_format = match config.internal_color_depth {
-            crate::config::PixelDepth::EightBit => renderer::color_formats::ColorFormat::Rgba8,
-            crate::config::PixelDepth::TenBit => renderer::color_formats::ColorFormat::Rgba10,
-            crate::config::PixelDepth::SixteenBitFloat => renderer::color_formats::ColorFormat::RgbaF16,
+        let internal_color_format = match config.internal_color_type {
+            ColorType::EightBit => renderer::color_formats::ColorFormat::Rgba8,
+            ColorType::TenBit => renderer::color_formats::ColorFormat::Rgba10,
+            ColorType::SixteenBitFloat => renderer::color_formats::ColorFormat::RgbaF16,
+            ColorType::ThirtyTwoBitFloat => panic!("32F color format not supported in renderer"),
         };
 
         // create a shared renderer state (can be shared between multiple windows)
@@ -165,7 +166,7 @@ impl App {
         let noto_sans_bold_italic = include_bytes!("../assets/fonts/NotoSans-BoldItalic.ttf");
         font_system.db_mut().load_font_data(noto_sans_bold_italic.to_vec());
 
-        Self {
+        Ok(Self {
             windows: vec![],
             gpu_state: Arc::new(Mutex::new(gpu_state)),
             action_receiver,
@@ -173,14 +174,14 @@ impl App {
             dummy_window: None,
             shared_renderer_state: Arc::new(shared_render_state),
             font_manager: Arc::new(Mutex::new(font_system)),
-        }
+        })
     }
 
     /// Create a new window with the given options.
     pub fn create_window(
         &self,
         window_options: &WindowOptions,
-        display_config: DisplayConfig,
+        display_config: WindowConfig,
         experiment_config: &ExperimentConfig,
         event_loop: &dyn ActiveEventLoop,
     ) -> Window {
@@ -191,7 +192,6 @@ impl App {
         winit_window.focus_window();
 
         log::debug!("Window created: {:?}", winit_window);
-        println!("Window created: {:?}", winit_window);
 
         let winit_window = Arc::new(winit_window);
 
@@ -219,9 +219,10 @@ impl App {
         // depending on the provided internal color format, there are multiple possible swapchain formats
         // not all formats are supported on all platforms, so we pick the first one that is supported
         let possible_swapchain_formats = match display_config.surface_color_depth {
-            PixelDepth::EightBit => vec![TextureFormat::Bgra8Unorm, TextureFormat::Rgba8Unorm],
-            PixelDepth::TenBit => vec![TextureFormat::Rgb10a2Unorm],
-            PixelDepth::SixteenBitFloat => vec![TextureFormat::Rgba16Float],
+            ColorType::EightBit => vec![TextureFormat::Bgra8Unorm, TextureFormat::Rgba8Unorm],
+            ColorType::TenBit => vec![TextureFormat::Rgb10a2Unorm],
+            ColorType::SixteenBitFloat => vec![TextureFormat::Rgba16Float],
+            ColorType::ThirtyTwoBitFloat => vec![TextureFormat::Rgba32Float],
         };
 
         let swapchain_format = possible_swapchain_formats
@@ -279,10 +280,11 @@ impl App {
         }
 
         // chose an internal color format based on internal_color_depth
-        let internal_color_format = match experiment_config.internal_color_depth {
-            PixelDepth::EightBit => ColorFormat::Rgba8,
-            PixelDepth::TenBit => ColorFormat::Rgba10,
-            PixelDepth::SixteenBitFloat => ColorFormat::RgbaF16,
+        let internal_color_format = match experiment_config.internal_color_type {
+            ColorType::EightBit => ColorFormat::Rgba8,
+            ColorType::TenBit => ColorFormat::Rgba10,
+            ColorType::SixteenBitFloat => ColorFormat::RgbaF16,
+            ColorType::ThirtyTwoBitFloat => panic!("32F color format not supported in renderer"),
         };
 
         let wgpu_renderer = pollster::block_on(renderer::wgpu_renderer::WgpuRenderer::new(
@@ -559,7 +561,7 @@ impl App {
         {
             // put self in a Box and leak it to get a 'static reference
             let slf = Box::new(self);
-            let slf: &'static mut App = Box::leak(slf);
+            let slf: &'static mut Experiment = Box::leak(slf);
 
             // start event loop
             let _ = event_loop.run_app(slf);
@@ -585,7 +587,7 @@ impl App {
     // Start a thread that will dispath
 }
 
-impl ApplicationHandler for App {
+impl ApplicationHandler for Experiment {
     // fn war_what_is_it_good_for(&self) {}
     fn resumed(&mut self, event_loop: &dyn winit::event_loop::ActiveEventLoop) {}
 
@@ -689,11 +691,4 @@ impl ApplicationHandler for App {
     }
 
     fn can_create_surfaces(&mut self, event_loop: &dyn ActiveEventLoop) {}
-}
-
-// print a message when App is dropped
-impl Drop for App {
-    fn drop(&mut self) {
-        println!("App is being dropped. That's not good!");
-    }
 }

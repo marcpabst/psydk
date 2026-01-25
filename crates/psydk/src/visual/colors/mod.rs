@@ -1,3 +1,8 @@
+//! Colors
+//!
+//! PsyDK's color system is centered around the `Color` enum, which can represent colors in various color spaces including RGBA, XYZA, LuvA, and LabA.
+//! RGBA colors can be specified in different RGB color spaces such as device space
+
 use nalgebra::{Matrix3, Vector3};
 use palette::white_point::C;
 use pyo3::prelude::*;
@@ -9,20 +14,156 @@ use pyo3::{prelude::*, types::PyTuple};
 use std::sync::Arc;
 
 mod conversion;
-pub mod display_characteristics;
-use conversion::{hsl_to_rgb, rgb_to_hsl};
-pub use display_characteristics::DisplayCharacteristics;
-pub mod psydk_1;
+pub mod display;
+pub use display::DisplayCharacteristics;
+
+#[pyclass]
+#[derive(Debug, Clone, Copy)]
+/// Main color enum representing different kinds of colors.
+pub enum Color {
+    /// RGB + alpha
+    RGBA(RGBA),
+    /// CIE 1931 XYZ + alpha
+    XYZA(XYZA),
+    /// CIE 1976 L*u*v* + alpha
+    LuvA(LuvA),
+    /// CIE 1976 L*a*b* + alpha
+    LabA(LabA),
+}
+
+impl Default for Color {
+    fn default() -> Self {
+        Color::new_rgba(1.0, 1.0, 1.0, 1.0, RGBColorSpace::SRGB)
+    }
+}
+
+impl Color {
+    /// Create a new RGBA color in the specified RGB color space
+    pub fn new_rgba(r: f32, g: f32, b: f32, a: f32, space: RGBColorSpace) -> Self {
+        Color::RGBA(RGBA { r, g, b, a, space })
+    }
+
+    /// Create a new device RGB color (output device's native color space)
+    pub fn new_device_rgba(r: f32, g: f32, b: f32, a: f32) -> Self {
+        Color::RGBA(RGBA {
+            r,
+            g,
+            b,
+            a,
+            space: RGBColorSpace::Device,
+        })
+    }
+
+    /// Create a new sRGBA color (standard sRGB color space)
+    pub fn new_srgba(r: f32, g: f32, b: f32, a: f32) -> Self {
+        Color::RGBA(RGBA {
+            r,
+            g,
+            b,
+            a,
+            space: RGBColorSpace::SRGB,
+        })
+    }
+
+    /// Create a new sRGB color (standard sRGB color space, alpha = 1.0)
+    pub fn new_srgb(r: f32, g: f32, b: f32) -> Self {
+        Color::RGBA(RGBA {
+            r,
+            g,
+            b,
+            a: 1.0,
+            space: RGBColorSpace::SRGB,
+        })
+    }
+
+    /// Create a new XYZA color in CIE 1931 XYZ color space
+    pub fn new_xyza(x: f32, y: f32, z: f32, a: f32) -> Self {
+        Color::XYZA(XYZA { x, y, z, a })
+    }
+
+    /// Create a new LuvA color in CIE 1976 L*u*v* color space
+    pub fn new_luva(l: f32, u: f32, v: f32, a: f32, white_point: [f32; 3]) -> Self {
+        Color::LuvA(LuvA {
+            l,
+            u,
+            v,
+            a,
+            white_point,
+        })
+    }
+
+    /// Create a new LabA color in CIE 1976 L*a*b* color space
+    pub fn new_laba(l: f32, a: f32, b: f32, alpha: f32, white_point: [f32; 3]) -> Self {
+        Color::LabA(LabA {
+            l,
+            a,
+            b,
+            alpha,
+            white_point,
+        })
+    }
+
+    /// Get the alpha component of the color
+    pub fn alpha(&self) -> f32 {
+        match self {
+            Color::RGBA(rgba) => rgba.a,
+            Color::XYZA(xyza) => xyza.a,
+            Color::LuvA(luva) => luva.a,
+            Color::LabA(laba) => laba.alpha,
+        }
+    }
+
+    /// Check if the color is in RGB color space
+    pub fn is_rgb(&self) -> bool {
+        matches!(self, Color::RGBA(_))
+    }
+
+    /// Check if the color is in CIE 1931 XYZ color space
+    pub fn is_xyz(&self) -> bool {
+        matches!(self, Color::XYZA(_))
+    }
+
+    /// Check if the color is in Luv color space
+    pub fn is_luv(&self) -> bool {
+        matches!(self, Color::LuvA(_))
+    }
+
+    /// Check if the color is in Lab color space
+    pub fn is_lab(&self) -> bool {
+        matches!(self, Color::LabA(_))
+    }
+
+    pub fn to_display_rgba(&self, dc: &dyn display::DisplayCharacteristics) -> DisplayRGBA {
+        todo!()
+    }
+}
 
 #[pyclass]
 /// RGBA color with floating point components.
 #[derive(Debug, Clone, Copy)]
 pub struct RGBA {
+    /// Red channel
     pub r: f32,
+    /// Green channel
     pub g: f32,
+    /// Blue channel
     pub b: f32,
+    /// Alpha channel
     pub a: f32,
+    /// The RGB color space
     pub space: RGBColorSpace,
+}
+
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+pub enum RGBColorSpace {
+    /// The output device's native color space.
+    Device,
+    /// The output device's native color space (linearized).
+    DeviceLinear,
+    /// Standard sRGB color space, with sRGB encoding.
+    SRGB,
+    /// Linear sRGB color space, no encoding.
+    SRGBLinear,
 }
 
 #[pyclass]
@@ -56,6 +197,7 @@ pub struct LuvA {
 }
 
 #[pyclass]
+/// CIE 1976 L*a*b* color with alpha channel
 #[derive(Debug, Clone, Copy)]
 pub struct LabA {
     /// L component
@@ -70,37 +212,9 @@ pub struct LabA {
     pub white_point: [f32; 3],
 }
 
-#[pyclass]
-#[derive(Debug, Clone, Copy)]
-pub enum Color {
-    RGBA(RGBA),
-    XYZA(XYZA),
-    LuvA(LuvA),
-    LabA(LabA),
-}
-
-#[derive(Clone)]
-pub enum Display {
-    /// A display with known characteristics
-    DisplayCharacteristics(Arc<dyn DisplayCharacteristics>),
-    /// A display defined by an ICC profile
-    ICCProfile(Vec<u8>),
-}
-
-#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
-pub enum RGBColorSpace {
-    /// The output device's native color space.
-    Native,
-    /// The output device's native color space (linearized).
-    NativeLinear,
-    /// Standard sRGB color space, with sRGB encoding.
-    SRGB,
-    /// Linear sRGB color space, no encoding.
-    SRGBLinear,
-}
-
 #[derive(Debug, Default, Clone, Copy)]
 #[repr(C)]
+/// A generic 3-channel color representation.
 pub struct GenericColor {
     pub c1: f32,
     pub c2: f32,
@@ -116,6 +230,12 @@ pub struct DisplayRGBA {
     pub a: f32,
 }
 
+impl DisplayRGBA {
+    pub fn new(r: f32, g: f32, b: f32, a: f32) -> Self {
+        Self { r, g, b, a }
+    }
+}
+
 impl Default for DisplayRGBA {
     fn default() -> Self {
         DisplayRGBA {
@@ -124,187 +244,6 @@ impl Default for DisplayRGBA {
             b: 0.0,
             a: 0.0,
         }
-    }
-}
-
-impl Default for &DisplayRGBA {
-    fn default() -> Self {
-        &DisplayRGBA {
-            r: 0.0,
-            g: 0.0,
-            b: 0.0,
-            a: 0.0,
-        }
-    }
-}
-
-impl DisplayRGBA {
-    pub fn new(r: f32, g: f32, b: f32, a: f32) -> Self {
-        Self { r, g, b, a }
-    }
-}
-
-impl Color {
-    pub fn new_rgba(r: f32, g: f32, b: f32, a: f32, space: RGBColorSpace) -> Self {
-        Color::RGBA(RGBA { r, g, b, a, space })
-    }
-
-    pub fn new_srgba(r: f32, g: f32, b: f32, a: f32) -> Self {
-        Color::RGBA(RGBA {
-            r,
-            g,
-            b,
-            a,
-            space: RGBColorSpace::SRGB,
-        })
-    }
-
-    pub fn new_srgb(r: f32, g: f32, b: f32) -> Self {
-        Color::RGBA(RGBA {
-            r,
-            g,
-            b,
-            a: 1.0,
-            space: RGBColorSpace::SRGB,
-        })
-    }
-
-    pub fn new_xyza(x: f32, y: f32, z: f32, a: f32) -> Self {
-        Color::XYZA(XYZA { x, y, z, a })
-    }
-
-    pub fn new_luva(l: f32, u: f32, v: f32, a: f32, white_point: [f32; 3]) -> Self {
-        Color::LuvA(LuvA {
-            l,
-            u,
-            v,
-            a,
-            white_point,
-        })
-    }
-
-    pub fn new_laba(l: f32, a: f32, b: f32, alpha: f32, white_point: [f32; 3]) -> Self {
-        Color::LabA(LabA {
-            l,
-            a,
-            b,
-            alpha,
-            white_point,
-        })
-    }
-
-    pub fn alpha(&self) -> f32 {
-        match self {
-            Color::RGBA(rgba) => rgba.a,
-            Color::XYZA(xyza) => xyza.a,
-            Color::LuvA(luva) => luva.a,
-            Color::LabA(laba) => laba.alpha,
-        }
-    }
-
-    /// Check if the color is in RGB color space
-    pub fn is_rgb(&self) -> bool {
-        matches!(self, Color::RGBA(_))
-    }
-
-    /// Check if the color is in CIE 1931 XYZ color space
-    pub fn is_xyz(&self) -> bool {
-        matches!(self, Color::XYZA(_))
-    }
-
-    /// Check if the color is in Luv color space
-    pub fn is_luv(&self) -> bool {
-        matches!(self, Color::LuvA(_))
-    }
-
-    /// Check if the color is in Lab color space
-    pub fn is_lab(&self) -> bool {
-        matches!(self, Color::LabA(_))
-    }
-
-    /// Convert the color to CIE 1931 XYZ color space.
-    pub fn to_xyz(&self) -> Result<Vector3<f32>, String> {
-        match self {
-            Color::RGBA(rgba) => {
-                // for RGB colors, conveersion depends on the color space
-                match rgba.space {
-                    // standard sRGB
-                    RGBColorSpace::SRGB => {
-                        // Convert sRGB to linear RGB
-                        let r_lin = if rgba.r <= 0.04045 {
-                            rgba.r / 12.92
-                        } else {
-                            ((rgba.r + 0.055) / 1.055).powf(2.4)
-                        };
-                        let g_lin = if rgba.g <= 0.04045 {
-                            rgba.g / 12.92
-                        } else {
-                            ((rgba.g + 0.055) / 1.055).powf(2.4)
-                        };
-                        let b_lin = if rgba.b <= 0.04045 {
-                            rgba.b / 12.92
-                        } else {
-                            ((rgba.b + 0.055) / 1.055).powf(2.4)
-                        };
-                        // Convert linear RGB to XYZ using the SRGB_TO_XYZ_DEBUG
-                        let rgb = Vector3::new(r_lin, g_lin, b_lin);
-                        let xyz = SRGB_TO_XYZ * rgb;
-                        Ok([xyz.x, xyz.y, xyz.z])
-                    }
-                    // linear sRGB
-                    RGBColorSpace::SRGBLinear => {
-                        // Directly convert linear RGB to XYZ using the sRGB matrix
-                        let rgb = Vector3::new(rgba.r, rgba.g, rgba.b);
-                        let xyz = SRGB_TO_XYZ * rgb;
-                        Ok([xyz.x, xyz.y, xyz.z])
-                    }
-                    _ => Err("Conversion from this RGB color space to XYZ is not implemented".to_string()),
-                }
-            }
-            Color::XYZA(xyza) => Ok([xyza.x, xyza.y, xyza.z]),
-            Color::LuvA(luva) => Ok(conversion::luv_to_xyz(&[luva.l, luva.u, luva.v], &luva.white_point)),
-            Color::LabA(laba) => Ok(conversion::lab_to_xyz(&[laba.l, laba.alpha, laba.b], &laba.white_point)),
-        }
-        .map(|arr| Vector3::new(arr[0], arr[1], arr[2]))
-    }
-
-    pub fn to_display_rgba(&self, dc: &dyn DisplayCharacteristics) -> DisplayRGBA {
-        /// If Native, just return the RGBA values directly
-        if let Color::RGBA(rgba) = self {
-            if rgba.space == RGBColorSpace::Native {
-                return DisplayRGBA::new(rgba.r, rgba.g, rgba.b, rgba.a);
-            }
-        }
-
-        let xyz = self.to_xyz().expect("Failed to convert color to XYZ");
-
-        // Convert XYZ to display RGB using the display characteristics
-        let display_rgb = dc.xyz_to_rgb(&xyz);
-
-        DisplayRGBA::new(display_rgb.x, display_rgb.y, display_rgb.z, self.alpha())
-    }
-
-    /// Returns the luminance of the color in the respective display color space
-    pub fn luminance(&self, dc: &dyn DisplayCharacteristics) -> f32 {
-        let display_rgba = self.to_display_rgba(dc);
-        // Calculate luminance using Rec. 709 coefficients
-        0.2126 * display_rgba.r + 0.7152 * display_rgba.g + 0.0722 * display_rgba.b
-    }
-
-    /// Return true if the the colour is lighter than mid-grey in luminance
-    pub fn is_light(&self, dc: &dyn DisplayCharacteristics) -> bool {
-        self.luminance(dc) > 0.5
-    }
-
-    /// Return true if the the colour is darker than mid-grey in luminance
-    pub fn is_dark(&self, dc: &dyn DisplayCharacteristics) -> bool {
-        self.luminance(dc) <= 0.5
-    }
-}
-
-impl Default for Color {
-    fn default() -> Self {
-        Color::new_rgba(1.0, 1.0, 1.0, 1.0, RGBColorSpace::SRGB)
     }
 }
 
@@ -326,6 +265,7 @@ impl From<DisplayRGBA> for renderer::colors::RGBA {
 }
 
 #[derive(Debug, Clone, Copy)]
+/// Helper struct to convert from Python objects to Color
 pub struct IntoColor(pub Color);
 
 impl Default for IntoColor {
@@ -349,12 +289,12 @@ impl<'py> FromPyObject<'py> for IntoColor {
         // try to extract a tuple of 3 (alpha implicitly set to 1.0)
         // we assume native color space for tuples
         else if let Ok((r, g, b)) = ob.extract() {
-            Ok(Self(Color::new_rgba(r, g, b, 1.0, RGBColorSpace::Native)))
+            Ok(Self(Color::new_rgba(r, g, b, 1.0, RGBColorSpace::Device)))
         }
         // try to extract a tuple of 4
-        // we assume b sRGB color space for tuples
+        // we assume native color space for tuples
         else if let Ok((r, g, b, a)) = ob.extract() {
-            Ok(Self(Color::new_rgba(r, g, b, a, RGBColorSpace::Native)))
+            Ok(Self(Color::new_rgba(r, g, b, a, RGBColorSpace::Device)))
         }
         // try to extract from a string
         else if let Ok(color_str) = ob.extract::<String>() {
@@ -375,7 +315,7 @@ impl<'py> FromPyObject<'py> for IntoColor {
 #[pyfunction]
 #[pyo3(name = "rgb")]
 #[pyo3(signature = (r, g, b, a = 1.0))]
-/// A color in the display's RGB color space.
+/// A color in the display's native RGB color space.
 ///
 /// Parameters
 /// ---------
@@ -393,13 +333,13 @@ impl<'py> FromPyObject<'py> for IntoColor {
 /// (r, g, b, a) : tuple
 ///   The RGB color as a tuple of 4 floats.
 pub fn py_rgb(r: f32, g: f32, b: f32, a: f32) -> Color {
-    Color::new_rgba(r, g, b, a, RGBColorSpace::Native)
+    Color::new_rgba(r, g, b, a, RGBColorSpace::Device)
 }
 
 #[pyfunction]
 #[pyo3(name = "linrgb")]
 #[pyo3(signature = (r, g, b, a = 1.0))]
-/// A color in the display's linear RGB color space.
+/// A color in linear device space.
 ///
 /// Parameters
 /// ---------
@@ -417,23 +357,7 @@ pub fn py_rgb(r: f32, g: f32, b: f32, a: f32) -> Color {
 /// (r, g, b, a) : tuple
 ///   The linear RGB color as a tuple of 4 floats.
 pub fn py_linrgb(r: f32, g: f32, b: f32, a: f32) -> Color {
-    Color::new_rgba(r, g, b, a, RGBColorSpace::NativeLinear)
-}
-
-#[pyfunction]
-#[pyo3(name = "srgb")]
-#[pyo3(signature = (r, g, b, a = 1.0))]
-/// A color in the standard sRGB color space.
-pub fn py_srgb(r: f32, g: f32, b: f32, a: f32) -> Color {
-    Color::new_rgba(r, g, b, a, RGBColorSpace::SRGB)
-}
-
-#[pyfunction]
-#[pyo3(name = "linsrgb")]
-#[pyo3(signature = (r, g, b, a = 1.0))]
-/// A color in the linear sRGB color space.
-pub fn py_linsrgb(r: f32, g: f32, b: f32, a: f32) -> Color {
-    Color::new_rgba(r, g, b, a, RGBColorSpace::SRGBLinear)
+    Color::new_rgba(r, g, b, a, RGBColorSpace::DeviceLinear)
 }
 
 #[pyfunction]

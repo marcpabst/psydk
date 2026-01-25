@@ -1,6 +1,5 @@
-use crate::visual::colors::{
-    display_characteristics::GenericDisplayCharacteristics, psydk_1::Psydk1DisplayCharacteristics,
-    DisplayCharacteristics,
+use crate::visual::colors::display::{
+    CustomDisplayCharacteristics, DisplayCharacteristics, GenericDisplayCharacteristics,
 };
 use pyo3::prelude::*;
 use renderer::color_formats::ColorFormat;
@@ -15,13 +14,13 @@ pub struct ExperimentConfig {
     /// debug mode
     pub debug: bool,
     /// internel color depth
-    pub internal_color_depth: PixelDepth,
-    /// are internal colors in the display's color space
-    pub internal_colors_are_in_display_color_space: bool,
+    pub internal_color_type: ColorType,
+    /// are internal colors linear?
+    pub internal_colors_are_linear: bool,
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PixelDepth {
+pub enum ColorType {
     /// 8-bit unsigned integer per channel
     #[default]
     EightBit,
@@ -29,18 +28,46 @@ pub enum PixelDepth {
     TenBit,
     /// 16-bit floating point per channel
     SixteenBitFloat,
+    /// 32-bit floating point per channel
+    ThirtyTwoBitFloat,
+}
+
+impl ColorType {
+    /// Convert to renderer ColorFormat
+    pub fn to_color_format(&self) -> ColorFormat {
+        match self {
+            ColorType::EightBit => ColorFormat::Rgba8,
+            ColorType::TenBit => ColorFormat::Rgba10,
+            ColorType::SixteenBitFloat => ColorFormat::RgbaF16,
+            ColorType::ThirtyTwoBitFloat => panic!("32F color format not supported in renderer"),
+        }
+    }
+}
+
+impl std::str::FromStr for ColorType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "8U" => Ok(ColorType::EightBit),
+            "10U" => Ok(ColorType::TenBit),
+            "16F" => Ok(ColorType::SixteenBitFloat),
+            "32F" => Ok(ColorType::ThirtyTwoBitFloat),
+            _ => Err(format!("Invalid color type: {}", s)),
+        }
+    }
 }
 
 #[pyclass]
 #[derive(Clone)]
 /// Configuration for the display.
-pub struct DisplayConfig {
+pub struct WindowConfig {
     /// The surface color depth to use (normally 8, 10, or 12 bit). Psydk will
     /// throw an error if you try to use a color depth that is not
     /// supported. Note that on some systems, chosing a higher bit depth
     /// than supported by the display will result in temporal dithering being
     /// applied by the operating system/graphics driver.
-    pub surface_color_depth: PixelDepth,
+    pub surface_color_depth: ColorType,
     // /// How to tag the surface color space. Depending on your
     // /// operating system and display, this might affect rendering.
     // /// If not set, psydk will try to make sure that the display's
@@ -52,11 +79,10 @@ pub struct DisplayConfig {
     pub display_characteristics: Arc<dyn DisplayCharacteristics + Send + Sync>,
 }
 
-impl Default for DisplayConfig {
+impl Default for WindowConfig {
     fn default() -> Self {
         Self {
-            surface_color_depth: PixelDepth::EightBit,
-            // display_color_space: ColorSpace::Native,
+            surface_color_depth: ColorType::EightBit,
             display_characteristics: Arc::new(GenericDisplayCharacteristics::default()),
         }
     }
@@ -65,106 +91,69 @@ impl Default for DisplayConfig {
 #[pymethods]
 impl ExperimentConfig {
     #[new]
-    #[pyo3(signature = (pedantic=true, debug=false, internal_color_depth=None))]
+    #[pyo3(signature = (pedantic=true, debug=false, internal_color_type=None, internal_colors_are_linear=false))]
     /// Defines how your experiment will be run.
     ///
     /// # Parameters
     /// - `pedantic`: If true, psydk will be more strict about checking for errors.
     /// - `debug`: If true, psydk will print debug information.
-    /// - `internal_color_depth`: The internal color depth to use. Must be one of '8U', '10U', or '16F'. Defaults to '8U'.
+    /// - `internal_color_type`: The internal color depth to use. Must be one of '8U', '10U', or '16F'. Defaults to '8U'.
     ///    If you use a display with a higher color depth than 8-bit, you should set this to '10U' or '16F'.
-    pub fn new(pedantic: bool, debug: bool, internal_color_depth: Option<&str>) -> PyResult<Self> {
+    pub fn new(
+        pedantic: bool,
+        debug: bool,
+        internal_color_type: Option<&str>,
+        internal_colors_are_linear: bool,
+    ) -> PyResult<Self> {
         Ok(Self {
             pedantic,
             debug,
-            internal_color_depth: match internal_color_depth {
-                Some("8U") => PixelDepth::EightBit,
-                Some("10U") => PixelDepth::TenBit,
-                Some("16F") => PixelDepth::SixteenBitFloat,
-                Some(other) => {
-                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                        "Invalid internal_color_depth: {}. Must be one of '8U', '10U', '16F'",
-                        other
-                    )))
-                }
-                None => PixelDepth::EightBit,
+            internal_color_type: if let Some(color_type_str) = internal_color_type {
+                color_type_str
+                    .parse()
+                    .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?
+            } else {
+                ColorType::default()
             },
-            internal_colors_are_in_display_color_space: true,
+            internal_colors_are_linear,
         })
     }
 }
 
 #[pymethods]
-impl DisplayConfig {
+impl WindowConfig {
     #[new]
     #[pyo3(signature = (
-        surface_color_depth=None,
-        generic_display=None,
+        surface_color_type=None,
         calibration_file=None
     ))]
     /// Defines the the properties the colour/luminance output of the display.
     /// You can either provide a calibration file or assume a generic display.
     ///
     /// # Parameters
-    /// - `surface_color_depth`: The surface color depth to use (normally 8, 16 or 10 bit) for the display surface.
-    ///   Psydk will throw an error if you try to use a color depth that is not supported.
-    /// - `generic_display`: If you don't provide a calibration file, psydk will use a generic display model. Must be one of:
-    ///   - 'srgb': Standard RGB display (default, gamma 2.2)
-    ///   - 'linear_srgb': Linear sRGB display (gamma 1.0)
-    ///   - 'display_p3': Display P3 display (gamma 2.2)
+    /// - `surface_color_type`: The surface color depth to use. Must be one of '8U', '10U', or '12U'. Defaults to '8U'.
     /// - `calibration_file`: Path to a display calibration file in JSON format.
-    pub fn new(
-        surface_color_depth: Option<&str>,
-        generic_display: Option<&str>,
-        calibration_file: Option<&str>,
-    ) -> PyResult<Self> {
-        // build display characteristics
+    pub fn new(surface_color_type: Option<&str>, calibration_file: Option<&str>) -> PyResult<Self> {
         let display_characteristics: Arc<dyn DisplayCharacteristics + Send + Sync> =
-            // try to load calibration file if provided
-            if let Some(calibration_file) = calibration_file {
-                // load from file
-                let file = File::open(calibration_file).map_err(|e| {
-                    PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                        "Failed to open display calibration file: {}",
-                        e
-                    ))
-                })?;
-
-                let reader = BufReader::new(file);
-                let gc: Psydk1DisplayCharacteristics = serde_json::from_reader(reader).map_err(|e| {
-                    PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                        "Failed to load display calibration file: {}",
-                        e
-                    ))
-                })?;
-                Arc::new(gc)
-            } else if let Some(generic_display) = generic_display {
-                match generic_display {
-                    "srgb" => Arc::new(GenericDisplayCharacteristics::new_srgb()),
-                    "linear_srgb" => Arc::new(GenericDisplayCharacteristics::new_linear_srgb()),
-                    "display_p3" => Arc::new(GenericDisplayCharacteristics::new_display_p3()),
-                    other => panic!("Invalid generic_display: {}. Must be one of 'srgb', 'linear_srgb', 'display_p3'", other),
-                }
+            if let Some(file_path) = calibration_file {
+                Arc::new(CustomDisplayCharacteristics::from_file(file_path).map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to load calibration file: {}", e))
+                })?)
             } else {
                 Arc::new(GenericDisplayCharacteristics::default())
             };
 
-        // parse surface color depth
-        let surface_color_depth = match surface_color_depth {
-            Some("8U") => PixelDepth::EightBit,
-            Some("10U") => PixelDepth::TenBit,
-            Some("16F") => PixelDepth::SixteenBitFloat,
-            Some(other) => {
-                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                    "Invalid surface_color_depth: {}. Must be one of '8U', '10U', '16F'",
-                    other
-                )))
-            }
-            None => PixelDepth::EightBit,
+        let surface_color_type = if let Some(color_type_str) = surface_color_type {
+            color_type_str
+                .parse()
+                .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?
+        } else {
+            ColorType::default()
         };
+
         Ok(Self {
-            surface_color_depth,
-            display_characteristics,
+            surface_color_depth: surface_color_type,
+            display_characteristics: display_characteristics,
         })
     }
 }
@@ -174,8 +163,8 @@ impl Default for ExperimentConfig {
         Self {
             pedantic: true,
             debug: false,
-            internal_color_depth: PixelDepth::EightBit,
-            internal_colors_are_in_display_color_space: true,
+            internal_color_type: ColorType::default(),
+            internal_colors_are_linear: false,
         }
     }
 }
