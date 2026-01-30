@@ -10,11 +10,11 @@ use pyo3::{
 #[cfg(target_os = "ios")]
 use winit::platform::ios::EventLoopBuilderExtIOS;
 
-use renderer::{
+use crate::visual::renderer::{
     color_formats::{ColorEncoding, ColorFormat},
     cosmic_text,
-    renderer::SharedRendererState,
     wgpu::TextureFormat,
+    Renderer,
 };
 use std::{
     collections::{HashMap, VecDeque},
@@ -65,8 +65,8 @@ pub struct Experiment {
     pub action_sender: Sender<EventLoopAction>,
     pub dummy_window: Option<Window>,
     #[dbg(placeholder = "[[ RendererFactory ]]")]
-    pub shared_renderer_state: Arc<dyn SharedRendererState>,
-    pub font_manager: ArcMutex<renderer::cosmic_text::FontSystem>,
+    pub renderer: Arc<Renderer>,
+    pub font_manager: ArcMutex<crate::visual::renderer::cosmic_text::FontSystem>,
 }
 
 impl Experiment {
@@ -137,18 +137,18 @@ impl Experiment {
 
         // set the pixel format/texture format used for internal rendering
         let internal_color_format = match config.internal_color_type {
-            ColorType::EightBit => renderer::color_formats::ColorFormat::Rgba8,
-            ColorType::TenBit => renderer::color_formats::ColorFormat::Rgba10,
-            ColorType::SixteenBitFloat => renderer::color_formats::ColorFormat::RgbaF16,
+            ColorType::EightBit => crate::visual::renderer::color_formats::ColorFormat::Rgba8,
+            ColorType::TenBit => crate::visual::renderer::color_formats::ColorFormat::Rgba10,
+            ColorType::SixteenBitFloat => crate::visual::renderer::color_formats::ColorFormat::RgbaF16,
             ColorType::ThirtyTwoBitFloat => panic!("32F color format not supported in renderer"),
         };
 
-        // create a shared renderer state (can be shared between multiple windows)
-        let shared_render_state = renderer::skia_backend::SkiaSharedRendererState::new(
+        // create a renderer
+        let renderer = crate::visual::renderer::Renderer::new(
             &gpu_state.adapter,
             &gpu_state.device,
             &gpu_state.queue,
-            renderer::color_formats::ColorEncoding::Linear,
+            crate::visual::renderer::color_formats::ColorEncoding::Linear,
             internal_color_format,
         );
 
@@ -172,7 +172,7 @@ impl Experiment {
             action_receiver,
             action_sender,
             dummy_window: None,
-            shared_renderer_state: Arc::new(shared_render_state),
+            renderer: Arc::new(renderer),
             font_manager: Arc::new(Mutex::new(font_system)),
         })
     }
@@ -287,7 +287,7 @@ impl Experiment {
             ColorType::ThirtyTwoBitFloat => panic!("32F color format not supported in renderer"),
         };
 
-        let wgpu_renderer = pollster::block_on(renderer::wgpu_renderer::WgpuRenderer::new(
+        let wgpu_renderer = pollster::block_on(crate::visual::renderer::wgpu_renderer::WgpuRenderer::new(
             winit_window.clone(),
             instance,
             device,
@@ -297,9 +297,13 @@ impl Experiment {
         ));
 
         // create the skia renderer
-        let mut renderer = self
-            .shared_renderer_state
-            .create_renderer(swapchain_format, size.width, size.height);
+        let mut renderer = crate::visual::renderer::Renderer::new(
+            adapter,
+            device,
+            queue,
+            ColorEncoding::Linear,
+            internal_color_format,
+        );
 
         let winit_id = winit_window.id();
 
@@ -312,9 +316,8 @@ impl Experiment {
             winit_window: winit_window.clone(),
             surface,
             config,
-            renderer,
             wgpu_renderer,
-            shared_renderer_state: self.shared_renderer_state.clone(),
+            renderer: self.renderer.clone(),
             display_characteristics: display_config.display_characteristics.clone(),
             mouse_cursor_visible: true,
             mouse_position: None,
@@ -530,7 +533,7 @@ impl Experiment {
             self.gpu_state.clone(),
             event_loop_proxy,
             action_sender.clone(),
-            self.shared_renderer_state.clone(),
+            self.renderer.clone(),
             audio_host,
             self.font_manager.clone(),
             config,
@@ -542,7 +545,7 @@ impl Experiment {
 
         // start experiment
         thread::spawn(move || {
-            // println!("Experiment thread started on {:?}", std::thread::current().id());
+            log::debug!("Experiment thread started on {:?}", std::thread::current().id());
             let res = experiment_fn(exp_manager);
 
             // send Exit event to the event loop, then wake it up
@@ -592,7 +595,7 @@ impl ApplicationHandler for Experiment {
     fn resumed(&mut self, event_loop: &dyn winit::event_loop::ActiveEventLoop) {}
 
     fn proxy_wake_up(&mut self, event_loop: &dyn ActiveEventLoop) {
-        println!("Proxy wake up called");
+        log::debug!("Proxy wake up called");
         // check if we need to create a new window
         self.action_receiver.try_recv().map(|action| match action {
             EventLoopAction::CreateNewWindow(options, experiment_config, display_config, sender) => {

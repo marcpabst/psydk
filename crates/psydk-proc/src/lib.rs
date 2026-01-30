@@ -1,5 +1,7 @@
 extern crate proc_macro;
+use proc_macro::TokenStream;
 use quote::quote;
+use syn::{parse_macro_input, DeriveInput, Type};
 
 fn extract_path(ty: &syn::Type) -> syn::Path {
     match ty {
@@ -124,9 +126,6 @@ pub fn derive_answer_fn(item: proc_macro::TokenStream) -> proc_macro::TokenStrea
     proc_macro::TokenStream::from(expanded)
 }
 
-use proc_macro::TokenStream;
-use syn::{parse_macro_input, DeriveInput};
-
 #[proc_macro_derive(CallFn)]
 pub fn derive_call_fn(input: TokenStream) -> TokenStream {
     // Parse the input (the enum on which we're deriving) into a syntax tree
@@ -182,12 +181,12 @@ pub fn derive_from_py_str(input: TokenStream) -> TokenStream {
     // We make `call_fn` take `self` by value here; you can change it to `&self` if needed.
     let expanded = quote! {
 
+        impl FromPyObject<'_, '_> for #enum_ident {
+            type Error = PyErr;
 
-
-        impl<'py> FromPyObject<'py> for #enum_ident {
-            fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
+            fn extract(obj: Borrowed<'_, '_, PyAny>) -> Result<Self, Self::Error> {
                 use std::str::FromStr;
-                let s = ob.extract::<String>()?;
+                let s = obj.extract::<String>()?;
                 if let Ok(v) = #enum_ident::from_str(&s) {
                     Ok(v)
                 } else {
@@ -199,4 +198,46 @@ pub fn derive_from_py_str(input: TokenStream) -> TokenStream {
     };
 
     expanded.into()
+}
+#[proc_macro_derive(DerefNewtype)]
+pub fn derive_deref_newtype(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let name = &input.ident;
+
+    // extract the inner type from the single unnamed field
+    let inner_ty = match input.data {
+        syn::Data::Struct(ref data) => match data.fields {
+            syn::Fields::Unnamed(ref f) if f.unnamed.len() == 1 => &f.unnamed[0].ty,
+            _ => panic!("DerefNewtype requires a tuple struct with exactly one field"),
+        },
+        _ => panic!("DerefNewtype can only be derived on structs"),
+    };
+
+    let expanded = quote! {
+        impl ::std::ops::Deref for #name {
+            type Target = #inner_ty;
+
+            fn deref(&self) -> &Self::Target {
+                &self.0
+            }
+        }
+
+        impl ::std::ops::DerefMut for #name {
+            fn deref_mut(&mut self) -> &mut Self::Target {
+                &mut self.0
+            }
+        }
+    };
+
+    // also allow conversion from inner type to newtype
+    let expanded = quote! {
+        #expanded
+        impl From<#inner_ty> for #name {
+            fn from(value: #inner_ty) -> Self {
+                #name(value)
+            }
+        }
+    };
+
+    TokenStream::from(expanded)
 }

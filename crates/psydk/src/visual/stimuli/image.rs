@@ -1,17 +1,17 @@
 use crate::visual::colors::Color;
 use crate::visual::colors::IntoColor;
-use num_traits::Bounded;
-use numpy::{PyReadonlyArray2, PyReadonlyArray3, PyReadonlyArray4, PyUntypedArrayMethods};
-use psydk_proc::StimulusParams;
-use pyo3::ffi::c_str;
-use renderer::image::{ImageBuffer, Pixel, RgbImage, Rgba, RgbaImage};
-use renderer::{
+use crate::visual::renderer::image::{ImageBuffer, Pixel, RgbImage, Rgba, RgbaImage};
+use crate::visual::renderer::{
     brushes::{Brush, Extend, ImageSampling},
     image::Rgb,
     shapes::Shape,
     styles::ImageFitMode,
-    DynamicBitmap, DynamicScene,
+    Bitmap, Scene,
 };
+use num_traits::Bounded;
+use numpy::{PyReadonlyArray2, PyReadonlyArray3, PyReadonlyArray4, PyUntypedArrayMethods};
+use psydk_proc::StimulusParams;
+use pyo3::ffi::c_str;
 use std::{
     ops::Deref,
     sync::{Arc, Mutex},
@@ -24,10 +24,10 @@ use super::{
     impl_pystimulus_for_wrapper, PyStimulus, Stimulus, StimulusParamValue, StimulusParams,
 };
 use crate::{
-    context::{ExperimentContext, PyRendererFactory},
+    context::ExperimentContext,
     visual::{
         geometry::{Anchor, Size, Transformation2D},
-        window::{Frame, WindowState},
+        window::{Frame, WindowState, WindowStateSnapshot},
     },
 };
 
@@ -43,9 +43,9 @@ pub struct ImageParams {
     /// Height of the stimulus.
     pub height: Size,
     /// Rotation of the stimulus in degrees.
-    pub rotation: f64,
+    pub rotation: f32,
     /// Opacity of the stimulus, from 0.0 (transparent) to 1.0 (opaque).
-    pub opacity: f64,
+    pub opacity: f32,
     /// The x offset of the image within the stimulus.
     pub image_x: Size,
     /// The y offset of the image within the stimulus.
@@ -59,7 +59,7 @@ pub struct ImageStimulus {
     /// Parameters for the image stimulus.
     params: ImageParams,
     /// The image to be displayed.
-    image: DynamicBitmap,
+    image: Bitmap,
     /// The anchor point of the image stimulus for positioning.
     anchor: Anchor,
     /// The transformation applied to the image stimulus.
@@ -74,12 +74,7 @@ unsafe impl Send for ImageStimulus {}
 
 impl ImageStimulus {
     /// Creates a new `ImageStimulus` from an image and parameters.
-    pub fn from_image(
-        image: DynamicBitmap,
-        params: ImageParams,
-        transform: Option<Transformation2D>,
-        anchor: Anchor,
-    ) -> Self {
+    pub fn from_image(image: Bitmap, params: ImageParams, transform: Option<Transformation2D>, anchor: Anchor) -> Self {
         Self {
             id: Uuid::new_v4(),
             transformation: transform.unwrap_or_else(|| Transformation2D::Identity()),
@@ -135,8 +130,8 @@ impl PyImageStimulus {
         y: IntoSize,
         width: IntoSize,
         height: IntoSize,
-        rotation: f64,
-        opacity: f64,
+        rotation: f32,
+        opacity: f32,
         anchor: Anchor,
         transform: Option<Transformation2D>,
         srgb: bool,
@@ -146,49 +141,51 @@ impl PyImageStimulus {
 
         // try to extract a string from the src parameter
         let bitmap = if let Ok(path) = src.extract::<String>(py) {
-            ctx.renderer_factory().create_bitmap_from_path(&path)
+            todo!()
+            // ctx.renderer().create_bitmap_from_path(&path)
         } else if let Ok(path) = src.extract::<&str>(py) {
-            ctx.renderer_factory().create_bitmap_from_path(path)
+            todo!()
+            // ctx.renderer().create_bitmap_from_path(path)
         } else if let Ok(array) = src.extract::<PyReadonlyArray3<u8>>(py) {
             // Convert the Numpy array to a image::RgbImageBuffer
             let array = numpy3_to_image::<Rgba<u8>, u8>(array);
 
-            ctx.renderer_factory().create_bitmap_u8(
+            ctx.renderer().create_bitmap_from_image_u8(
                 array,
                 if srgb {
-                    renderer::color_formats::ColorEncoding::Srgb
+                    crate::visual::renderer::color_formats::ColorEncoding::Srgb
                 } else {
-                    renderer::color_formats::ColorEncoding::Linear
+                    crate::visual::renderer::color_formats::ColorEncoding::Linear
                 },
             )
         } else if let Ok(array) = src.extract::<PyReadonlyArray3<f32>>(py) {
             let array = numpy3_to_image::<Rgba<f32>, f32>(array);
-            ctx.renderer_factory().create_bitmap_f32(
+            ctx.renderer().create_bitmap_from_image_f32(
                 array,
                 if srgb {
-                    renderer::color_formats::ColorEncoding::Srgb
+                    crate::visual::renderer::color_formats::ColorEncoding::Srgb
                 } else {
-                    renderer::color_formats::ColorEncoding::Linear
+                    crate::visual::renderer::color_formats::ColorEncoding::Linear
                 },
             )
         } else if let Ok(array) = src.extract::<PyReadonlyArray4<u8>>(py) {
             let array = numpy4_to_image::<Rgba<u8>, u8>(array);
-            ctx.renderer_factory().create_bitmap_u8(
+            ctx.renderer().create_bitmap_from_image_u8(
                 array,
                 if srgb {
-                    renderer::color_formats::ColorEncoding::Srgb
+                    crate::visual::renderer::color_formats::ColorEncoding::Srgb
                 } else {
-                    renderer::color_formats::ColorEncoding::Linear
+                    crate::visual::renderer::color_formats::ColorEncoding::Linear
                 },
             )
         } else if let Ok(array) = src.extract::<PyReadonlyArray4<f32>>(py) {
             let array = numpy4_to_image::<Rgba<f32>, f32>(array);
-            ctx.renderer_factory().create_bitmap_f32(
+            ctx.renderer().create_bitmap_from_image_f32(
                 array,
                 if srgb {
-                    renderer::color_formats::ColorEncoding::Srgb
+                    crate::visual::renderer::color_formats::ColorEncoding::Srgb
                 } else {
-                    renderer::color_formats::ColorEncoding::Linear
+                    crate::visual::renderer::color_formats::ColorEncoding::Linear
                 },
             )
         } else {
@@ -196,6 +193,9 @@ impl PyImageStimulus {
                 "src must be a string, PathBuf, or a Numpy array",
             ));
         };
+
+        let bitmap =
+            bitmap.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create bitmap: {}", e)))?;
 
         Ok((
             Self(),
@@ -251,7 +251,7 @@ impl PyImageStimulus {
 
     //     let bitmap = ctx
     //         .renderer_factory()
-    //         .create_bitmap_u8(array, renderer::color_formats::ColorEncoding::Srgb);
+    //         .create_bitmap_u8(array, crate::visual::renderer::color_formats::ColorEncoding::Srgb);
 
     //     Ok((
     //         Self(),
@@ -281,7 +281,7 @@ impl Stimulus for ImageStimulus {
         self.id
     }
 
-    fn draw(&mut self, scene: &mut DynamicScene, window_state: &WindowState) {
+    fn draw(&mut self, scene: &mut crate::visual::renderer::wrapped::Scene, window_state: &WindowStateSnapshot) {
         if !self.visible {
             return;
         }
@@ -314,8 +314,8 @@ impl Stimulus for ImageStimulus {
         scene.draw_shape_fill(
             Shape::Rectangle {
                 a: (x, y).into(),
-                w: width as f64,
-                h: height as f64,
+                w: width,
+                h: height,
             },
             Brush::Image {
                 image: &self.image,
@@ -339,8 +339,8 @@ impl Stimulus for ImageStimulus {
         self.visible
     }
 
-    fn animations(&mut self) -> &mut Vec<Animation> {
-        &mut self.animations
+    fn animations(&mut self) -> Option<&mut Vec<Animation>> {
+        Some(&mut self.animations)
     }
 
     fn add_animation(&mut self, animation: Animation) {
@@ -359,7 +359,7 @@ impl Stimulus for ImageStimulus {
         self.transformation.clone()
     }
 
-    fn contains(&self, x: Size, y: Size, window_state: &WindowState) -> bool {
+    fn contains(&self, x: Size, y: Size, window_state: &WindowStateSnapshot) -> bool {
         let window_size = window_state.size;
         let screen_props = window_state.physical_screen;
 

@@ -1,4 +1,11 @@
-use crate::visual::colors::Color;
+use crate::visual::{
+    colors::Color,
+    stimuli::{
+        image::{ImageStimulus, PyImageStimulus},
+        text::{PyTextStimulus, TextStimulus},
+        PyStimulus,
+    },
+};
 use std::{
     collections::{HashMap, VecDeque},
     ops::Deref,
@@ -13,6 +20,8 @@ use std::{
 
 use crate::visual::colors::DisplayCharacteristics;
 
+use crate::visual::renderer::{wgpu_renderer::WgpuRenderer, Renderer};
+use crate::visual::stimuli::base::BaseStimulus;
 use async_channel::{bounded, Receiver, Sender};
 use atomic_float::AtomicF64;
 use derive_debug::Dbg;
@@ -20,11 +29,6 @@ use futures_lite::{future::block_on, Future};
 use nalgebra;
 use palette::IntoColor;
 use pyo3::prelude::*;
-use renderer::{
-    renderer::{DynamicRenderResources, SharedRendererState},
-    wgpu_renderer::WgpuRenderer,
-    DynamicRenderer, DynamicScene,
-};
 use send_wrapper::SendWrapper;
 use uuid::Uuid;
 use wgpu::TextureFormat;
@@ -35,9 +39,9 @@ use super::{
     stimuli::{DynamicStimulus, Stimulus},
 };
 use crate::{
-    experiment::GPUState,
     context::Monitor,
     errors::{PsydkError, PsydkResult},
+    experiment::GPUState,
     input::{Event, EventHandler, EventHandlerId, EventHandlingExt, EventKind, EventReceiver},
     time::Timestamp,
     visual::utils::find_zero_crossings,
@@ -120,6 +124,7 @@ pub type FrameId = u64;
 /// Internal window state. This is used to store the winit window, the wgpu
 /// device, the wgpu queue, etc.
 #[derive(Dbg)]
+#[pyclass]
 pub struct WindowState {
     /// the winit window
     pub winit_window: Arc<Box<dyn winit::window::Window>>,
@@ -134,10 +139,7 @@ pub struct WindowState {
     #[dbg(placeholder = "[[ WgpuRenderer ]]")]
     pub wgpu_renderer: WgpuRenderer,
     #[dbg(placeholder = "[[ DynamicRenderer ]]")]
-    pub renderer: DynamicRenderer,
-    /// The shared renderer state. This is used to share the renderer state
-    #[dbg(placeholder = "[[ DynamicRenderer ]]")]
-    pub shared_renderer_state: Arc<dyn SharedRendererState>,
+    pub renderer: Arc<Renderer>,
     /// The current mouse position. None if the mouse has left the window.
     pub mouse_position: Option<(f32, f32)>,
     /// Stores if the mouse cursor is currently visible.
@@ -163,6 +165,36 @@ pub struct WindowState {
 }
 
 unsafe impl Send for WindowState {}
+unsafe impl Sync for WindowState {}
+
+/// An owned, read-only view of the window state for use in stimulus drawing.
+#[derive(Clone)]
+#[pyclass]
+pub struct WindowStateSnapshot {
+    pub size: PixelSize,
+    pub physical_screen: PhysicalScreen,
+    pub display_characteristics: Arc<dyn DisplayCharacteristics>,
+    pub bg_color: Color,
+    pub mouse_position: Option<(f32, f32)>,
+    pub mouse_cursor_visible: bool,
+}
+
+// remove this once DisplayCharacteristics is Send + Sync
+unsafe impl Send for WindowStateSnapshot {}
+unsafe impl Sync for WindowStateSnapshot {}
+
+impl From<&WindowState> for WindowStateSnapshot {
+    fn from(win_state: &WindowState) -> Self {
+        Self {
+            size: win_state.size,
+            physical_screen: win_state.physical_screen,
+            display_characteristics: win_state.display_characteristics.clone(),
+            bg_color: win_state.bg_color,
+            mouse_position: win_state.mouse_position,
+            mouse_cursor_visible: win_state.mouse_cursor_visible,
+        }
+    }
+}
 
 impl WindowState {
     /// Resize the window's renders
@@ -178,10 +210,6 @@ impl WindowState {
     }
 }
 
-/// How to block when presenting a frame.
-/// A Window represents a window on the screen. It is used to create stimuli and
-/// to submit them to the screen for rendering. Each window has a render task
-/// that is responsible for rendering stimuli to the screen.
 #[derive(Dbg, Clone)]
 #[pyclass]
 pub struct Window {
@@ -274,20 +302,24 @@ impl Window {
         let suface_texture = win_state
             .surface
             .get_current_texture()
-            .expect("Failed to acquire next swap chain texture");
+            .map_err(|e| PsydkError::GPUError(format!("Failed to get current texture: {}", e)))?;
 
         let width = suface_texture.texture.size().width;
         let height = suface_texture.texture.size().height;
 
-        let texture = win_state.wgpu_renderer.texture();
-
         let mut scene = win_state.renderer.create_scene(width, height);
+        // wrap the scene to make it accessible to python
+        let mut scene = crate::visual::renderer::wrapped::Scene(scene);
+
+        let texture = win_state.wgpu_renderer.texture();
 
         for stimulus in &frame.stimuli {
             let now = Instant::now();
             let mut stimulus = (&stimulus).lock();
-            stimulus.update_animations(now, &win_state);
-            stimulus.draw(&mut scene, &win_state);
+            stimulus.update_animations(now, &(&*win_state).into());
+            // if this is a BaseStimulus, we need to call draw through the python runtime
+
+            stimulus.draw(&mut scene, &(&*win_state).into());
         }
 
         win_state
@@ -580,7 +612,7 @@ impl Window {
         let state = state.as_ref().unwrap();
 
         if let Some(frame) = &state.current_frame {
-            handled |= frame.dispatch_event_to_stimuli(&event, &state);
+            handled |= frame.dispatch_event_to_stimuli(&event, &state.into());
         }
         handled
     }
@@ -665,7 +697,7 @@ impl Window {
     #[pyo3(name = "get_frame")]
     fn py_get_frame(&self, py: Python) -> Frame {
         let self_wrapper = SendWrapper::new(self.clone());
-        let d = py.allow_threads(move || SendWrapper::new(self_wrapper.get_frame()));
+        let d = py.detach(move || SendWrapper::new(self_wrapper.get_frame()));
         d.take()
     }
 
@@ -699,7 +731,7 @@ impl Window {
     fn py_present(&self, frame: &mut Frame, py: Python) -> PyResult<f64> {
         let self_wrapper = SendWrapper::new(self.clone());
         let frame_wrapper = SendWrapper::new(frame);
-        py.allow_threads(move || self_wrapper.present(frame_wrapper.take()))
+        py.detach(move || self_wrapper.present(frame_wrapper.take()))
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
     }
 
@@ -716,7 +748,7 @@ impl Window {
     #[pyo3(name = "get_current_monitor")]
     fn py_get_current_monitor(&self, py: Python) -> Option<Monitor> {
         let self_wrapper = SendWrapper::new(self);
-        py.allow_threads(move || self_wrapper.get_current_monitor())
+        py.detach(move || self_wrapper.get_current_monitor())
     }
 
     #[pyo3(name = "get_size")]
@@ -728,7 +760,7 @@ impl Window {
     #[getter]
     fn py_get_bg_color(&self, py: Python) -> Color {
         let self_wrapper = SendWrapper::new(self);
-        py.allow_threads(move || {
+        py.detach(move || {
             let state = self_wrapper.state.lock().unwrap();
             let state = state.as_ref().unwrap();
             state.bg_color
@@ -739,7 +771,7 @@ impl Window {
     #[setter]
     fn py_set_bg_color(&self, py: Python, bg_color: Color) {
         let self_wrapper = SendWrapper::new(self);
-        py.allow_threads(move || {
+        py.detach(move || {
             let mut state = self_wrapper.state.lock().unwrap();
             let mut state = state.as_mut().unwrap();
             state.bg_color = bg_color
@@ -771,7 +803,7 @@ impl Window {
 
         let self_wrapper = SendWrapper::new(self);
 
-        let id = py.allow_threads(move || self_wrapper.add_event_handler(kind, rust_callback_fn));
+        let id = py.detach(move || self_wrapper.add_event_handler(kind, rust_callback_fn));
 
         id
     }
@@ -780,7 +812,7 @@ impl Window {
     #[pyo3(name = "remove_event_handler")]
     fn py_remove_event_handler(&self, id: EventHandlerId, py: Python) {
         let self_wrapper = SendWrapper::new(self);
-        py.allow_threads(move || self_wrapper.remove_event_handler(id));
+        py.detach(move || self_wrapper.remove_event_handler(id));
     }
 
     /// Create a new EventReceiver that will receive events from the window.
@@ -793,38 +825,38 @@ impl Window {
     #[pyo3(name = "set_soft_keyboard_shown")]
     fn py_set_soft_keyboard_shown(&self, allowed: bool, py: Python) {
         let self_wrapper = SendWrapper::new(self);
-        py.allow_threads(move || self_wrapper.set_soft_keyboard_shown(allowed));
+        py.detach(move || self_wrapper.set_soft_keyboard_shown(allowed));
     }
 
     /// Set the visibility of the status bar (iOS only, has no effect on other platforms).
     #[pyo3(name = "set_status_bar_shown")]
     fn py_set_status_bar_shown(&self, shown: bool, py: Python) {
         let self_wrapper = SendWrapper::new(self);
-        py.allow_threads(move || self_wrapper.set_status_bar_shown(shown));
+        py.detach(move || self_wrapper.set_status_bar_shown(shown));
     }
 
     /// Get/set the viewing distance in meters.
     #[getter(viewing_distance)]
     fn py_get_viewing_distance(&self, py: Python) -> f32 {
         let self_wrapper = SendWrapper::new(self);
-        py.allow_threads(move || self_wrapper.viewing_distance())
+        py.detach(move || self_wrapper.viewing_distance())
     }
     #[setter(viewing_distance)]
     fn py_set_viewing_distance(&self, py: Python, viewing_distance: f32) {
         let self_wrapper = SendWrapper::new(self);
-        py.allow_threads(move || self_wrapper.set_viewing_distance(viewing_distance));
+        py.detach(move || self_wrapper.set_viewing_distance(viewing_distance));
     }
 
     /// Get/set the pixel density in pixels per millimeter.
     #[getter(pixel_density)]
     fn py_get_pixel_density(&self, py: Python) -> f32 {
         let self_wrapper = SendWrapper::new(self);
-        py.allow_threads(move || self_wrapper.pixel_density())
+        py.detach(move || self_wrapper.pixel_density())
     }
     #[setter(pixel_density)]
     fn py_set_pixel_density(&self, py: Python, pixel_density: f32) {
         let self_wrapper = SendWrapper::new(self);
-        py.allow_threads(move || self_wrapper.set_pixel_density(pixel_density));
+        py.detach(move || self_wrapper.set_pixel_density(pixel_density));
     }
 
     // allows Window to be used as a context manager
@@ -894,7 +926,7 @@ impl FrameIterator {
             FrameIterationMode::Number(n) => {
                 if slf.current_index < n {
                     let slf_wrapper = SendWrapper::new(slf.window.clone());
-                    let frame = py.allow_threads(move || slf_wrapper.get_frame());
+                    let frame = py.detach(move || slf_wrapper.get_frame());
                     let frame_id = slf.current_index;
                     slf.current_index += 1;
                     Ok(Some((frame_id, frame)))
@@ -905,7 +937,7 @@ impl FrameIterator {
             FrameIterationMode::Time(duration) => {
                 if slf.start_time.elapsed() < duration {
                     let slf_wrapper = SendWrapper::new(slf.window.clone());
-                    let frame = py.allow_threads(move || slf_wrapper.get_frame());
+                    let frame = py.detach(move || slf_wrapper.get_frame());
                     let frame_id = slf.current_index;
                     slf.current_index += 1;
                     Ok(Some((frame_id, frame)))
@@ -915,7 +947,7 @@ impl FrameIterator {
             }
             FrameIterationMode::Forever => {
                 let slf_wrapper = SendWrapper::new(slf.window.clone());
-                let frame = py.allow_threads(move || slf_wrapper.get_frame());
+                let frame = py.detach(move || slf_wrapper.get_frame());
                 let frame_id = slf.current_index;
                 slf.current_index += 1;
                 Ok(Some((frame_id, frame)))
@@ -982,7 +1014,7 @@ impl Frame {
     }
 
     /// Dispatch an even to the Frame's stimuli.
-    pub fn dispatch_event_to_stimuli(&self, event: &Event, window_state: &WindowState) -> bool {
+    pub fn dispatch_event_to_stimuli(&self, event: &Event, window_state: &WindowStateSnapshot) -> bool {
         let mut handled = false;
 
         for stimulus in &self.stimuli {
@@ -1000,11 +1032,17 @@ impl Frame {
 
 #[pymethods]
 impl Frame {
+    // #[pyo3(name = "add")]
+    // fn py_add(&mut self, stimulus: crate::visual::stimuli::PyStimulus, py: Python) {
+    //     let mut self_wrapper = SendWrapper::new(self);
+    //     let stimulus_wrapper = SendWrapper::new(stimulus);
+    //     py.detach(move || self_wrapper.add(stimulus_wrapper.as_super()));
+    // }
+
     #[pyo3(name = "add")]
-    fn py_add(&mut self, stimulus: crate::visual::stimuli::PyStimulus, py: Python) {
-        let mut self_wrapper = SendWrapper::new(self);
-        let stimulus_wrapper = SendWrapper::new(stimulus);
-        py.allow_threads(move || self_wrapper.add(stimulus_wrapper.as_super()));
+    fn py_add(&mut self, stimulus: WrappedStimulus) {
+        let dynamic_stimulus = DynamicStimulus::new(stimulus);
+        self.add(&dynamic_stimulus);
     }
 
     #[setter(bg_color)]
@@ -1025,8 +1063,87 @@ impl Frame {
 
         let mut self_wrapper = SendWrapper::new(self);
 
-        let id = py.allow_threads(move || self_wrapper.add_event_handler(kind, rust_callback_fn));
+        let id = py.detach(move || self_wrapper.add_event_handler(kind, rust_callback_fn));
 
         id
+    }
+}
+
+#[derive(Debug)]
+pub enum WrappedStimulus {
+    Rust(DynamicStimulus),
+    Python(Py<PyAny>),
+}
+
+impl Stimulus for WrappedStimulus {
+    fn draw(&mut self, scene: &mut crate::visual::renderer::wrapped::Scene, window_state: &WindowStateSnapshot) {
+        match self {
+            WrappedStimulus::Rust(stimulus) => {
+                let mut stimulus = stimulus.lock();
+                stimulus.draw(scene, window_state);
+            }
+            WrappedStimulus::Python(py_stimulus) => {
+                Python::with_gil(|py| {
+                    py_stimulus
+                        .call_method(py, "draw", (scene.clone(), window_state.clone()), None)
+                        .expect("Error calling draw method on Python Stimulus");
+                });
+            }
+        }
+    }
+
+    fn update_animations(&mut self, now: Instant, window_state: &WindowStateSnapshot) {}
+
+    fn uuid(&self) -> Uuid {
+        todo!()
+    }
+
+    fn set_transformation(&mut self, transformation: super::geometry::Transformation2D) {
+        todo!()
+    }
+
+    fn transformation(&self) -> super::geometry::Transformation2D {
+        todo!()
+    }
+
+    fn get_param(&self, name: &str) -> Option<super::stimuli::StimulusParamValue> {
+        todo!()
+    }
+
+    fn set_param(&mut self, name: &str, value: super::stimuli::StimulusParamValue) {
+        todo!()
+    }
+}
+
+impl FromPyObject<'_, '_> for WrappedStimulus {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'_, '_, PyAny>) -> Result<Self, Self::Error> {
+        // try to extract different stimulus types
+        let py = obj.py();
+        if let Ok(py_stimulus) = obj.extract::<BaseStimulus>() {
+            Ok(WrappedStimulus::Python(obj.as_unbound().clone_ref(py)))
+        } else if let Ok(py_stimulus) = obj.extract::<PyStimulus>() {
+            Ok(WrappedStimulus::Rust(py_stimulus.0))
+        } else {
+            Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
+                "Object is not a valid Stimulus type",
+            ))
+        }
+    }
+}
+
+pub mod wrapped {
+    use super::*;
+
+    #[derive(Debug, Clone)]
+    pub struct WrappedWindowState {
+        pub inner: Arc<Mutex<WindowState>>,
+    }
+
+    impl From<Arc<Mutex<WindowState>>> for WrappedWindowState {
+        fn from(inner: Arc<Mutex<WindowState>>) -> Self {
+            Self { inner }
+        }
     }
 }

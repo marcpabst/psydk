@@ -23,9 +23,8 @@ use windows::{
 use windows::{
     core::Error,
     Win32::Devices::Display::{
-        WindowConfigGetDeviceInfo, QueryWindowConfig, WindowConfig_DEVICE_INFO_HEADER,
-        WindowConfig_DEVICE_INFO_TYPE, WindowConfig_MODE_INFO, WindowConfig_PATH_INFO,
-        WindowConfig_SOURCE_DEVICE_NAME, QDC_ONLY_ACTIVE_PATHS,
+        QueryWindowConfig, WindowConfigGetDeviceInfo, WindowConfig_DEVICE_INFO_HEADER, WindowConfig_DEVICE_INFO_TYPE,
+        WindowConfig_MODE_INFO, WindowConfig_PATH_INFO, WindowConfig_SOURCE_DEVICE_NAME, QDC_ONLY_ACTIVE_PATHS,
     },
     Win32::Graphics::{
         Dxgi::{IDXGIAdapter, IDXGIOutput, IDXGISwapChain, DXGI_ADAPTER_DESC, DXGI_OUTPUT_DESC},
@@ -103,7 +102,7 @@ pub fn get_adapter_and_vidpn_source(swap_chain: &IDXGISwapChain) -> Win32Result<
             .collect::<Vec<_>>(),
     );
 
-    println!("Monitor device name: {}", device_name);
+    log::debug!("Monitor device name: {}", device_name);
 
     // 3. Use QueryWindowConfig to find the VidPnSourceId for this device
     let mut num_paths = 128u32;
@@ -122,10 +121,7 @@ pub fn get_adapter_and_vidpn_source(swap_chain: &IDXGISwapChain) -> Win32Result<
         );
     }
 
-    println!(
-        "QueryWindowConfig returned {} paths and {} modes",
-        num_paths, num_modes
-    );
+    log::debug!("QueryWindowConfig returned {} paths and {} modes", num_paths, num_modes);
 
     // truncate the vectors to the actual number of paths and modes
     paths.truncate(num_paths as usize);
@@ -148,7 +144,7 @@ pub fn get_adapter_and_vidpn_source(swap_chain: &IDXGISwapChain) -> Win32Result<
         };
 
         let status = unsafe { WindowConfigGetDeviceInfo(&mut source_name as *mut _ as _) };
-        println!("WindowConfigGetDeviceInfo status: {}", status);
+        log::debug!("WindowConfigGetDeviceInfo status: {}", status);
         if status == 0 {
             let dev_name = String::from_utf16_lossy(
                 &source_name
@@ -166,7 +162,7 @@ pub fn get_adapter_and_vidpn_source(swap_chain: &IDXGISwapChain) -> Win32Result<
     }
     let vidpn_source_id = vidpn_source_id.expect("Failed to find VidPnSourceId for the output");
 
-    println!("Found VidPnSourceId: {}", vidpn_source_id);
+    log::debug!("Found VidPnSourceId: {}", vidpn_source_id);
 
     // 4. Get the adapter LUID from the swap chain's device
     let adapter_luid = unsafe {
@@ -185,7 +181,7 @@ pub fn get_adapter_and_vidpn_source(swap_chain: &IDXGISwapChain) -> Win32Result<
 
     let h_adapter = open_adapter.hAdapter;
 
-    println!("Opened adapter with handle: {}", h_adapter);
+    log::debug!("Opened adapter with handle: {}", h_adapter);
 
     Ok((h_adapter, vidpn_source_id))
 }

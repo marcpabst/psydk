@@ -6,17 +6,17 @@ use std::{
 
 use crate::{app::GPUState, errors::PsydkError};
 
-use byte_slice_cast::*;
-use gstreamer::{element_error, element_warning, prelude::*};
-use psydk_proc::StimulusParams;
-use pyo3::ffi::c_str;
-use renderer::{
+use crate::visual::renderer::{
     brushes::{Brush, Extend, ImageSampling},
     color_formats::ColorEncoding,
     shapes::Shape,
     styles::ImageFitMode,
     DynamicBitmap, DynamicScene,
 };
+use byte_slice_cast::*;
+use gstreamer::{element_error, element_warning, prelude::*};
+use psydk_proc::StimulusParams;
+use pyo3::ffi::c_str;
 use uuid::Uuid;
 
 use super::{
@@ -28,7 +28,7 @@ use crate::{
     context::{ExperimentContext, PyRendererFactory},
     visual::{
         geometry::{Anchor, Size, Transformation2D},
-        window::{Frame, WindowState},
+        window::{Frame, WindowState, WindowStateSnapshot},
     },
 };
 
@@ -44,9 +44,9 @@ pub struct VideoParams {
     /// Height of the stimulus.
     pub height: Size,
     /// Rotation of the stimulus in degrees.
-    pub rotation: f64,
+    pub rotation: f32,
     /// Opacity of the stimulus, from 0.0 (transparent) to 1.0 (opaque).
-    pub opacity: f64,
+    pub opacity: f32,
     /// The x offset of the video within the stimulus.
     pub image_x: Size,
     /// The y offset of the video within the stimulus.
@@ -77,10 +77,10 @@ impl<T> SwappableValue<T> {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum VideoState {
     NotReady,
-    Ready { duration: f64, width: u32, height: u32 },
-    Playing(usize, f64),
-    Paused(f64),
-    Stopped(f64),
+    Ready { duration: f32, width: u32, height: u32 },
+    Playing(usize, f32),
+    Paused(f32),
+    Stopped(f32),
     Errored(),
 }
 
@@ -93,7 +93,7 @@ pub struct VideoStimulus {
     /// The current frame image to be displayed.
     current_frame: DynamicBitmap,
     /// Buffer for receiving new frames from GStreamer.
-    buffer: Arc<Mutex<Option<renderer::image::RgbaImage>>>,
+    buffer: Arc<Mutex<Option<crate::visual::renderer::image::RgbaImage>>>,
     /// A flag to indicate if the current frame is dirty and needs to be updated.
     frame_dirty_flag: Arc<std::sync::atomic::AtomicBool>,
     /// GPU queue
@@ -107,9 +107,9 @@ pub struct VideoStimulus {
     /// Index of the current frame in the video.
     current_frame_index: usize,
     /// Timestamp of the last displayed frame.
-    current_frame_time: f64,
+    current_frame_time: f32,
     /// The total duration as reported by GStreamer.
-    duration: f64,
+    duration: f32,
     /// The anchor point of the video stimulus for positioning.
     anchor: Anchor,
     /// The transformation applied to the video stimulus.
@@ -186,7 +186,7 @@ impl VideoStimulus {
         let texture = device.create_texture(&texture_desc);
 
         // upload a red image to the texture as a placeholder
-        let red_image = renderer::image::RgbaImage::from_raw(
+        let red_image = crate::visual::renderer::image::RgbaImage::from_raw(
             width as u32,
             height as u32,
             [255, 255, 255, 0].repeat(width as usize * height as usize),
@@ -303,7 +303,7 @@ impl VideoStimulus {
         queue.submit(std::iter::empty());
     }
 
-    pub fn seek(&self, to: f64, accurate: bool, flush: bool, block: bool) {
+    pub fn seek(&self, to: f32, accurate: bool, flush: bool, block: bool) {
         let mut flags = gstreamer::SeekFlags::empty();
         if accurate {
             flags |= gstreamer::SeekFlags::ACCURATE;
@@ -324,11 +324,11 @@ impl VideoStimulus {
         }
     }
 
-    pub fn current_time(&self) -> f64 {
+    pub fn current_time(&self) -> f32 {
         self.current_frame_time
     }
 
-    pub fn duration(&self) -> f64 {
+    pub fn duration(&self) -> f32 {
         self.duration
     }
 
@@ -343,7 +343,7 @@ impl VideoStimulus {
     }
 
     /// Returns the current progress of the video from 0.0 to 1.0.
-    pub fn current_progress(&self) -> f64 {
+    pub fn current_progress(&self) -> f32 {
         let time = self.current_time();
         let durartion = self.duration;
         if durartion > 0.0 {
@@ -357,7 +357,7 @@ impl VideoStimulus {
         path: &str,
         status: SwappableValue<VideoState>,
         frame_is_dirty: Arc<std::sync::atomic::AtomicBool>,
-        buffer: Arc<Mutex<Option<renderer::image::RgbaImage>>>,
+        buffer: Arc<Mutex<Option<crate::visual::renderer::image::RgbaImage>>>,
     ) -> Result<gstreamer::Pipeline, PsydkError> {
         gstreamer::init()?;
 
@@ -403,7 +403,7 @@ impl VideoStimulus {
                     let height = structure.get::<i32>("height").expect("height in caps");
 
                     let u_time = gst_buffer.pts().expect("timestamp").useconds();
-                    let time = u_time as f64 / 1_000_000.0; // Convert microseconds to seconds
+                    let time = u_time as f32 / 1_000_000.0; // Convert microseconds to seconds
 
                     let frame_index = structure.get::<i64>("pos_frames").unwrap_or(-1);
 
@@ -425,9 +425,12 @@ impl VideoStimulus {
                         gstreamer::FlowError::Error
                     })?;
 
-                    let new_buffer =
-                        renderer::image::RgbaImage::from_raw(width as u32, height as u32, samples.to_vec())
-                            .expect("Failed to create image buffer from raw data");
+                    let new_buffer = crate::visual::renderer::image::RgbaImage::from_raw(
+                        width as u32,
+                        height as u32,
+                        samples.to_vec(),
+                    )
+                    .expect("Failed to create image buffer from raw data");
 
                     let mut buffer = buffer.lock().unwrap();
                     *buffer = Some(new_buffer);
@@ -515,7 +518,7 @@ impl VideoStimulus {
                     let duration = pipeline
                         .query_duration::<gstreamer::ClockTime>()
                         .expect("Failed to query duration")
-                        .seconds() as f64;
+                        .seconds();
 
                     // print dimensions of the video
                     let caps = src_pad.current_caps().expect("src pad has caps");
@@ -534,7 +537,7 @@ impl VideoStimulus {
             };
 
             if let Err(err) = insert_sink(is_audio, is_video) {
-                println!("Error: {err}");
+                log::debug!("Error: {err}");
             }
         });
 
@@ -562,7 +565,7 @@ impl VideoStimulus {
                 //     println!("Pipeline is playing at position: {:?}", def);
 
                 //     if let Some(position) = res {
-                //         let time = position.useconds() as f64 / 1_000_000.0;
+                //         let time = position.useconds() as f32 / 1_000_000.0;
                 //         let state = VideoState::Playing(def as usize, time);
                 //         // status.swap(state);
                 //     } else {
@@ -574,7 +577,7 @@ impl VideoStimulus {
                     MessageView::Eos(..) => break,
                     MessageView::Error(err) => {
                         pipeline.set_state(gstreamer::State::Null).unwrap();
-                        println!(
+                        log::debug!(
                             "Error from element {}: {}",
                             msg.src().map(|s| s.path_string()).as_deref().unwrap_or("None"),
                             err.error().to_string()
@@ -651,8 +654,8 @@ impl PyVideoStimulus {
         y: IntoSize,
         width: IntoSize,
         height: IntoSize,
-        rotation: f64,
-        opacity: f64,
+        rotation: f32,
+        opacity: f32,
         anchor: Anchor,
         transform: Option<Transformation2D>,
         context: Option<ExperimentContext>,
@@ -735,7 +738,7 @@ impl PyVideoStimulus {
     /// block : bool, optional
     ///     Whether to block until the seek is complete. Default is True.
     #[pyo3(signature = (to, accurate = true, flush = true, block = true))]
-    fn seek(slf: PyRef<'_, Self>, to: f64, accurate: bool, flush: bool, block: bool) {
+    fn seek(slf: PyRef<'_, Self>, to: f32, accurate: bool, flush: bool, block: bool) {
         let mut stim = slf.as_ref().0.lock();
         if let Some(video) = stim.downcast_mut::<VideoStimulus>() {
             video.seek(to, accurate, flush, block);
@@ -748,7 +751,7 @@ impl PyVideoStimulus {
     }
 
     /// Return the current time of the video.
-    fn get_current_time(slf: PyRef<'_, Self>) -> f64 {
+    fn get_current_time(slf: PyRef<'_, Self>) -> f32 {
         let stim = slf.as_ref().0.lock();
         if let Some(video) = stim.downcast_ref::<VideoStimulus>() {
             video.current_time()
@@ -757,7 +760,7 @@ impl PyVideoStimulus {
         }
     }
 
-    fn get_duration(slf: PyRef<'_, Self>) -> f64 {
+    fn get_duration(slf: PyRef<'_, Self>) -> f32 {
         let stim = slf.as_ref().0.lock();
         if let Some(video) = stim.downcast_ref::<VideoStimulus>() {
             video.duration()
@@ -775,7 +778,7 @@ impl PyVideoStimulus {
         }
     }
 
-    fn get_current_progress(slf: PyRef<'_, Self>) -> f64 {
+    fn get_current_progress(slf: PyRef<'_, Self>) -> f32 {
         let stim = slf.as_ref().0.lock();
         if let Some(video) = stim.downcast_ref::<VideoStimulus>() {
             video.current_progress()
@@ -792,7 +795,7 @@ impl Stimulus for VideoStimulus {
         self.id
     }
 
-    fn draw(&mut self, scene: &mut DynamicScene, window_state: &WindowState) {
+    fn draw(&mut self, scene: &mut DynamicScene, window_state: &WindowStateSnapshot) {
         if !self.visible {
             return;
         }
@@ -838,8 +841,8 @@ impl Stimulus for VideoStimulus {
         scene.draw_shape_fill(
             Shape::Rectangle {
                 a: (x, y).into(),
-                w: width as f64,
-                h: height as f64,
+                w: width as f32,
+                h: height as f32,
             },
             Brush::Image {
                 image: frame,
@@ -883,7 +886,7 @@ impl Stimulus for VideoStimulus {
         self.transformation.clone()
     }
 
-    fn contains(&self, x: Size, y: Size, window_state: &WindowState) -> bool {
+    fn contains(&self, x: Size, y: Size, window_state: &WindowStateSnapshot) -> bool {
         let window_size = window_state.size;
         let screen_props = window_state.physical_screen;
 

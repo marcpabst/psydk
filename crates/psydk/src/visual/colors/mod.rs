@@ -134,7 +134,9 @@ impl Color {
     }
 
     pub fn to_display_rgba(&self, dc: &dyn display::DisplayCharacteristics) -> DisplayRGBA {
-        todo!()
+        // Use the conversion module to convert to display RGBA
+        let device_rgba = conversion::color_to_device_rgba(*self, dc);
+        DisplayRGBA::new(device_rgba.x, device_rgba.y, device_rgba.z, device_rgba.w)
     }
 }
 
@@ -258,7 +260,7 @@ impl Into<Vector3<f32>> for Color {
     }
 }
 
-impl From<DisplayRGBA> for renderer::colors::RGBA {
+impl From<DisplayRGBA> for crate::visual::renderer::colors::RGBA {
     fn from(rgba: DisplayRGBA) -> Self {
         Self::new_linear(rgba.r, rgba.g, rgba.b, rgba.a)
     }
@@ -280,8 +282,9 @@ impl From<IntoColor> for Color {
     }
 }
 
-impl<'py> FromPyObject<'py> for IntoColor {
-    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
+impl FromPyObject<'_, '_> for IntoColor {
+    type Error = PyErr;
+    fn extract(ob: Borrowed<'_, '_, PyAny>) -> Result<Self, Self::Error> {
         // try to extract an existing Color object
         if let Ok(color) = ob.extract::<Color>() {
             Ok(Self(color))

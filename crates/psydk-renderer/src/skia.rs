@@ -4,6 +4,8 @@ use std::{any::Any, cell::RefCell, sync::Arc};
 
 use cosmic_text::fontdb::FaceInfo;
 use foreign_types_shared::ForeignType;
+use image::pnm::BitmapHeader;
+use std::sync::Mutex;
 use windows_core::Interface;
 
 pub use skia_safe;
@@ -12,6 +14,7 @@ pub use skia_safe;
 use skia_safe::gpu::{d3d, d3d::BackendContext, Protected};
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 use skia_safe::gpu::{mtl, mtl::BackendContext};
+use skia_safe::svg::Dom;
 #[cfg(target_os = "windows")]
 use windows::Win32::Graphics::Dxgi::Common::{
     DXGI_FORMAT, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_SAMPLE_DESC, DXGI_STANDARD_MULTISAMPLE_QUALITY_PATTERN,
@@ -27,71 +30,69 @@ use skia_safe::{
     scalar, AlphaType as SkAlphaType, ColorType, Font as SkFont, Matrix, PictureRecorder, SamplingOptions,
     Typeface as SkTypeface,
 };
-use wgpu::{Adapter, Device, Queue, Texture};
+// use wgpu::{Adapter, Device, Queue, Texture};
 
 #[cfg(target_os = "windows")]
 use crate::color_formats;
+
 use crate::{
     affine::Affine,
-    bitmaps::{Bitmap, DynamicBitmap},
     brushes::{Brush, Extend, Gradient, GradientKind, ImageSampling},
     color_formats::{ColorEncoding, ColorFormat},
     colors::RGBA,
-    font::{DynamicFontFace, Glyph, Typeface},
-    renderer::{Renderer, SharedRendererState},
-    scenes::Scene,
+    font::Glyph,
     shapes::{Point, Shape},
     styles::{BlendMode, ImageFitMode, StrokeStyle},
-    svg::SVG,
 };
 
-#[derive(Debug)]
-pub struct SkiaScene {
-    pub picture_recorder: PictureRecorder,
-    // pub canvas: skia_safe::Canvas,
+#[derive(Debug, Clone)]
+pub struct Scene {
+    pub picture_recorder: Arc<Mutex<PictureRecorder>>,
     pub width: u32,
     pub height: u32,
     pub bg_color: RGBA,
 }
 
-pub struct SkiaRenderer {
-    shared_state: SkiaSharedRendererState,
+unsafe impl Send for Scene {}
+unsafe impl Sync for Scene {}
+
+#[derive(Debug, Clone)]
+pub struct Renderer {
+    context: RefCell<gpu::DirectContext>,
+    backend: Arc<RefCell<BackendContext>>,
+    font_manager: skia_safe::FontMgr,
+    internal_color_encoding: ColorEncoding,
+    internal_color_format: ColorFormat,
 }
+
+unsafe impl Send for Renderer {}
+unsafe impl Sync for Renderer {}
 
 #[derive(Debug)]
 /// A Bitmap that is backed by a Skia image.
-pub struct SkiaBitmap {
+pub struct Bitmap {
     image: SkImage,
-    data: Box<[u8]>,
+    data: BitmapData,
 }
 
 #[derive(Debug)]
-/// A Bitmap that is backed by a WGPU texture.
-pub struct SkiaTexture {
-    image: SkImage,
-    texture: wgpu::Texture,
+enum BitmapData {
+    Blob(Box<[u8]>),
+    Texture(wgpu::Texture),
 }
 
 #[derive(Debug)]
-pub struct SkiaSVG {
+/// An SVG.
+pub struct SVG {
     pub dom: skia_safe::svg::Dom,
 }
 
-impl Typeface for SkTypeface {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-
-    fn cloned(&self) -> Box<dyn Typeface> {
-        Box::new(self.clone())
-    }
+#[derive(Debug)]
+pub struct Typeface {
+    pub typeface: SkTypeface,
 }
 
-impl SkiaScene {
+impl Scene {
     pub fn new(width: u32, height: u32) -> Self {
         let mut picture_recorder = PictureRecorder::new();
         let bounds = skia_safe::Rect::from_wh(width as f32, height as f32);
@@ -102,14 +103,19 @@ impl SkiaScene {
         canvas.clear(skia_safe::Color4f::new(1.0, 1.0, 1.0, 1.0));
 
         Self {
-            picture_recorder,
+            picture_recorder: Arc::new(Mutex::new(picture_recorder)),
             width,
             height,
             bg_color: RGBA::WHITE,
         }
     }
 
-    fn draw_shape(skia_canvas: &skia_safe::Canvas, skia_paint: skia_safe::Paint, shape: Shape, affine: Option<Affine>) {
+    pub fn draw_shape(
+        skia_canvas: &skia_safe::Canvas,
+        skia_paint: skia_safe::Paint,
+        shape: Shape,
+        affine: Option<Affine>,
+    ) {
         // apply the affine transformation
         if let Some(affine) = affine {
             skia_canvas.save();
@@ -192,7 +198,12 @@ impl SkiaScene {
         }
     }
 
-    fn clip_shape(skia_canvas: &skia_safe::Canvas, skia_paint: skia_safe::Paint, shape: Shape, affine: Option<Affine>) {
+    pub fn clip_shape(
+        skia_canvas: &skia_safe::Canvas,
+        skia_paint: skia_safe::Paint,
+        shape: Shape,
+        affine: Option<Affine>,
+    ) {
         // apply the affine transformation
         if let Some(affine) = affine {
             skia_canvas.save();
@@ -218,38 +229,16 @@ impl SkiaScene {
             skia_canvas.restore();
         }
     }
-}
 
-impl Scene for SkiaScene {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-
-    fn set_width(&mut self, width: u32) {
-        todo!()
-    }
-
-    fn set_height(&mut self, height: u32) {
-        todo!()
-    }
-
-    fn background_color(&self) -> RGBA {
-        todo!()
-    }
-
-    fn width(&self) -> u32 {
+    pub fn width(&self) -> u32 {
         self.width
     }
 
-    fn height(&self) -> u32 {
+    pub fn height(&self) -> u32 {
         self.height
     }
 
-    fn start_layer(
+    pub fn start_layer(
         &mut self,
         composite_mode: BlendMode,
         clip: Shape,
@@ -257,7 +246,8 @@ impl Scene for SkiaScene {
         layer_transform: Option<Affine>,
         alpha: f32,
     ) {
-        let mut canvas = self.picture_recorder.recording_canvas().unwrap();
+        let mut binding = self.picture_recorder.lock().unwrap();
+        let mut canvas = binding.recording_canvas().unwrap();
         // let mut layer_paint = skia_safe::Paint::default();
         // layer_paint.set_alpha_f(alpha);
         // // layer_paint.set_blend_mode(composite_mode.into());
@@ -271,18 +261,20 @@ impl Scene for SkiaScene {
         // self.current_blend_mode = composite_mode.into();
     }
 
-    fn end_layer(&mut self) {
-        self.picture_recorder.recording_canvas().unwrap().restore();
+    pub fn end_layer(&mut self) {
+        let mut binding = self.picture_recorder.lock().unwrap();
+        binding.recording_canvas().unwrap().restore();
     }
 
-    fn draw_shape_fill(
+    pub fn draw_shape_fill(
         &mut self,
         shape: Shape,
         brush: Brush,
         transform: Option<Affine>,
         blend_mode: Option<BlendMode>,
     ) {
-        let mut canvas = self.picture_recorder.recording_canvas().unwrap();
+        let mut binding = self.picture_recorder.lock().unwrap();
+        let mut canvas = binding.recording_canvas().unwrap();
         let mut paint: skia_safe::Paint = brush.into();
 
         paint.set_anti_alias(false);
@@ -294,7 +286,7 @@ impl Scene for SkiaScene {
         Self::draw_shape(&mut canvas, paint, shape, transform);
     }
 
-    fn draw_shape_stroke(
+    pub fn draw_shape_stroke(
         &mut self,
         shape: Shape,
         brush: Brush,
@@ -302,7 +294,8 @@ impl Scene for SkiaScene {
         transform: Option<Affine>,
         blend_mode: Option<BlendMode>,
     ) {
-        let mut canvas = self.picture_recorder.recording_canvas().unwrap();
+        let mut binding = self.picture_recorder.lock().unwrap();
+        let mut canvas = binding.recording_canvas().unwrap();
         let mut paint: skia_safe::Paint = brush.into();
         paint.set_stroke(true);
         paint.set_anti_alias(false);
@@ -317,11 +310,11 @@ impl Scene for SkiaScene {
         Self::draw_shape(&mut canvas, paint, shape, transform);
     }
 
-    fn draw_glyphs(
+    pub fn draw_glyphs(
         &mut self,
         position: Point,
         glyphs: &[Glyph],
-        font_face: &DynamicFontFace,
+        font_face: &Typeface,
         font_size: f32,
         brush: Brush,
         alpha: Option<f32>,
@@ -329,10 +322,9 @@ impl Scene for SkiaScene {
         blend_mode: Option<BlendMode>,
     ) {
         // cast the font face to a skia font face
-        let skia_typeface = font_face.try_as::<SkTypeface>().unwrap();
 
         // create a new skia font
-        let skia_font = SkFont::from_typeface(skia_typeface, font_size);
+        let skia_font = SkFont::from_typeface(font_face.typeface.clone(), font_size);
 
         // create a new paint
         let mut paint: skia_safe::Paint = brush.into();
@@ -346,7 +338,8 @@ impl Scene for SkiaScene {
         let origin: skia_safe::Point = position.into();
 
         // draw the glyphs
-        let canvas = self.picture_recorder.recording_canvas().unwrap();
+        let mut binding = self.picture_recorder.lock().unwrap();
+        let canvas = binding.recording_canvas().unwrap();
         let glyph_ids = glyphs.iter().map(|glyph| glyph.id).collect::<Vec<u16>>();
         let glyph_positions: Vec<skia_safe::Point> = glyphs.into_iter().map(|glyph| glyph.position.into()).collect();
         let glyph_positions = skia_safe::canvas::GlyphPositions::Points(&glyph_positions);
@@ -355,25 +348,19 @@ impl Scene for SkiaScene {
         canvas.draw_glyphs_at(&glyph_ids, glyph_positions, origin, &skia_font, &paint);
     }
 
-    fn set_bg_color(&mut self, color: RGBA) {
+    pub fn set_bg_color(&mut self, color: RGBA) {
         self.bg_color = color;
         let bg_color: skia_safe::Color4f = color.into();
-        self.picture_recorder.recording_canvas().unwrap().clear(bg_color);
+        let mut binding = self.picture_recorder.lock().unwrap();
+        binding.recording_canvas().unwrap().clear(bg_color);
     }
 
-    fn draw_svg(
-        &mut self,
-        svg: &crate::svg::DynamicSVG,
-        position: Point,
-        width: f32,
-        height: f32,
-        blend_mode: Option<BlendMode>,
-    ) {
+    pub fn draw_svg(&mut self, svg: &SVG, position: Point, width: f32, height: f32, blend_mode: Option<BlendMode>) {
         // get the dom
-        let skia_svg = svg.try_as::<SkiaSVG>().unwrap();
-        let dom = &skia_svg.dom;
+        let dom = &svg.dom;
         let mut root = dom.root();
-        let canvas = self.picture_recorder.recording_canvas().unwrap();
+        let mut binding = self.picture_recorder.lock().unwrap();
+        let canvas = binding.recording_canvas().unwrap();
         canvas.save();
         canvas.translate((position.x as scalar, position.y as scalar));
 
@@ -391,26 +378,44 @@ impl Scene for SkiaScene {
         canvas.restore();
     }
 
-    fn bg_color(&self) -> RGBA {
+    pub fn bg_color(&self) -> RGBA {
         self.bg_color
     }
 }
 
-impl Renderer for SkiaRenderer {
-    fn render_to_texture(
+impl Renderer {
+    pub fn new(
+        adapter: &wgpu::Adapter,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        internal_color_encoding: ColorEncoding,
+        internal_color_format: ColorFormat,
+    ) -> Self {
+        let backend_context = create_backend_context(adapter, device, queue);
+        let skia_context = create_context(&backend_context);
+
+        // create a font manager
+        let font_manager = skia_safe::FontMgr::new();
+
+        Self {
+            context: RefCell::new(skia_context),
+            backend: Arc::new(RefCell::new(backend_context)),
+            font_manager,
+            internal_color_encoding: internal_color_encoding,
+            internal_color_format: internal_color_format,
+        }
+    }
+
+    pub fn render_to_texture(
         &self,
-        device: &Device,
-        _queue: &Queue,
-        texture: &Texture,
+        device: &wgpu::Device,
+        _queue: &wgpu::Queue,
+        texture: &wgpu::Texture,
         width: u32,
         height: u32,
-        scene: &mut dyn Scene,
+        scene: &mut Scene,
     ) {
-        let mut skia_context = self
-            .shared_state
-            .context
-            .try_borrow_mut()
-            .expect("Failed to borrow skia context");
+        let mut skia_context = self.context.try_borrow_mut().expect("Failed to borrow skia context");
 
         // create a new surface
         #[cfg(target_os = "windows")]
@@ -419,9 +424,9 @@ impl Renderer for SkiaRenderer {
             width,
             height,
             texture,
-            self.shared_state.internal_color_encoding,
-            self.shared_state.internal_color_format,
-            &self.shared_state.backend.borrow(),
+            self.internal_color_encoding,
+            self.internal_color_format,
+            &self.backend.borrow(),
             &mut skia_context,
         );
 
@@ -431,9 +436,9 @@ impl Renderer for SkiaRenderer {
             width,
             height,
             texture,
-            self.shared_state.internal_color_encoding,
-            self.shared_state.internal_color_format,
-            &self.shared_state.backend.borrow(),
+            self.internal_color_encoding,
+            self.internal_color_format,
+            &self.backend.borrow(),
             &mut skia_context,
         );
 
@@ -441,11 +446,8 @@ impl Renderer for SkiaRenderer {
 
         // move origin to the center
         canvas.translate((width as scalar / 2.0, height as scalar / 2.0));
-
-        // try to downcast the scene to a SkiaScene
-        let skia_scene = scene.as_any_mut().downcast_mut::<SkiaScene>().unwrap();
-
-        let picture = skia_scene.picture_recorder.finish_recording_as_picture(None).unwrap();
+        let mut binding = scene.picture_recorder.lock().unwrap();
+        let picture = binding.finish_recording_as_picture(None).unwrap();
 
         // draw the picture to the canvas
         canvas.draw_picture(&picture, None, None);
@@ -454,58 +456,52 @@ impl Renderer for SkiaRenderer {
         skia_context.flush_and_submit();
     }
 
-    fn create_scene(&self, width: u32, heigth: u32) -> Box<dyn Scene> {
-        Box::new(SkiaScene::new(width, heigth))
-    }
-
-    fn load_font_face(&mut self, face_info: &FaceInfo, font_data: &[u8], index: usize) -> DynamicFontFace {
-        // load the font face using skia
-        let typeface = self
-            .shared_state
-            .font_manager
+    pub fn create_font_face_from_data(&self, face_info: &FaceInfo, font_data: &[u8], index: usize) -> Option<Typeface> {
+        self.font_manager
             .new_from_data(font_data, index)
-            .expect("Failed to load font face");
-        // let typeface = self.font_manager.n
-        return DynamicFontFace(Box::new(typeface));
+            .map(|tf| Typeface { typeface: tf })
     }
 
-    fn create_bitmap_u8(&self, rgba: image::RgbaImage, color_encoding: ColorEncoding) -> DynamicBitmap {
-        skia_create_bitmap_u8(rgba, color_encoding)
+    pub fn create_bitmap_from_image_u8(
+        &self,
+        rgba: image::RgbaImage,
+        color_encoding: ColorEncoding,
+    ) -> Result<Bitmap, String> {
+        Ok(skia_create_bitmap_u8(rgba, color_encoding))
     }
 
-    fn create_bitmap_f32(
+    pub fn create_bitmap_from_image_f32(
         &self,
         rgba: image::ImageBuffer<image::Rgba<f32>, Vec<f32>>,
         color_encoding: ColorEncoding,
-    ) -> DynamicBitmap {
-        skia_create_bitmap_f32(rgba, color_encoding)
+    ) -> Result<Bitmap, String> {
+        Ok(skia_create_bitmap_f32(rgba, color_encoding))
     }
 
-    fn create_bitmap_from_wgpu_texture(&self, texture: wgpu::Texture, color_encoding: ColorEncoding) -> DynamicBitmap {
-        create_bitmap_from_wgpu_texture(&mut self.shared_state.context.borrow_mut(), texture, color_encoding)
+    pub fn create_texture_from_wgpu_texture(
+        &self,
+        texture: wgpu::Texture,
+        color_encoding: ColorEncoding,
+    ) -> Result<Bitmap, String> {
+        Ok(create_texture_from_wgpu_texture(
+            &mut self.context.borrow_mut(),
+            texture,
+            color_encoding,
+        ))
     }
 
-    fn create_svg(&self, svg_data: &str) -> crate::svg::DynamicSVG {
-        skia_create_svg(svg_data, self.shared_state.font_manager.clone()).expect("Failed to create SVG")
+    pub fn create_svg_from_str(&self, svg_data: &str) -> Result<SVG, String> {
+        let dom = Dom::from_str(svg_data, self.font_manager.clone())
+            .map_err(|e| format!("Failed to parse SVG data: {:?}", e))?;
+        Ok(SVG { dom })
     }
-}
-
-impl SkiaRenderer {
-    // #[cfg(any(target_os = "macos", target_os = "ios"))]
-    // fn try_create_backend_metal(device: &Device, queue: &Queue) -> Option<(mtl::BackendContext, gpu::DirectContext)> {
-    //     let backend = create_backend_context(device, queue);
-
-    //     let context = gpu::DirectContext::new_metal(&backend, None).unwrap();
-
-    //     Some((backend, context))
-    // }
 
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     fn create_surface_metal(
-        _device: &Device,
+        _device: &wgpu::Device,
         width: u32,
         height: u32,
-        texture: &Texture,
+        texture: &wgpu::Texture,
         color_encoding: ColorEncoding,
         color_format: ColorFormat,
         _backend: &mtl::BackendContext,
@@ -612,35 +608,9 @@ impl SkiaRenderer {
             color_encoding, color_format
         ))
     }
-}
 
-impl Bitmap for SkiaBitmap {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-}
-
-impl Bitmap for SkiaTexture {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-}
-
-impl SVG for SkiaSVG {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
+    pub fn create_scene(&self, width: u32, heigth: u32) -> Scene {
+        Scene::new(width, heigth)
     }
 }
 
@@ -670,10 +640,11 @@ impl From<&Brush<'_>> for skia_safe::Paint {
                 // paint.set_color4f(skia_color, &skia_color_space);
 
                 // use color shader instead of set_color4f to full precision
-                println!(
-                    "Creating solid color brush with color: {:?} and color space: {:?}",
-                    skia_color, skia_color_space
-                );
+                // log::debug!(
+                //     "Creating solid color brush with color: {:?} and color space: {:?}",
+                //     skia_color,
+                //     skia_color_space
+                // );
                 let shader = skia_safe::shaders::color_in_space(skia_color, &skia_color_space);
                 paint.set_shader(shader);
                 paint.set_blend_mode(skia_safe::BlendMode::Src);
@@ -734,11 +705,7 @@ impl From<&Brush<'_>> for skia_safe::Paint {
                 alpha,
             } => {
                 // downcast the image to a skia image
-                let skia_image = &image
-                    .try_as::<SkiaBitmap>()
-                    .map(|bitmap| &bitmap.image)
-                    .or_else(|| image.try_as::<SkiaTexture>().map(|texture| &texture.image))
-                    .expect("You're trying to use a non-skia image with a skia renderer");
+                let skia_image = &image.image;
 
                 let mut local_matrix = match fit_mode {
                     ImageFitMode::Original => Matrix::new_identity(),
@@ -929,111 +896,7 @@ impl From<Brush<'_>> for skia_safe::Paint {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct SkiaSharedRendererState {
-    context: RefCell<gpu::DirectContext>,
-    backend: Arc<RefCell<BackendContext>>,
-    font_manager: skia_safe::FontMgr,
-    internal_color_encoding: ColorEncoding,
-    internal_color_format: ColorFormat,
-}
-
-unsafe impl Send for SkiaSharedRendererState {}
-unsafe impl Sync for SkiaSharedRendererState {}
-
-impl SkiaSharedRendererState {
-    pub fn new(
-        adapter: &Adapter,
-        device: &Device,
-        queue: &Queue,
-        internal_color_encoding: ColorEncoding,
-        internal_color_format: ColorFormat,
-    ) -> Self {
-        let backend_context = create_backend_context(adapter, device, queue);
-        let skia_context = create_context(&backend_context);
-
-        // create a font manager
-        let font_manager = skia_safe::FontMgr::new();
-
-        Self {
-            context: RefCell::new(skia_context),
-            backend: Arc::new(RefCell::new(backend_context)),
-            font_manager,
-            internal_color_encoding: internal_color_encoding,
-            internal_color_format: internal_color_format,
-        }
-    }
-}
-
-impl SharedRendererState for SkiaSharedRendererState {
-    fn create_renderer(
-        &self,
-        _surface_format: wgpu::TextureFormat,
-
-        _width: u32,
-        _height: u32,
-    ) -> crate::DynamicRenderer {
-        let renderer = SkiaRenderer {
-            shared_state: self.clone(),
-        };
-        let backend_render = Box::new(renderer) as Box<dyn Renderer>;
-        crate::DynamicRenderer::new(backend_render)
-    }
-
-    fn cloned(&self) -> Box<dyn SharedRendererState> {
-        Box::new(SkiaSharedRendererState {
-            context: RefCell::new(self.context.borrow().clone()),
-            backend: self.backend.clone(),
-            font_manager: self.font_manager.clone(),
-            internal_color_encoding: self.internal_color_encoding,
-            internal_color_format: self.internal_color_format,
-            // output_color_format: self.output_color_format,
-        })
-    }
-
-    fn create_font_face(&self, font_data: &[u8], index: u32) -> DynamicFontFace {
-        let font_manager = skia_safe::FontMgr::new();
-        let typeface = font_manager
-            .new_from_data(font_data, index as usize)
-            .expect("Failed to load font face");
-        // let typeface = self.font_manager.n
-        return DynamicFontFace(Box::new(typeface));
-    }
-
-    fn create_bitmap_u8(&self, data: image::RgbaImage, color_encoding: ColorEncoding) -> DynamicBitmap {
-        skia_create_bitmap_u8(data, color_encoding)
-    }
-
-    fn create_bitmap_f32(
-        &self,
-        data: image::ImageBuffer<image::Rgba<f32>, Vec<f32>>,
-        color_encoding: ColorEncoding,
-    ) -> DynamicBitmap {
-        skia_create_bitmap_f32(data, color_encoding)
-    }
-
-    fn create_bitmap_from_wgpu_texture(&self, texture: wgpu::Texture, color_encoding: ColorEncoding) -> DynamicBitmap {
-        create_bitmap_from_wgpu_texture(&mut self.context.borrow_mut(), texture, color_encoding)
-    }
-
-    fn create_svg(&self, svg_data: &str) -> crate::svg::DynamicSVG {
-        skia_create_svg(svg_data, self.font_manager.clone()).unwrap()
-    }
-
-    fn render_resources(&self) -> Option<crate::renderer::DynamicRenderResources> {
-        todo!()
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        todo!()
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        todo!()
-    }
-}
-
-fn skia_create_bitmap_u8(rgba: image::RgbaImage, color_encoding: ColorEncoding) -> DynamicBitmap {
+fn skia_create_bitmap_u8(rgba: image::RgbaImage, color_encoding: ColorEncoding) -> Bitmap {
     let (width, height) = rgba.dimensions();
     let buffer = rgba.into_raw();
     let boxed_buffer = buffer.into_boxed_slice();
@@ -1051,16 +914,16 @@ fn skia_create_bitmap_u8(rgba: image::RgbaImage, color_encoding: ColorEncoding) 
     )
     .unwrap();
 
-    DynamicBitmap(Box::new(SkiaBitmap {
+    Bitmap {
         image,
-        data: boxed_buffer,
-    }))
+        data: BitmapData::Blob(boxed_buffer),
+    }
 }
 
 fn skia_create_bitmap_f32(
     rgba: image::ImageBuffer<image::Rgba<f32>, Vec<f32>>,
     color_encoding: ColorEncoding,
-) -> DynamicBitmap {
+) -> Bitmap {
     let (width, height) = rgba.dimensions();
     let buffer = rgba.into_raw();
     // convert the buffer to bytes using bytemuck
@@ -1081,17 +944,10 @@ fn skia_create_bitmap_f32(
     )
     .expect("Failed to create skia image for f32 bitmap");
 
-    DynamicBitmap(Box::new(SkiaBitmap {
+    Bitmap {
         image,
-        data: boxed_buffer,
-    }))
-}
-
-fn skia_create_svg(svg_data: &str, font_manager: skia_safe::FontMgr) -> Result<crate::svg::DynamicSVG, String> {
-    use skia_safe::svg::Dom;
-
-    let dom = Dom::from_str(svg_data, font_manager).map_err(|e| format!("Failed to parse SVG data: {:?}", e))?;
-    Ok(crate::svg::DynamicSVG(Box::new(SkiaSVG { dom })))
+        data: BitmapData::Blob(boxed_buffer),
+    }
 }
 
 // allow a colorpace to be converted to a skia color space
@@ -1173,7 +1029,7 @@ fn create_backend_texture(texture: &wgpu::Texture) -> skia_safe::gpu::BackendTex
 
         let texture_info = unsafe { mtl::TextureInfo::new(raw_texture_ptr) };
 
-        println!(
+        log::debug!(
             "Creating Skia backend texture for Metal with size: {}x{}",
             texture.width(),
             texture.height()
@@ -1195,11 +1051,11 @@ fn create_backend_texture(texture: &wgpu::Texture) -> skia_safe::gpu::BackendTex
     }
 }
 
-fn create_bitmap_from_wgpu_texture(
+fn create_texture_from_wgpu_texture(
     context: &mut DirectContext,
     texture: wgpu::Texture,
     color_encoding: ColorEncoding,
-) -> DynamicBitmap {
+) -> Bitmap {
     // create a skia backend context
 
     // create a backend texture from the wgpu texture
@@ -1222,16 +1078,14 @@ fn create_bitmap_from_wgpu_texture(
     context.reset(None);
 
     // create a bitmap from the skia image
-    let skia_texture = SkiaTexture {
+    Bitmap {
         image: skia_image,
-        texture,
-    };
-
-    DynamicBitmap(Box::new(skia_texture))
+        data: BitmapData::Texture(texture),
+    }
 }
 
 #[allow(rustc::unused_variables)]
-fn create_backend_context(adapter: &Adapter, device: &Device, queue: &Queue) -> BackendContext {
+fn create_backend_context(adapter: &wgpu::Adapter, device: &wgpu::Device, queue: &wgpu::Queue) -> BackendContext {
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     {
         let command_queue_ptr = unsafe {

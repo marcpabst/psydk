@@ -1,18 +1,18 @@
 use crate::visual::colors::Color;
 use crate::visual::colors::IntoColor;
-use num_traits::Bounded;
-use numpy::{PyReadonlyArray2, PyReadonlyArray3, PyReadonlyArray4, PyUntypedArrayMethods};
-use psydk_proc::StimulusParams;
-use pyo3::ffi::c_str;
-use renderer::image::{ImageBuffer, Pixel, RgbImage, Rgba, RgbaImage};
-use renderer::svg::DynamicSVG;
-use renderer::{
+use crate::visual::renderer::image::{ImageBuffer, Pixel, RgbImage, Rgba, RgbaImage};
+use crate::visual::renderer::SVG;
+use crate::visual::renderer::{
     brushes::{Brush, Extend, ImageSampling},
     image::Rgb,
     shapes::Shape,
     styles::ImageFitMode,
-    DynamicBitmap, DynamicScene,
+    Bitmap, Scene,
 };
+use num_traits::Bounded;
+use numpy::{PyReadonlyArray2, PyReadonlyArray3, PyReadonlyArray4, PyUntypedArrayMethods};
+use psydk_proc::StimulusParams;
+use pyo3::ffi::c_str;
 use std::{
     ops::Deref,
     sync::{Arc, Mutex},
@@ -25,10 +25,10 @@ use super::{
     impl_pystimulus_for_wrapper, PyStimulus, Stimulus, StimulusParamValue, StimulusParams,
 };
 use crate::{
-    context::{ExperimentContext, PyRendererFactory},
+    context::ExperimentContext,
     visual::{
         geometry::{Anchor, Size, Transformation2D},
-        window::{Frame, WindowState},
+        window::{Frame, WindowState, WindowStateSnapshot},
     },
 };
 
@@ -44,9 +44,9 @@ pub struct SVGParams {
     /// Height of the stimulus.
     pub height: Size,
     /// Rotation of the stimulus in degrees.
-    pub rotation: f64,
+    pub rotation: f32,
     /// Opacity of the stimulus, from 0.0 (transparent) to 1.0 (opaque).
-    pub opacity: f64,
+    pub opacity: f32,
 }
 
 #[derive(Debug)]
@@ -56,7 +56,7 @@ pub struct SVGStimulus {
     /// Parameters for the image stimulus.
     params: SVGParams,
     /// The image to be displayed.
-    svg: DynamicSVG,
+    svg: SVG,
     /// The anchor point of the image stimulus for positioning.
     anchor: Anchor,
     /// The transformation applied to the image stimulus.
@@ -71,7 +71,7 @@ unsafe impl Send for SVGStimulus {}
 
 impl SVGStimulus {
     /// Creates a new `ImageStimulus` from an image and parameters.
-    pub fn from_svg(svg: DynamicSVG, params: SVGParams, transform: Option<Transformation2D>, anchor: Anchor) -> Self {
+    pub fn from_svg(svg: SVG, params: SVGParams, transform: Option<Transformation2D>, anchor: Anchor) -> Self {
         Self {
             id: Uuid::new_v4(),
             transformation: transform.unwrap_or_else(|| Transformation2D::Identity()),
@@ -127,8 +127,8 @@ impl PySVGStimulus {
         y: IntoSize,
         width: IntoSize,
         height: IntoSize,
-        rotation: f64,
-        opacity: f64,
+        rotation: f32,
+        opacity: f32,
         anchor: Anchor,
         transform: Option<Transformation2D>,
         srgb: bool,
@@ -141,7 +141,9 @@ impl PySVGStimulus {
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to read SVG file: {}", e)))?;
 
         // Load the SVG from the provided source
-        let svg = ctx.renderer_factory().create_svg(&svg_str);
+        let svg = ctx.renderer().create_svg_from_str(&svg_str).map_err(|e| {
+            pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to load SVG from {}: {}", src, e))
+        })?;
 
         Ok((
             Self(),
@@ -169,7 +171,7 @@ impl Stimulus for SVGStimulus {
         self.id
     }
 
-    fn draw(&mut self, scene: &mut DynamicScene, window_state: &WindowState) {
+    fn draw(&mut self, scene: &mut crate::visual::renderer::wrapped::Scene, window_state: &WindowStateSnapshot) {
         if !self.visible {
             return;
         }
@@ -201,10 +203,7 @@ impl Stimulus for SVGStimulus {
 
         scene.draw_svg(
             &self.svg,
-            renderer::shapes::Point {
-                x: x as f64,
-                y: y as f64,
-            },
+            crate::visual::renderer::shapes::Point { x: x, y: y },
             width as f32,
             height as f32,
             None,
@@ -219,8 +218,8 @@ impl Stimulus for SVGStimulus {
         self.visible
     }
 
-    fn animations(&mut self) -> &mut Vec<Animation> {
-        &mut self.animations
+    fn animations(&mut self) -> Option<&mut Vec<Animation>> {
+        Some(&mut self.animations)
     }
 
     fn add_animation(&mut self, animation: Animation) {
@@ -239,7 +238,7 @@ impl Stimulus for SVGStimulus {
         self.transformation.clone()
     }
 
-    fn contains(&self, x: Size, y: Size, window_state: &WindowState) -> bool {
+    fn contains(&self, x: Size, y: Size, window_state: &WindowStateSnapshot) -> bool {
         let window_size = window_state.size;
         let screen_props = window_state.physical_screen;
 

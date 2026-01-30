@@ -12,3 +12,11 @@ if platform.system() == 'Darwin':
     import os
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".dylibs")
     os.environ["GST_PLUGIN_PATH"] = path + ":" + os.environ.get("GST_PLUGIN_PATH", "")
+
+# decorator that will turn an ordinary function myfun(...) into a psydk experiment
+def experiment(config):
+    def decorator(function):
+        def wrapper(*args, **kwargs):
+            return run_experiment(function, *args, **kwargs, config=config)
+        return wrapper
+    return decorator

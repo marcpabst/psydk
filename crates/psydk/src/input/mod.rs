@@ -3,7 +3,7 @@ use std::{convert::Infallible, ops::Deref, str::FromStr, sync::Arc};
 use pyo3::{
     pyclass, pymethods,
     types::{PyAnyMethods, PyString},
-    Bound, FromPyObject, IntoPyObject, Python,
+    Borrowed, Bound, FromPyObject, IntoPyObject, PyAny, PyErr, Python,
 };
 use strum::{EnumString, VariantArray, VariantNames};
 use web_time::Instant;
@@ -778,8 +778,10 @@ pub trait EventHandlingExt {
     fn dispatch_event(&self, event: Event) -> bool;
 }
 
-impl FromPyObject<'_> for EventKind {
-    fn extract_bound(ob: &pyo3::Bound<'_, pyo3::PyAny>) -> pyo3::PyResult<Self> {
+impl FromPyObject<'_, '_> for EventKind {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'_, '_, PyAny>) -> Result<Self, Self::Error> {
         let kind = ob.extract::<String>()?;
         // try to convert the string to an EventKind
         let kind = EventKind::from_str(&kind).map_err(|_| {

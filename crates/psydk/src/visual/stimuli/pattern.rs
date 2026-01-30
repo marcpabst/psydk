@@ -1,14 +1,13 @@
 use crate::visual::colors::Color;
 use crate::visual::colors::IntoColor;
-use psydk_proc::{FromPyStr, StimulusParams};
-use renderer::{
+use crate::visual::renderer::{
     affine::Affine,
     brushes::{Brush, Extend, ImageSampling},
     colors::RGBA,
-    renderer::SharedRendererState,
     styles::ImageFitMode,
-    DynamicBitmap, DynamicScene,
+    Bitmap, Scene,
 };
+use psydk_proc::{FromPyStr, StimulusParams};
 use std::sync::Arc;
 use strum::EnumString;
 use uuid::Uuid;
@@ -23,7 +22,7 @@ use crate::{
     context::ExperimentContext,
     visual::{
         geometry::{Shape, Size, Transformation2D},
-        window::{Frame, WindowState},
+        window::{Frame, WindowState, WindowStateSnapshot},
     },
 };
 
@@ -41,16 +40,16 @@ pub struct PatternParams {
     pub shape: Shape,
     pub x: Size,
     pub y: Size,
-    pub phase_x: f64,
-    pub phase_y: f64,
+    pub phase_x: f32,
+    pub phase_y: f32,
     pub pattern_size: Size,
     pub fill_color: Color,
     pub background_color: Color,
-    pub pattern_rotation: f64,
+    pub pattern_rotation: f32,
     pub stroke_style: StrokeStyle,
     pub stroke_color: Color,
     pub stroke_width: Size,
-    pub alpha: Option<f64>,
+    pub alpha: Option<f32>,
     pub flag_clicked: bool,
 }
 
@@ -61,7 +60,7 @@ pub struct PatternStimulus {
     fill_pattern: FillPattern,
 
     gradient_colors: Option<Vec<Color>>,
-    pattern_image: Option<DynamicBitmap>,
+    pattern_image: Option<Bitmap>,
     transform: Transformation2D,
     animations: Vec<Animation>,
     visible: bool,
@@ -69,22 +68,22 @@ pub struct PatternStimulus {
 
 impl PatternStimulus {
     pub fn new(
+        context: &ExperimentContext,
         shape: Shape,
         x: Size,
         y: Size,
-        phase_x: f64,
-        phase_y: f64,
+        phase_x: f32,
+        phase_y: f32,
         pattern_size: Size,
         fill_color: Color,
         background_color: Color,
         pattern: FillPattern,
-        pattern_rotation: f64,
+        pattern_rotation: f32,
         stroke_style: StrokeStyle,
         stroke_color: Color,
         stroke_width: Size,
-        alpha: Option<f64>,
+        alpha: Option<f32>,
         transform: Transformation2D,
-        context: &ExperimentContext,
     ) -> Self {
         let mut stim = Self {
             id: Uuid::new_v4(),
@@ -120,12 +119,12 @@ impl PatternStimulus {
             FillPattern::Stripes => {
                 panic!("Stripes pattern not implemented yet");
                 // let image_2x1_data = vec![fg.r(), fg.g(), fg.b(), fg.a(), bg.r(), bg.g(), bg.b(), bg.a()];
-                // let image_2x1 = renderer::image::ImageBuffer::from_raw(2, 1, image_2x1_data)
+                // let image_2x1 = crate::visual::renderer::image::ImageBuffer::from_raw(2, 1, image_2x1_data)
                 //     .expect("Failed to create image. This should never happen.");
 
                 // let pattern_image = context
                 //     .renderer_factory()
-                //     .create_bitmap_f32(image_2x1, renderer::color_formats::ColorEncoding::Linear);
+                //     .create_bitmap_f32(image_2x1, crate::visual::renderer::color_formats::ColorEncoding::Linear);
                 // stim.pattern_image = Some(pattern_image);
             }
             FillPattern::Sinosoidal => todo!(),
@@ -149,12 +148,12 @@ impl PatternStimulus {
                 //     fg.b(),
                 //     fg.a(),
                 // ];
-                // let image_2x2 = renderer::image::ImageBuffer::from_raw(2, 2, image_2x2_data)
+                // let image_2x2 = crate::visual::renderer::image::ImageBuffer::from_raw(2, 2, image_2x2_data)
                 //     .expect("Failed to create image. This should never happen.");
 
                 // let pattern_image = context
                 //     .renderer_factory()
-                //     .create_bitmap_f32(image_2x2, renderer::color_formats::ColorEncoding::Linear);
+                //     .create_bitmap_f32(image_2x2, crate::visual::renderer::color_formats::ColorEncoding::Linear);
                 // stim.pattern_image = Some(pattern_image);
             }
         }
@@ -193,6 +192,7 @@ pub struct PyPatternStimulus();
 impl PyPatternStimulus {
     #[new]
     #[pyo3(signature = (
+        context,
         shape,
         x = IntoSize(Size::Pixels(0.0)),
         y = IntoSize(Size::Pixels(0.0)),
@@ -208,7 +208,6 @@ impl PyPatternStimulus {
         stroke_width = IntoSize(Size::Pixels(0.0)),
         alpha = None,
         transform = Transformation2D::Identity(),
-        context = None,
     ))]
     /// A stimulus that displays a shape.
     ///
@@ -234,27 +233,27 @@ impl PyPatternStimulus {
     ///    The transformation of the shape.
     fn __new__(
         py: Python,
+        context: ExperimentContext,
         shape: Shape,
         x: IntoSize,
         y: IntoSize,
-        phase_x: f64,
-        phase_y: f64,
+        phase_x: f32,
+        phase_y: f32,
         pattern_size: IntoSize,
         fill_color: IntoColor,
         background_color: IntoColor,
         pattern: FillPattern,
-        pattern_rotation: f64,
+        pattern_rotation: f32,
         stroke_style: StrokeStyle,
         stroke_color: IntoColor,
         stroke_width: IntoSize,
-        alpha: Option<f64>,
+        alpha: Option<f32>,
         transform: Transformation2D,
-        context: Option<ExperimentContext>,
     ) -> (Self, PyStimulus) {
-        let context = helpers::get_experiment_context(context, py).unwrap();
         (
             Self(),
             PyStimulus::new(PatternStimulus::new(
+                &context,
                 shape,
                 x.into(),
                 y.into(),
@@ -270,7 +269,6 @@ impl PyPatternStimulus {
                 stroke_width.into(),
                 alpha,
                 transform,
-                &context,
             )),
         )
     }
@@ -280,7 +278,7 @@ impl PyPatternStimulus {
         if let Some(stim) = stim.downcast_mut::<PatternStimulus>() {
             stim.clicked()
         } else {
-            unreachable!("PyPatternStimulus contains a non-PatternStimulus")
+            unreachable!("PyPatternStimulus always wraps PatternStimulus");
         }
     }
 }
@@ -292,15 +290,15 @@ impl Stimulus for PatternStimulus {
         self.id
     }
 
-    fn animations(&mut self) -> &mut Vec<Animation> {
-        &mut self.animations
+    fn animations(&mut self) -> Option<&mut Vec<Animation>> {
+        Some(&mut self.animations)
     }
 
     fn add_animation(&mut self, animation: Animation) {
         self.animations.push(animation);
     }
 
-    fn draw(&mut self, scene: &mut DynamicScene, window_state: &WindowState) {
+    fn draw(&mut self, scene: &mut crate::visual::renderer::wrapped::Scene, window_state: &WindowStateSnapshot) {
         if !self.visible {
             return;
         }
@@ -309,15 +307,13 @@ impl Stimulus for PatternStimulus {
         let screen_props = window_state.physical_screen;
         let dc = &*window_state.display_characteristics;
 
-        let renderer_factory = &window_state.shared_renderer_state;
-
-        let x_origin = self.params.x.eval(windows_size, screen_props) as f64;
-        let y_origin = self.params.y.eval(windows_size, screen_props) as f64;
+        let x_origin = self.params.x.eval(windows_size, screen_props);
+        let y_origin = self.params.y.eval(windows_size, screen_props);
 
         let pattern_size = self.params.pattern_size.eval(windows_size, screen_props);
 
-        let shift_x = (self.params.phase_x % 360.0) / 360.0 * pattern_size as f64;
-        let shift_y = (self.params.phase_y % 360.0) / 360.0 * pattern_size as f64;
+        let shift_x = (self.params.phase_x % 360.0) / 360.0 * pattern_size;
+        let shift_y = (self.params.phase_y % 360.0) / 360.0 * pattern_size;
 
         let fill_color = self.params.fill_color.to_display_rgba(dc);
 
@@ -342,39 +338,39 @@ impl Stimulus for PatternStimulus {
 
         let stroke_color = self.params.stroke_color.to_display_rgba(dc);
 
-        let stroke_brush = renderer::brushes::Brush::Solid(stroke_color.into());
+        let stroke_brush = crate::visual::renderer::brushes::Brush::Solid(stroke_color.into());
 
-        let stroke_width = self.params.stroke_width.eval(windows_size, screen_props) as f64;
+        let stroke_width = self.params.stroke_width.eval(windows_size, screen_props);
 
-        let stroke_options = renderer::styles::StrokeStyle::new(stroke_width);
+        let stroke_options = crate::visual::renderer::styles::StrokeStyle::new(stroke_width);
 
         match &self.params.shape {
             Shape::Circle { x, y, radius } => {
-                let x = x.eval(windows_size, screen_props) as f64;
-                let y = y.eval(windows_size, screen_props) as f64;
-                let radius = radius.eval(windows_size, screen_props) as f64;
+                let x = x.eval(windows_size, screen_props);
+                let y = y.eval(windows_size, screen_props);
+                let radius = radius.eval(windows_size, screen_props);
 
                 // move by x_origin and y_origin
                 let x = x + x_origin;
                 let y = y + y_origin;
 
-                let shape = renderer::shapes::Shape::circle((x, y), radius);
+                let shape = crate::visual::renderer::shapes::Shape::circle((x, y), radius);
 
                 scene.draw_shape_fill(shape.clone(), fill_brush.clone(), None, None);
 
                 scene.draw_shape_stroke(shape, stroke_brush, stroke_options, None, None);
             }
             Shape::Rectangle { x, y, width, height } => {
-                let x = x.eval(windows_size, screen_props) as f64;
-                let y = y.eval(windows_size, screen_props) as f64;
-                let width = width.eval(windows_size, screen_props) as f64;
-                let height = height.eval(windows_size, screen_props) as f64;
+                let x = x.eval(windows_size, screen_props);
+                let y = y.eval(windows_size, screen_props);
+                let width = width.eval(windows_size, screen_props);
+                let height = height.eval(windows_size, screen_props);
 
                 // move by x_origin and y_origin
                 let x = x + x_origin;
                 let y = y + y_origin;
 
-                let shape = renderer::shapes::Shape::rectangle((x, y), width, height);
+                let shape = crate::visual::renderer::shapes::Shape::rectangle((x, y), width, height);
 
                 scene.draw_shape_fill(shape.clone(), fill_brush.clone(), None, None);
 
@@ -386,26 +382,26 @@ impl Stimulus for PatternStimulus {
                 radius_x,
                 radius_y,
             } => {
-                let x = x.eval(windows_size, screen_props) as f64;
-                let y = y.eval(windows_size, screen_props) as f64;
-                let radius_x = radius_x.eval(windows_size, screen_props) as f64;
-                let radius_y = radius_y.eval(windows_size, screen_props) as f64;
+                let x = x.eval(windows_size, screen_props);
+                let y = y.eval(windows_size, screen_props);
+                let radius_x = radius_x.eval(windows_size, screen_props);
+                let radius_y = radius_y.eval(windows_size, screen_props);
 
                 // move by x_origin and y_origin
                 let x = x + x_origin;
                 let y = y + y_origin;
 
-                let shape = renderer::shapes::Shape::ellipse((x, y), radius_x, radius_y, 0.0);
+                let shape = crate::visual::renderer::shapes::Shape::ellipse((x, y), radius_x, radius_y, 0.0);
 
                 scene.draw_shape_fill(shape.clone(), fill_brush.clone(), None, None);
 
                 scene.draw_shape_stroke(shape, stroke_brush, stroke_options, None, None);
             }
             Shape::Line { x1, y1, x2, y2 } => {
-                let x1 = x1.eval(windows_size, screen_props) as f64;
-                let y1 = y1.eval(windows_size, screen_props) as f64;
-                let x2 = x2.eval(windows_size, screen_props) as f64;
-                let y2 = y2.eval(windows_size, screen_props) as f64;
+                let x1 = x1.eval(windows_size, screen_props);
+                let y1 = y1.eval(windows_size, screen_props);
+                let x2 = x2.eval(windows_size, screen_props);
+                let y2 = y2.eval(windows_size, screen_props);
 
                 // move by x_origin and y_origin
                 let x1 = x1 + x_origin;
@@ -413,7 +409,7 @@ impl Stimulus for PatternStimulus {
                 let x2 = x2 + x_origin;
                 let y2 = y2 + y_origin;
 
-                let shape = renderer::shapes::Shape::line((x1, y1), (x2, y2));
+                let shape = crate::visual::renderer::shapes::Shape::line((x1, y1), (x2, y2));
 
                 scene.draw_shape_stroke(shape, stroke_brush, stroke_options, None, None);
             }
@@ -421,15 +417,15 @@ impl Stimulus for PatternStimulus {
                 let points = points
                     .iter()
                     .map(|p| {
-                        let x = p.0.eval(windows_size, screen_props) as f64;
-                        let y = p.1.eval(windows_size, screen_props) as f64;
+                        let x = p.0.eval(windows_size, screen_props);
+                        let y = p.1.eval(windows_size, screen_props);
 
                         // move by x_origin and y_origin
                         (x + x_origin, y + y_origin).into()
                     })
-                    .collect::<Vec<(f64, f64)>>();
+                    .collect::<Vec<(f32, f32)>>();
 
-                let shape = renderer::shapes::Shape::polygon(points);
+                let shape = crate::visual::renderer::shapes::Shape::polygon(points);
 
                 scene.draw_shape_fill(shape.clone(), fill_brush.clone(), None, None);
 
@@ -437,18 +433,18 @@ impl Stimulus for PatternStimulus {
             }
             Shape::Triangle { a, b, c } => {
                 let a = (
-                    a.0.eval(windows_size, screen_props) as f64 + x_origin,
-                    a.1.eval(windows_size, screen_props) as f64 + y_origin,
+                    a.0.eval(windows_size, screen_props) + x_origin,
+                    a.1.eval(windows_size, screen_props) + y_origin,
                 );
                 let b = (
-                    b.0.eval(windows_size, screen_props) as f64 + x_origin,
-                    b.1.eval(windows_size, screen_props) as f64 + y_origin,
+                    b.0.eval(windows_size, screen_props) + x_origin,
+                    b.1.eval(windows_size, screen_props) + y_origin,
                 );
                 let c = (
-                    c.0.eval(windows_size, screen_props) as f64 + x_origin,
-                    c.1.eval(windows_size, screen_props) as f64 + y_origin,
+                    c.0.eval(windows_size, screen_props) + x_origin,
+                    c.1.eval(windows_size, screen_props) + y_origin,
                 );
-                let shape = renderer::shapes::Shape::triangle(a, b, c);
+                let shape = crate::visual::renderer::shapes::Shape::triangle(a, b, c);
 
                 scene.draw_shape_fill(shape.clone(), fill_brush.clone(), None, None);
 
@@ -458,15 +454,15 @@ impl Stimulus for PatternStimulus {
                 let points = points
                     .iter()
                     .map(|p| {
-                        let x = p.0.eval(windows_size, screen_props) as f64;
-                        let y = p.1.eval(windows_size, screen_props) as f64;
+                        let x = p.0.eval(windows_size, screen_props);
+                        let y = p.1.eval(windows_size, screen_props);
 
                         // move by x_origin and y_origin
-                        (x + x_origin, y + y_origin).into()
+                        (x + x_origin, y + y_origin)
                     })
-                    .collect::<Vec<(f64, f64)>>();
+                    .collect::<Vec<(f32, f32)>>();
 
-                let shape = renderer::shapes::Shape::path(points);
+                let shape = crate::visual::renderer::shapes::Shape::path(points);
 
                 scene.draw_shape_fill(shape.clone(), fill_brush.clone(), None, None);
 
@@ -498,13 +494,13 @@ impl Stimulus for PatternStimulus {
         self.params.set_param(name, value)
     }
 
-    fn dispatch_event(&mut self, event: &crate::input::Event, window_state: &WindowState) -> bool {
+    fn dispatch_event(&mut self, event: &crate::input::Event, window_state: &WindowStateSnapshot) -> bool {
         // handle mouse click events
         return match event {
             crate::input::Event::MouseButtonPress { position, .. }
             | crate::input::Event::TouchStart { position, .. } => {
                 let (x, y) = (Size::Pixels(position.0 as f32), Size::Pixels(position.1 as f32));
-                if self.contains(x, y, window_state) {
+                if self.contains(x, y, window_state.into()) {
                     self.params.flag_clicked = true;
                     true
                 } else {
@@ -515,7 +511,7 @@ impl Stimulus for PatternStimulus {
         };
     }
 
-    fn contains(&self, x: Size, y: Size, window_state: &WindowState) -> bool {
+    fn contains(&self, x: Size, y: Size, window_state: &WindowStateSnapshot) -> bool {
         let windows_size = window_state.size;
         let screen_props = window_state.physical_screen;
 

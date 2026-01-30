@@ -1,15 +1,15 @@
 use crate::visual::colors::Color;
 use crate::visual::colors::IntoColor;
-use psydk_proc::{FromPyStr, StimulusParams};
-use pyo3::{pyclass, pymethods};
-use renderer::{
+use crate::visual::renderer::{
     affine::Affine,
     brushes::{Brush, Extend, Gradient, GradientKind},
     colors::RGBA,
     shapes::{Point, Shape},
     styles::BlendMode,
-    DynamicScene,
+    Scene,
 };
+use psydk_proc::{FromPyStr, StimulusParams};
+use pyo3::{pyclass, pymethods};
 use std::sync::Arc;
 use strum::EnumString;
 use uuid::Uuid;
@@ -20,7 +20,7 @@ use super::{
 };
 use crate::visual::{
     geometry::{Anchor, Size, Transformation2D},
-    window::{Frame, WindowState},
+    window::{Frame, WindowState, WindowStateSnapshot},
 };
 
 #[derive(EnumString, Debug, Clone, Copy, PartialEq, FromPyStr)]
@@ -41,13 +41,13 @@ pub struct GaborParams {
     pub cy: Size,
     pub radius: Size,
     pub cycle_length: Size,
-    pub phase: f64,
+    pub phase: f32,
     pub sigma: Size,
-    pub orientation: f64,
+    pub orientation: f32,
     pub stroke_style: Option<StrokeStyle>,
     pub stroke_color: Option<Color>,
     pub stroke_width: Option<Size>,
-    pub alpha: Option<f64>,
+    pub alpha: Option<f32>,
 }
 
 #[derive(Clone, Debug)]
@@ -74,15 +74,15 @@ impl GaborStimulus {
         radius: Size,
         pattern: Pattern,
         cycle_length: Size,
-        phase: f64,
+        phase: f32,
         sigma: Size,
-        orientation: f64,
+        orientation: f32,
         anchor: Anchor,
         color_interpolation: ColorInterpolation,
         stroke_style: Option<StrokeStyle>,
         stroke_color: Option<Color>,
         stroke_width: Option<Size>,
-        alpha: Option<f64>,
+        alpha: Option<f32>,
     ) -> Self {
         let gaussian_colors: Vec<RGBA> = (0..128)
             .map(|i| {
@@ -209,14 +209,14 @@ impl PyGaborStimulus {
         cycle_lenght: IntoSize,
         sigma: IntoSize,
         pattern: Pattern,
-        phase: f64,
-        orientation: f64,
+        phase: f32,
+        orientation: f32,
         anchor: Anchor,
         color_interpolation: ColorInterpolation,
         stroke_style: Option<StrokeStyle>,
         stroke_color: Option<Color>,
         stroke_width: Option<IntoSize>,
-        alpha: Option<f64>,
+        alpha: Option<f32>,
     ) -> (Self, PyStimulus) {
         (
             Self(),
@@ -247,7 +247,7 @@ impl Stimulus for GaborStimulus {
         self.id
     }
 
-    fn draw(&mut self, scene: &mut DynamicScene, window_state: &WindowState) {
+    fn draw(&mut self, scene: &mut crate::visual::renderer::wrapped::Scene, window_state: &WindowStateSnapshot) {
         if !self.visible {
             return;
         }
@@ -257,11 +257,11 @@ impl Stimulus for GaborStimulus {
         let dc = &*window_state.display_characteristics;
 
         // convert physical units to pixels
-        let radius = self.params.radius.eval(window_size, screen_props) as f64;
+        let radius = self.params.radius.eval(window_size, screen_props);
         let sigma = self.params.sigma.eval(window_size, screen_props);
-        let cycle_length = self.params.cycle_length.eval(window_size, screen_props) as f64;
-        let pos_x = self.params.cx.eval(window_size, screen_props) as f64;
-        let pos_y = self.params.cy.eval(window_size, screen_props) as f64;
+        let cycle_length = self.params.cycle_length.eval(window_size, screen_props);
+        let pos_x = self.params.cx.eval(window_size, screen_props);
+        let pos_y = self.params.cy.eval(window_size, screen_props);
 
         // apply the anchor
         let bb_width = radius * 2.0;
@@ -271,7 +271,7 @@ impl Stimulus for GaborStimulus {
         let trans_mat = self.transformation.eval(window_size, screen_props);
 
         // convert phase into the range [0, 1] (from [0, 2π])
-        let phase = self.params.phase % (2.0 * std::f64::consts::PI);
+        let phase = self.params.phase % (2.0 * std::f32::consts::PI);
         let transl_x = phase * cycle_length;
 
         // transform for the brush
@@ -334,8 +334,8 @@ impl Stimulus for GaborStimulus {
             let stroke_color: RGBA = stroke_color.to_display_rgba(dc).into();
             let stroke_brush = Brush::Solid(stroke_color.into());
             let stroke_width = self.params.stroke_width.clone().unwrap_or(Size::Pixels(0.0));
-            let stroke_width = stroke_width.eval(window_size, screen_props) as f64;
-            let stroke_options = renderer::styles::StrokeStyle::new(stroke_width);
+            let stroke_width = stroke_width.eval(window_size, screen_props);
+            let stroke_options = crate::visual::renderer::styles::StrokeStyle::new(stroke_width);
 
             let shape = Shape::circle(Point { x: pos_x, y: pos_y }, radius);
             scene.draw_shape_stroke(shape, stroke_brush, stroke_options, Some(transform.into()), None);
@@ -350,8 +350,8 @@ impl Stimulus for GaborStimulus {
         self.visible
     }
 
-    fn animations(&mut self) -> &mut Vec<Animation> {
-        &mut self.animations
+    fn animations(&mut self) -> Option<&mut Vec<Animation>> {
+        Some(&mut self.animations)
     }
 
     fn add_animation(&mut self, animation: Animation) {

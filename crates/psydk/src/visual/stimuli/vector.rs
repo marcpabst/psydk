@@ -11,8 +11,8 @@ use crate::{
 
 use psydk_proc::StimulusParams;
 
+use crate::visual::renderer::prelude::*;
 use pyo3::{exceptions::PyValueError, prelude::*};
-use renderer::prelude::*;
 use uuid::Uuid;
 
 #[derive(StimulusParams, Clone, Debug)]
@@ -21,7 +21,7 @@ pub struct VectorParams {
     pub y: Size,
     pub width: Size,
     pub height: Size,
-    pub opacity: f64,
+    pub opacity: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -30,7 +30,7 @@ pub struct VectorStimulus {
 
     params: VectorParams,
 
-    vector: renderer::prerenderd_scene::PrerenderedScene,
+    vector: crate::visual::renderer::prerenderd_scene::PrerenderedScene,
     transformation: Transformation2D,
     animations: Vec<Animation>,
     visible: bool,
@@ -38,7 +38,8 @@ pub struct VectorStimulus {
 
 impl VectorStimulus {
     pub fn from_svg_str(svg_str: &str, params: VectorParams) -> Self {
-        let vector = renderer::prerenderd_scene::PrerenderedScene::from_svg_string(svg_str, Affine::identity());
+        let vector =
+            crate::visual::renderer::prerenderd_scene::PrerenderedScene::from_svg_string(svg_str, Affine::identity());
 
         Self {
             id: Uuid::new_v4(),
@@ -77,7 +78,7 @@ impl PyVectorStimulus {
         y: IntoSize,
         width: IntoSize,
         height: IntoSize,
-        opacity: f64,
+        opacity: f32,
     ) -> (Self, PyStimulus) {
         (
             Self(),
@@ -108,11 +109,11 @@ impl Stimulus for VectorStimulus {
         }
 
         // convert physical units to pixels
-        let x = self.params.x.eval(&window.physical_properties) as f64;
-        let y = self.params.y.eval(&window.physical_properties) as f64;
+        let x = self.params.x.eval(&window.physical_properties);
+        let y = self.params.y.eval(&window.physical_properties);
 
-        let width = self.params.width.eval(&window.physical_properties) as f64;
-        let height = self.params.height.eval(&window.physical_properties) as f64;
+        let width = self.params.width.eval(&window.physical_properties);
+        let height = self.params.height.eval(&window.physical_properties);
 
         // create a transformation matrix that scales the vector to the correct size
         let vector_width = self.vector.width;

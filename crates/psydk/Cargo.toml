@@ -1,6 +1,6 @@
 [package]
 name = "psydk"
-version = "0.1.906"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.70"
 authors = ["Marc Pabst"]
@@ -33,13 +33,11 @@ crate-type = ["cdylib"]
 #
 wgpu = { git = "https://github.com/marcpabst/wgpu", rev = "91d8339" }
 serde = { version = "1.0", features = ["derive"] }
-renderer = { path = "../psydk-renderer" }
+# renderer = { path = "../psydk-renderer" }
 psydk-proc = { path = "../psydk-proc" }
 
 raw-window-handle = "0.6"
-#winit = "0.30.11"
 winit = { git = "https://github.com/marcpabst/winit", rev = "6c390d5" }
-#winit = { path = "../../../winit/winit" }
 bytemuck = { version = "1.14.0", features = ["derive"] }
 nalgebra = {version = "0.33.0", features = ["serde-serialize"] }
 web-time = "1.0.0"
@@ -60,20 +58,24 @@ downcast-rs = "1.2.1"
 dyn-clone = "1.0.17"
 enum-fields = "0.1.0"
 strum = { version = "0.27", features = ["derive"] }
+foreign-types-shared = "0.3.1"
 uuid = { version = "1.8.0", features = ["v4", "fast-rng"] }
 
-pyo3 = { version = "0.23.4", features = [
+pyo3 = { version = "0.27.*", features = [
     "extension-module",
     "abi3-py310",
     "multiple-pymethods",
 ] }
 send_wrapper = "0.6.0"
-numpy = "0.23.*"
+numpy = "0.27.*"
 strum_macros = "0.26.4"
 csscolorparser = "0.7.0"
 pollster = "0.4.0"
 cosmic-text = "0.12.1"
 psydk-audio = { path = "../psydk-audio" }
+windows-core = "0.61.2"
+
+
 
 # Gstreamer dependencies
 glib = { version = "0.20.10", optional = true }
@@ -94,22 +96,32 @@ ringbuf = "0.4.8"
 atomic_float = "1.1.0"
 lcms2 = "6.1.1"
 serde_json = "1.0.145"
-ndarray = "0.16.1"
+ndarray = ">= 0.15, <=0.17"
 env_logger = "0.10.2"
 # tikv-jemallocator = { version = "0.5.4", features = ["profiling"] }
 
 # Windows dependencies
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.61", features = [
+    "Win32",
     "Win32_Foundation",
-    "Wdk_Graphics_Direct3D",
+    "Win32_Graphics",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D12",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
     "Win32_Media",
     "Win32_Media_Multimedia",
-    "Win32_System_Threading",
     "Win32_Security",
+    "Win32_System_Threading",
     "Win32_System_WindowsProgramming",
     "Win32_Devices_Display",
+    "Wdk_Graphics_Direct3D",
 ] }
+
+skia-safe = { git = "https://github.com/marcpabst/rust-skia", rev = "2acb894", features = ["d3d", "svg"] }
+
+
 
 # MacOS dependencies
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -136,3 +148,10 @@ dx12 = []
 # include debug symbols in release builds
 [profile.release]
 debug = true
+
+
+# renderer backends
+# macOS & ios only
+[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+metal = "0.31.0"
+skia-safe = { git = "https://github.com/marcpabst/rust-skia", rev = "2acb894", features = ["metal", "svg"] }

@@ -1,3 +1,4 @@
+use crate::visual::renderer::{cosmic_text, Renderer};
 use crate::{
     audio::{PyDevice, PyHost, PyStream},
     config::{ExperimentConfig, WindowConfig},
@@ -8,12 +9,12 @@ use crate::{
 };
 use derive_debug::Dbg;
 use pyo3::types::{PyModule, PyString};
+use pyo3::IntoPyObjectExt;
 use pyo3::{
     pyclass, pyfunction, pymethods,
     types::{PyAnyMethods, PyDict, PyList, PyListMethods, PySequenceMethods, PyTuple, PyTupleMethods},
-    IntoPy, Py, PyAny, PyResult, Python,
+    Py, PyAny, PyResult, Python,
 };
-use renderer::{cosmic_text, renderer::SharedRendererState};
 use std::{
     collections::HashMap,
     sync::{
@@ -29,30 +30,6 @@ pub enum EventLoopAction {
     GetAvailableMonitors(Sender<Vec<Monitor>>),
     RunInEventLoop(Box<dyn FnOnce() + Send>),
     Exit(Option<errors::PsydkError>),
-}
-
-#[pyclass]
-pub struct PyRendererFactory(pub Box<dyn SharedRendererState>);
-
-// impl Clone for PyRendererFactory
-impl Clone for PyRendererFactory {
-    fn clone(&self) -> Self {
-        Self(self.0.cloned())
-    }
-}
-
-impl std::ops::Deref for PyRendererFactory {
-    type Target = dyn SharedRendererState;
-
-    fn deref(&self) -> &Self::Target {
-        self.0.as_ref()
-    }
-}
-
-impl PyRendererFactory {
-    pub fn inner(&self) -> &dyn SharedRendererState {
-        self.0.as_ref()
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -155,7 +132,7 @@ pub struct ExperimentContext {
     pub gpu_state: ArcMutex<GPUState>,
     event_loop_proxy: EventLoopProxy,
     action_sender: Sender<EventLoopAction>,
-    renderer_factory: Arc<dyn SharedRendererState>,
+    renderer: Arc<Renderer>,
     audio_host: Arc<psydk_audio::cpal::Host>,
     font_manager: Arc<Mutex<cosmic_text::FontSystem>>,
     config: Arc<Mutex<crate::config::ExperimentConfig>>,
@@ -166,7 +143,7 @@ impl ExperimentContext {
         gpu_state: ArcMutex<GPUState>,
         event_loop_proxy: EventLoopProxy,
         action_sender: Sender<EventLoopAction>,
-        renderer_factory: Arc<dyn SharedRendererState>,
+        renderer: Arc<Renderer>,
         audio_host: Arc<psydk_audio::cpal::Host>,
         font_manager: Arc<Mutex<cosmic_text::FontSystem>>,
         config: ExperimentConfig,
@@ -175,7 +152,7 @@ impl ExperimentContext {
             gpu_state,
             event_loop_proxy,
             action_sender,
-            renderer_factory,
+            renderer,
             audio_host,
             font_manager,
             config: Arc::new(Mutex::new(config)),
@@ -201,7 +178,7 @@ impl ExperimentContext {
 
     /// Load all font files in a directory into the font manager.
     pub fn load_font_directory(&self, path: &str) -> Result<(), errors::PsydkError> {
-        println!("Loading font directory: {}", path);
+        log::debug!("Loading font directory: {}", path);
         let mut font_manager = self.font_manager.lock().unwrap();
         font_manager.db_mut().load_fonts_dir(path);
         Ok(())
@@ -224,8 +201,8 @@ impl ExperimentContext {
         }
     }
 
-    pub fn renderer_factory(&self) -> &Arc<dyn SharedRendererState> {
-        &self.renderer_factory
+    pub fn renderer(&self) -> &Arc<Renderer> {
+        &self.renderer
     }
 
     /// Run some code in the event loop thread.
@@ -534,13 +511,13 @@ impl ExperimentContext {
         let action =
             EventLoopAction::CreateNewWindow(window_options.clone(), experiment_config, display_config, sender);
 
-        println!("Sending CreateNewWindow action to event loop");
+        log::debug!("Sending CreateNewWindow action to event loop");
 
         // send action and wake up the event loop
         self.action_sender.send(action).unwrap();
         self.event_loop_proxy.wake_up();
 
-        println!("Waiting for window to be created");
+        log::debug!("Waiting for window to be created");
 
         // wait for response
         let mut window = receiver.recv().expect("Failed to create window");
@@ -580,7 +557,6 @@ impl ExperimentContext {
 
     /// Retrive available monitors.
     pub fn get_available_monitors(&self) -> Vec<Monitor> {
-        println!("Getting available monitors");
         log::debug!("Requesting available monitors from event loop");
         let (sender, receiver) = channel();
         self.action_sender
@@ -877,18 +853,6 @@ pub fn py_run_experiment(
     // create the app
     let mut experiment = Experiment::new(config.clone())?;
 
-    // make app static by leaking it into a static variable
-    // todo: is this necessary?
-    // let app = Box::leak(Box::new(app));
-
-    // ** black magic ahead **
-
-    // set the __globals__ to make "_renderer_factory" available
-    // this will allow functions to create renderer-specific objects
-    // without having to pass the renderer object
-    let globals = PyDict::new(py);
-    let renderer_factory = PyRendererFactory(experiment.shared_renderer_state.cloned());
-
     // create the Rust function that will be passed to the experiment thread
     let rust_experiment_fn = move |em: ExperimentContext| -> Result<(), errors::PsydkError> {
         Python::with_gil(|py| -> _ {
@@ -899,24 +863,18 @@ pub fn py_run_experiment(
                 PyDict::new(py)
             };
 
-            py_experiment_fn
-                .getattr(py, "__globals__")?
-                .bind(py)
-                .downcast::<PyDict>()?
-                .set_item("_experiment_context", em.clone())?;
-
             // TODO: There must be a better way to do this!
             let args = args.bind(py);
             let args_as_seq = args.to_list();
             let args_as_seq = args_as_seq.as_sequence();
-            let em = em.into_py(py);
+            let em = em.into_py_any(py)?;
             let em_as_seq = PyList::new(py, vec![em])?;
             let em_as_seq = em_as_seq.as_sequence();
 
             let args = em_as_seq.concat(args_as_seq).unwrap();
             let args = args.to_tuple().unwrap();
 
-            py_experiment_fn.call_bound(py, args, Some(&kwargs))
+            py_experiment_fn.call(py, args, Some(&kwargs))
         })?;
         Ok(())
     };

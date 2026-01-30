@@ -8,14 +8,14 @@ use numpy::PyUntypedArrayMethods;
 #[macro_use]
 use uuid::Uuid;
 
+use crate::visual::renderer::{image::GenericImageView, Scene};
 use dyn_clone::DynClone;
 use pyo3::{exceptions::PyValueError, prelude::*, types::PyString};
-use renderer::{image::GenericImageView, DynamicScene};
 use strum_macros::{Display, EnumString};
 
 use super::{
     geometry::{IntoSize, Size, Transformation2D},
-    window::{Frame, Window, WindowState},
+    window::{Frame, Window, WindowState, WindowStateSnapshot},
 };
 use crate::{
     input::Event,
@@ -25,11 +25,13 @@ use crate::{
 pub mod animations;
 mod helpers;
 
+pub mod base;
 pub mod button;
 pub mod gabor;
 pub mod image;
 pub mod pattern;
 pub mod svg;
+
 // pub mod sprite;
 pub mod text;
 // pub mod vector;
@@ -40,7 +42,7 @@ pub mod video;
 #[derive(Clone, Debug)]
 pub enum StimulusParamValue {
     Size(Size),
-    f64(f64),
+    f32(f32),
     String(String),
     bool(bool),
     i64(i64),
@@ -57,7 +59,7 @@ pub enum StrokeStyle {
     Dashed,
     Dotted,
     DashDot,
-    Dashes(Vec<f64>),
+    Dashes(Vec<f32>),
 }
 
 // implement IntoPy for StrokeStyle (by converting it to a string)
@@ -73,8 +75,9 @@ impl<'py> IntoPyObject<'py> for StrokeStyle {
 }
 
 // implement FromPyObject for StrokeStyle (by parsing it from a string)
-impl<'p> FromPyObject<'p> for StrokeStyle {
-    fn extract_bound(ob: &Bound<'p, PyAny>) -> PyResult<Self> {
+impl FromPyObject<'_, '_> for StrokeStyle {
+    type Error = PyErr;
+    fn extract(ob: Borrowed<'_, '_, PyAny>) -> Result<Self, Self::Error> {
         let s = ob.extract::<String>()?;
         match TryFrom::try_from(s.as_str()) {
             Ok(style) => Ok(style),
@@ -90,9 +93,9 @@ macro_rules! is_variant {
 }
 
 impl StimulusParamValue {
-    fn is_f64(&self) -> bool {
+    fn is_f32(&self) -> bool {
         match self {
-            StimulusParamValue::f64(_) => true,
+            StimulusParamValue::f32(_) => true,
             _ => false,
         }
     }
@@ -106,10 +109,12 @@ impl From<IntoStimulusParamValue> for StimulusParamValue {
     }
 }
 
-impl<'py> FromPyObject<'py> for IntoStimulusParamValue {
-    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
-        if let Ok(value) = ob.extract::<f64>() {
-            return Ok(Self(StimulusParamValue::f64(value)));
+impl FromPyObject<'_, '_> for IntoStimulusParamValue {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'_, '_, PyAny>) -> Result<Self, Self::Error> {
+        if let Ok(value) = ob.extract::<f32>() {
+            return Ok(Self(StimulusParamValue::f32(value)));
         }
         if let Ok(value) = ob.extract::<String>() {
             return Ok(Self(StimulusParamValue::String(value)));
@@ -146,12 +151,13 @@ pub trait StimulusParams {
 /// The stimulus trait.
 pub trait Stimulus: downcast_rs::Downcast + std::fmt::Debug + Send {
     /// Draw the stimulus onto the scene.
-    fn draw(&mut self, scene: &mut DynamicScene, win_state: &WindowState) {
+    fn draw(&mut self, scene: &mut crate::visual::renderer::wrapped::Scene, win_state: &WindowStateSnapshot) {
         // by default, stimuli will do nothing
+        //
     }
 
     /// Check if the stimulus contains a specific Point.
-    fn contains(&self, x: Size, y: Size, window_state: &WindowState) -> bool {
+    fn contains(&self, x: Size, y: Size, window_state: &WindowStateSnapshot) -> bool {
         // by default, stimuli will report false for contains
         false
     }
@@ -193,8 +199,8 @@ pub trait Stimulus: downcast_rs::Downcast + std::fmt::Debug + Send {
     // Animation methods
 
     /// Returns the animations that are associated with this stimulus.
-    fn animations(&mut self) -> &mut Vec<Animation> {
-        panic!("animations not implemented for this stimulus");
+    fn animations(&mut self) -> Option<&mut Vec<Animation>> {
+        None
     }
 
     /// Add an animation to the object.
@@ -208,7 +214,7 @@ pub trait Stimulus: downcast_rs::Downcast + std::fmt::Debug + Send {
         parameter: &str,
         from: StimulusParamValue,
         to: StimulusParamValue,
-        duration: f64,
+        duration: f32,
         repeat: Repeat,
         easing: TransitionFunction,
     ) {
@@ -217,18 +223,20 @@ pub trait Stimulus: downcast_rs::Downcast + std::fmt::Debug + Send {
     }
 
     /// Update the object's state based on the current time. Finished animations are removed.
-    fn update_animations(&mut self, time: Instant, window_state: &WindowState) {
+    fn update_animations(&mut self, time: Instant, window_state: &WindowStateSnapshot) {
         let mut params_to_set = Vec::new();
 
-        self.animations().retain_mut(|animation| {
-            let value = animation.value(time, window_state);
-            params_to_set.push((animation.parameter().to_string(), value));
-            if animation.finished(time) {
-                return false;
-            } else {
-                true
-            }
-        });
+        if let Some(animations) = self.animations() {
+            animations.retain_mut(|animation| {
+                let value = animation.value(time, window_state);
+                params_to_set.push((animation.parameter().to_string(), value));
+                if animation.finished(time) {
+                    return false;
+                } else {
+                    true
+                }
+            });
+        }
 
         for (param, value) in params_to_set.iter() {
             self.set_param(param, value.clone());
@@ -287,7 +295,7 @@ pub trait Stimulus: downcast_rs::Downcast + std::fmt::Debug + Send {
     fn set_param(&mut self, name: &str, value: StimulusParamValue);
 
     /// Dispatch an event to the stimulus. Return true if the event was consumed.
-    fn dispatch_event(&mut self, event: &Event, window_state: &WindowState) -> bool {
+    fn dispatch_event(&mut self, event: &Event, window_state: &WindowStateSnapshot) -> bool {
         return false;
     }
 
@@ -307,7 +315,7 @@ pub struct DynamicStimulus(Arc<Mutex<dyn Stimulus>>);
 /// information is available.
 #[pyclass(name = "Stimulus", subclass, module = "psydk.visual.stimuli")]
 #[derive(Debug, Clone)]
-pub struct PyStimulus(DynamicStimulus);
+pub struct PyStimulus(pub DynamicStimulus);
 
 impl DynamicStimulus {
     pub fn new(stimulus: impl Stimulus + 'static) -> Self {
@@ -355,7 +363,7 @@ macro_rules! downcast_stimulus_mut {
     };
 }
 
-// macro that implements pyo3 methods for a warapper Py$name
+// macro that implements pyo3 methods for a stimulus wrapper
 macro_rules! impl_pystimulus_for_wrapper {
     ($wrapper:ident, $name:ident) => {
         use std::mem;
@@ -382,7 +390,7 @@ macro_rules! impl_pystimulus_for_wrapper {
                 // extract the value from the StimulusParam
                 match param {
                     Some(StimulusParamValue::Size(val)) => Ok(val.into_pyobject(py)?.unbind().into_any()),
-                    Some(StimulusParamValue::f64(val)) => Ok(val.into_pyobject(py)?.unbind().into_any()),
+                    Some(StimulusParamValue::f32(val)) => Ok(val.into_pyobject(py)?.unbind().into_any()),
                     Some(StimulusParamValue::String(val)) => Ok(val.into_pyobject(py)?.unbind().into_any()),
                     Some(StimulusParamValue::bool(val)) => Ok(PyBool::new(py, val)
                         .to_owned()
@@ -405,7 +413,7 @@ macro_rules! impl_pystimulus_for_wrapper {
                 // get DynamicStimulus from the wrapper
                 let dynamic_stimulus = slf.as_super().borrow().0.clone();
 
-                let current_val = py.allow_threads(move || dynamic_stimulus.0.lock().unwrap().get_param(name).unwrap());
+                let current_val = py.detach(move || dynamic_stimulus.0.lock().unwrap().get_param(name).unwrap());
 
                 let dynamic_stimulus = slf.as_super().borrow().0.clone();
 
@@ -414,7 +422,7 @@ macro_rules! impl_pystimulus_for_wrapper {
                         let value = value.extract::<String>(py)?;
                         let value = StimulusParamValue::String(value);
 
-                        py.allow_threads(move || {
+                        py.detach(move || {
                             let mut ds = dynamic_stimulus.0.lock().unwrap();
                             let ds = ds.downcast_mut::<$name>().expect("downcast failed");
                             ds.set_param(name, value);
@@ -426,7 +434,7 @@ macro_rules! impl_pystimulus_for_wrapper {
                         let value = value.extract::<IntoSize>(py)?;
                         let value = StimulusParamValue::Size(value.into());
 
-                        py.allow_threads(move || {
+                        py.detach(move || {
                             let mut ds = dynamic_stimulus.0.lock().unwrap();
                             let ds = ds.downcast_mut::<$name>().expect("downcast failed");
                             ds.set_param(name, value);
@@ -434,11 +442,11 @@ macro_rules! impl_pystimulus_for_wrapper {
 
                         return Ok(());
                     }
-                    StimulusParamValue::f64(_) => {
-                        let value = value.extract::<f64>(py)?;
-                        let value = StimulusParamValue::f64(value);
+                    StimulusParamValue::f32(_) => {
+                        let value = value.extract::<f32>(py)?;
+                        let value = StimulusParamValue::f32(value);
 
-                        py.allow_threads(move || {
+                        py.detach(move || {
                             let mut ds = dynamic_stimulus.0.lock().unwrap();
                             let ds = ds.downcast_mut::<$name>().expect("downcast failed");
                             ds.set_param(name, value);
@@ -450,7 +458,7 @@ macro_rules! impl_pystimulus_for_wrapper {
                         let value = value.extract::<bool>(py)?;
                         let value = StimulusParamValue::bool(value);
 
-                        py.allow_threads(move || {
+                        py.detach(move || {
                             let mut ds = dynamic_stimulus.0.lock().unwrap();
                             let ds = ds.downcast_mut::<$name>().expect("downcast failed");
                             ds.set_param(name, value);
@@ -462,7 +470,7 @@ macro_rules! impl_pystimulus_for_wrapper {
                         let value = value.extract::<i64>(py)?;
                         let value = StimulusParamValue::i64(value);
 
-                        py.allow_threads(move || {
+                        py.detach(move || {
                             let mut ds = dynamic_stimulus.0.lock().unwrap();
                             let ds = ds.downcast_mut::<$name>().expect("downcast failed");
                             ds.set_param(name, value);
@@ -474,7 +482,7 @@ macro_rules! impl_pystimulus_for_wrapper {
                         let value = value.extract::<crate::visual::colors::IntoColor>(py)?;
                         let value = StimulusParamValue::Color(value.into());
 
-                        py.allow_threads(move || {
+                        py.detach(move || {
                             let mut ds = dynamic_stimulus.0.lock().unwrap();
                             let ds = ds.downcast_mut::<$name>().expect("downcast failed");
                             ds.set_param(name, value);
@@ -486,7 +494,7 @@ macro_rules! impl_pystimulus_for_wrapper {
                         let value = value.extract::<super::super::geometry::Shape>(py)?;
                         let value = StimulusParamValue::Shape(value);
 
-                        py.allow_threads(move || {
+                        py.detach(move || {
                             let mut ds = dynamic_stimulus.0.lock().unwrap();
                             let ds = ds.downcast_mut::<$name>().expect("downcast failed");
                             ds.set_param(name, value);
@@ -541,7 +549,7 @@ macro_rules! impl_pystimulus_for_wrapper {
                 downcast_stimulus!(slf, $name).visible()
             }
 
-            // fn contains(mut slf: PyRefMut<'_, Self>, x: IntoSize, y: IntoSize, window_state: &WindowState) -> bool {
+            // fn contains(mut slf: PyRefMut<'_, Self>, x: IntoSize, y: IntoSize, window_state: &WindowStateSnapshot) -> bool {
             //     downcast_stimulus!(slf, $name).contains(x.into(), y.into(), window_state)
             // }
 
@@ -556,7 +564,7 @@ macro_rules! impl_pystimulus_for_wrapper {
             ///   The target value of the animation.
             /// duration : float
             ///  The duration of the animation in seconds.
-            fn animate(mut slf: PyRefMut<'_, Self>, param_name: &str, to: Py<PyAny>, duration: f64) -> PyResult<()> {
+            fn animate(mut slf: PyRefMut<'_, Self>, param_name: &str, to: Py<PyAny>, duration: f32) -> PyResult<()> {
                 let from = downcast_stimulus!(slf, $name)
                     .get_param(param_name)
                     .ok_or_else(|| PyValueError::new_err(format!("parameter {} not found", param_name)))?;
@@ -566,8 +574,8 @@ macro_rules! impl_pystimulus_for_wrapper {
                     StimulusParamValue::Size(_) => {
                         StimulusParamValue::Size(to.extract::<IntoSize>(slf.py()).expect("invalid value").into())
                     }
-                    StimulusParamValue::f64(_) => {
-                        StimulusParamValue::f64(to.extract::<f64>(slf.py()).expect("invalid value"))
+                    StimulusParamValue::f32(_) => {
+                        StimulusParamValue::f32(to.extract::<f32>(slf.py()).expect("invalid value"))
                     }
                     StimulusParamValue::String(_) => {
                         StimulusParamValue::String(to.extract::<String>(slf.py()).expect("invalid value"))

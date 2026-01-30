@@ -1,8 +1,8 @@
 use crate::visual::colors::display::{
     CustomDisplayCharacteristics, DisplayCharacteristics, GenericDisplayCharacteristics,
 };
+use crate::visual::renderer::color_formats::ColorFormat;
 use pyo3::prelude::*;
-use renderer::color_formats::ColorFormat;
 use std::{fs::File, io::BufReader, sync::Arc};
 
 #[pyclass]

@@ -18,9 +18,9 @@ use super::{
     brushes::{Brush, ColorStop},
     colors::RGBA,
 };
+use crate::crate::visual::renderer::Renderer;
 use crate::bitmaps::DynamicBitmap;
 use crate::prelude::DynamicFontFace;
-use crate::renderer::Renderer;
 use crate::shapes::{Point, Shape};
 use crate::styles::{BlendMode, FillStyle, StrokeStyle};
 use crate::{affine::Affine, scenes::Scene};
@@ -53,7 +53,7 @@ pub struct VelloRenderer {
 
 impl VelloRenderer {
     pub fn new(device: &wgpu::Device, surface_format: wgpu::TextureFormat, width: u32, height: u32) -> Self {
-        let renderer = vello::Renderer::new(
+        let renderer = vello::crate::visual::renderer::new(
             &device,
             RendererOptions {
                 surface_format: Some(surface_format),
@@ -754,8 +754,8 @@ impl VelloFont {
 //             })
 //             .collect::<Vec<_>>();
 //
-//         let text_width = pen_x as f64;
-//         let text_height = pen_y as f64 + line_height as f64;
+//         let text_width = pen_x ;
+//         let text_height = pen_y as f64 + line_height ;
 //
 //         let transform_x = match self.alignment {
 //             Alignment::Left => 0.0,

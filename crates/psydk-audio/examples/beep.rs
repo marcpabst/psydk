@@ -6,9 +6,7 @@ use timed_audio::{AudioObject, Stream};
 fn main() -> anyhow::Result<()> {
     let host = cpal::default_host();
 
-    let device = host
-        .default_output_device()
-        .expect("no output device available");
+    let device = host.default_output_device().expect("no output device available");
 
     let config = device.default_output_config().unwrap();
     let sample_format = config.sample_format();
@@ -24,7 +22,7 @@ pub fn run(
     let stream = Stream::new(device, config, sample_format);
 
     // print the latency of the stream
-    println!("Stream latency: {:?}", stream.latency_duration());
+    log::debug!("Stream latency: {:?}", stream.latency_duration());
     let now = Instant::now();
 
     let ao = AudioObject::white_noise(0.5, None, std::time::Duration::from_millis(10000));
@@ -39,7 +37,7 @@ pub fn run(
 
     std::thread::sleep(std::time::Duration::from_millis(500000));
 
-    println!("Closing stream");
+    log::debug!("Closing stream");
 
     Ok(())
 }

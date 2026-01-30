@@ -5,7 +5,7 @@ use wgpu::{
 };
 use winit::{dpi::PhysicalSize, window::Window};
 
-use crate::color_formats::ColorFormat;
+use super::color_formats::ColorFormat;
 
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 #[repr(C)]
@@ -315,7 +315,7 @@ impl WgpuRenderer {
     fn create_render_pipelie(device: &wgpu::Device, format: wgpu::TextureFormat) -> wgpu::RenderPipeline {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Render Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("../assets/shaders/render.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(include_str!("./assets/shaders/render.wgsl").into()),
         });
 
         // create a bind group layout for texture and sampler

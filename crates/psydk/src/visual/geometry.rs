@@ -105,8 +105,10 @@ impl From<IntoSize> for Size {
     }
 }
 
-impl<'py> FromPyObject<'py> for IntoSize {
-    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
+impl FromPyObject<'_, '_> for IntoSize {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'_, '_, PyAny>) -> Result<Self, Self::Error> {
         // try to extract a Size
         if let Ok(value) = ob.extract::<Size>() {
             Ok(IntoSize(value))
@@ -963,8 +965,10 @@ impl Anchor {
 }
 
 // implement FromPyObject for Anchor
-impl<'py> FromPyObject<'py> for Anchor {
-    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
+impl FromPyObject<'_, '_> for Anchor {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'_, '_, PyAny>) -> Result<Self, Self::Error> {
         // try to extract a string from the object and then convert it to a TransitionFunction
         if let Ok(name) = ob.extract::<String>() {
             Ok(Anchor::from_str(&name).unwrap())

@@ -1,15 +1,14 @@
 use crate::visual::colors::Color;
 use crate::visual::colors::IntoColor;
 
-use psydk_proc::{FromPyStr, StimulusParams};
-use renderer::{
+use crate::visual::renderer::{
     affine::Affine,
     brushes::{Brush, Extend, ImageSampling},
     colors::RGBA,
-    renderer::SharedRendererState,
     styles::ImageFitMode,
-    DynamicBitmap, DynamicScene,
+    Bitmap, Renderer, Scene,
 };
+use psydk_proc::{FromPyStr, StimulusParams};
 use std::sync::Arc;
 use strum::EnumString;
 use uuid::Uuid;
@@ -25,7 +24,7 @@ use crate::{
     visual::{
         geometry::{Anchor, Shape, Size, Transformation2D},
         stimuli::text::{FontWeight, TextAlignment, TextStimulus},
-        window::{Frame, WindowState},
+        window::{Frame, WindowState, WindowStateSnapshot},
     },
 };
 
@@ -48,7 +47,7 @@ pub struct ButtonParams {
     pub stroke_style: StrokeStyle,
     pub stroke_color: Color,
     pub stroke_width: Size,
-    pub alpha: Option<f64>,
+    pub alpha: Option<f32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,7 +91,7 @@ impl ButtonStimulus {
         stroke_style: StrokeStyle,
         stroke_color: Color,
         stroke_width: Size,
-        alpha: Option<f64>,
+        alpha: Option<f32>,
         transform: Transformation2D,
         context: &ExperimentContext,
     ) -> Self {
@@ -238,7 +237,7 @@ impl PyButtonStimulus {
         stroke_style: StrokeStyle,
         stroke_color: IntoColor,
         stroke_width: IntoSize,
-        alpha: Option<f64>,
+        alpha: Option<f32>,
         transform: Transformation2D,
         context: Option<ExperimentContext>,
     ) -> (Self, PyStimulus) {
@@ -288,15 +287,15 @@ impl Stimulus for ButtonStimulus {
         self.id
     }
 
-    fn animations(&mut self) -> &mut Vec<Animation> {
-        &mut self.animations
+    fn animations(&mut self) -> Option<&mut Vec<Animation>> {
+        Some(&mut self.animations)
     }
 
     fn add_animation(&mut self, animation: Animation) {
         self.animations.push(animation);
     }
 
-    fn draw(&mut self, scene: &mut DynamicScene, window_state: &WindowState) {
+    fn draw(&mut self, scene: &mut crate::visual::renderer::wrapped::Scene, window_state: &WindowStateSnapshot) {
         if !self.visible {
             return;
         }
@@ -305,10 +304,8 @@ impl Stimulus for ButtonStimulus {
         let screen_props = window_state.physical_screen;
         let dc = &*window_state.display_characteristics;
 
-        let renderer_factory = &window_state.shared_renderer_state;
-
-        let x_origin = self.params.x.eval(windows_size, screen_props) as f64;
-        let y_origin = self.params.y.eval(windows_size, screen_props) as f64;
+        let x_origin = self.params.x.eval(windows_size, screen_props);
+        let y_origin = self.params.y.eval(windows_size, screen_props);
 
         let fill_color = match self.state {
             ButtonState::Normal => self.params.fill_color.to_display_rgba(dc),
@@ -321,11 +318,11 @@ impl Stimulus for ButtonStimulus {
 
         let stroke_color = self.params.stroke_color.to_display_rgba(dc);
 
-        let stroke_brush = renderer::brushes::Brush::Solid(stroke_color.into());
+        let stroke_brush = crate::visual::renderer::brushes::Brush::Solid(stroke_color.into());
 
-        let stroke_width = self.params.stroke_width.eval(windows_size, screen_props) as f64;
+        let stroke_width = self.params.stroke_width.eval(windows_size, screen_props);
 
-        let stroke_options = renderer::styles::StrokeStyle::new(stroke_width);
+        let stroke_options = crate::visual::renderer::styles::StrokeStyle::new(stroke_width);
 
         // draw the text
         let text_color = match self.state {
@@ -335,18 +332,18 @@ impl Stimulus for ButtonStimulus {
             ButtonState::Disabled => self.params.text_color_disabled.to_display_rgba(dc),
         };
 
-        let width = self.params.width.eval(windows_size, screen_props) as f64;
-        let height = self.params.height.eval(windows_size, screen_props) as f64;
+        let width = self.params.width.eval(windows_size, screen_props);
+        let height = self.params.height.eval(windows_size, screen_props);
 
         // move x and y so that the rectangle is drawn at the correct position
-        let x = self.params.x.eval(windows_size, screen_props) as f64 - width / 2.0;
-        let y = self.params.y.eval(windows_size, screen_props) as f64 - height / 2.0;
+        let x = self.params.x.eval(windows_size, screen_props) as f32 - width / 2.0;
+        let y = self.params.y.eval(windows_size, screen_props) as f32 - height / 2.0;
 
         // // move by x_origin and y_origin
         // let x = x + x_origin;
         // let y = y + y_origin;
 
-        let shape = renderer::shapes::Shape::rectangle((x, y), width, height);
+        let shape = crate::visual::renderer::shapes::Shape::rectangle((x, y), width, height);
 
         scene.draw_shape_fill(shape.clone(), fill_brush.clone(), None, None);
 
@@ -379,7 +376,7 @@ impl Stimulus for ButtonStimulus {
         self.params.set_param(name, value)
     }
 
-    fn dispatch_event(&mut self, event: &crate::input::Event, window_state: &WindowState) -> bool {
+    fn dispatch_event(&mut self, event: &crate::input::Event, window_state: &WindowStateSnapshot) -> bool {
         // if this is a mouse move event, we check if the mouse is over the button
 
         match event {
@@ -397,7 +394,7 @@ impl Stimulus for ButtonStimulus {
 }
 
 impl ButtonStimulus {
-    fn contains_point(&self, position: &(f32, f32), window_state: &WindowState) -> bool {
+    fn contains_point(&self, position: &(f32, f32), window_state: &WindowStateSnapshot) -> bool {
         let windows_size = window_state.size;
         let screen_props = window_state.physical_screen;
 
@@ -413,7 +410,7 @@ impl ButtonStimulus {
         x >= 0.0 && y >= 0.0 && x <= width && y <= height
     }
 
-    fn handle_mouse_move(&mut self, position: &(f32, f32), window_state: &WindowState) -> bool {
+    fn handle_mouse_move(&mut self, position: &(f32, f32), window_state: &WindowStateSnapshot) -> bool {
         if self.state == ButtonState::Pressed && self.contains_point(position, window_state) {
             // if the button is pressed and the cursor is over the button, we keep the state as pressed
             true // we handle the event
@@ -431,7 +428,7 @@ impl ButtonStimulus {
             false // we do not handle the event
         }
     }
-    fn handle_mouse_down(&mut self, position: &(f32, f32), window_state: &WindowState) -> bool {
+    fn handle_mouse_down(&mut self, position: &(f32, f32), window_state: &WindowStateSnapshot) -> bool {
         if self.contains_point(position, window_state) {
             // set the button state to pressed
             self.state = ButtonState::Pressed;
@@ -442,7 +439,7 @@ impl ButtonStimulus {
             false // if the cursor is not over the button, we do not handle the event
         }
     }
-    fn handle_mouse_up(&mut self, position: &(f32, f32), window_state: &WindowState) -> bool {
+    fn handle_mouse_up(&mut self, position: &(f32, f32), window_state: &WindowStateSnapshot) -> bool {
         if self.state == ButtonState::Pressed && self.contains_point(position, window_state) {
             // if the button was pressed and the cursor is still over the button
             self.state = ButtonState::Hovered; // reset the state to normal after the click

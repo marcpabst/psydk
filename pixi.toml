@@ -6,7 +6,7 @@ platforms = ["win-64", "osx-arm64"]
 version = "0.1.0"
 
 [tasks]
-"build-py" = { cwd = "crates/psydk", cmd = "maturin build", env = { CARGO_BUILD_TARGET = "aarch64-apple-darwin", SKIA_SOURCE_DIR = "/Users/marc/repos/skia-builder/build/src/skia" } }
+"build-py" = { cwd = "crates/psydk", cmd = "maturin build -r", env = { CARGO_BUILD_TARGET = "aarch64-apple-darwin", SKIA_SOURCE_DIR = "/Users/marc/repos/skia-builder/build/src/skia" } }
 
 "build-py-ios" = { cwd = "crates/psydk", env = { FORCE_SKIA_BUILD="1", PYTHON_VERSION = "3.10", PYTHONDIR = "$PIXI_PROJECT_ROOT/psydk/dependencies/build_helpers/iphoneos/" }, cmd = "dependencies/build_helpers/build_ios.sh" }
 "build-docs" = "sphinx-build -M html docs/source/ docs/build/ -W -a -j auto -n --keep-going"

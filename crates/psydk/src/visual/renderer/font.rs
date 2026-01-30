@@ -1,7 +1,7 @@
 use core::fmt;
 use std::{any::Any, fmt::Formatter};
 
-use crate::shapes::Point;
+use super::shapes::Point;
 
 /// A Glyph.
 #[derive(Debug, Clone)]

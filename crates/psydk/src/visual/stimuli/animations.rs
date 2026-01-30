@@ -1,3 +1,4 @@
+use pyo3::prelude::{Borrowed, PyModule};
 use std::time::Instant;
 
 use super::{Stimulus, StimulusParamValue};
@@ -5,7 +6,7 @@ use crate::visual::colors::Color;
 use crate::visual::colors::IntoColor;
 use crate::visual::{
     geometry::Size,
-    window::{Window, WindowState},
+    window::{Window, WindowState, WindowStateSnapshot},
 };
 use pyo3::{types::PyAnyMethods, Bound, FromPyObject, PyAny, PyResult};
 
@@ -22,20 +23,21 @@ pub enum TransitionFunction {
     /// No transition function.
     None,
     /// A linear transition function.
-    Linear(f64, f64),
+    Linear(f32, f32),
     /// A cubic bezier transition function.
-    CubicBezier(f64, f64, f64, f64),
+    CubicBezier(f32, f32, f32, f32),
 }
 
 // implement FromPyObject for TransitionFunction
-impl<'py> FromPyObject<'py> for TransitionFunction {
-    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
+impl FromPyObject<'_, '_> for TransitionFunction {
+    type Error = pyo3::PyErr;
+    fn extract(ob: Borrowed<'_, '_, PyAny>) -> Result<Self, Self::Error> {
         // try to extract a string from the object and then convert it to a TransitionFunction
-        if let Ok(name) = ob.extract::<String>() {
-            Ok(TransitionFunction::from_str(&name))
+        if let Ok(name) = ob.extract::<&str>() {
+            Ok(TransitionFunction::from_str(name))
         } else {
-            // if the object is not a string, try to extract a tuple of f64s
-            let tuple = ob.extract::<(f64, f64, f64, f64)>()?;
+            // if the object is not a string, try to extract a tuple of f32s
+            let tuple = ob.extract::<(f32, f32, f32, f32)>()?;
             Ok(TransitionFunction::CubicBezier(tuple.0, tuple.1, tuple.2, tuple.3))
         }
     }
@@ -46,7 +48,7 @@ impl TransitionFunction {
         Self::Linear(0.0, 1.0)
     }
 
-    pub fn cubic_bezier(x1: f64, y1: f64, x2: f64, y2: f64) -> Self {
+    pub fn cubic_bezier(x1: f32, y1: f32, x2: f32, y2: f32) -> Self {
         Self::CubicBezier(x1, y1, x2, y2)
     }
 
@@ -82,7 +84,7 @@ pub struct Animation {
     /// The value that the attribute should be animated to.
     to: StimulusParamValue,
     /// The duration of the animation in seconds.
-    duration: f64,
+    duration: f32,
     /// The time at which the animation should start from when it is created.
     start_time: Instant,
     /// Repeat the animation according to the specified repeat mode.
@@ -96,7 +98,7 @@ impl Animation {
         parameter: &str,
         from: StimulusParamValue,
         to: StimulusParamValue,
-        duration: f64,
+        duration: f32,
         start_time: Instant,
         repeat: Repeat,
         easing: TransitionFunction,
@@ -117,8 +119,8 @@ impl Animation {
         &self.paramter
     }
 
-    /// Returns the current value of the animated parameter at the specified time (f64).
-    pub fn value_f64(from: f64, to: f64, elapsed: f64, duration: f64, easing: TransitionFunction) -> f64 {
+    /// Returns the current value of the animated parameter at the specified time (f32).
+    pub fn value_f32(from: f32, to: f32, elapsed: f32, duration: f32, easing: TransitionFunction) -> f32 {
         let t = elapsed / duration;
         let t = match easing {
             TransitionFunction::None => t,
@@ -137,19 +139,19 @@ impl Animation {
     }
 
     /// Returns the current value of the animated parameter at the specified time.
-    pub fn value(&self, time: Instant, window_state: &WindowState) -> StimulusParamValue {
+    pub fn value(&self, time: Instant, window_state: &WindowStateSnapshot) -> StimulusParamValue {
         if self.finished(time) {
             return self.to.clone();
         }
 
-        // let elapsed = time.duration_since(self.start_time).as_secs_f64();
+        // let elapsed = time.duration_since(self.start_time).as_secs_f32();
         let elapsed = match self.repeat {
             Repeat::Loop(n) => {
-                let elapsed = time.duration_since(self.start_time).as_secs_f64();
+                let elapsed = time.duration_since(self.start_time).as_secs_f32();
                 elapsed % self.duration
             }
             Repeat::PingPong(n) => {
-                let elapsed = time.duration_since(self.start_time).as_secs_f64();
+                let elapsed = time.duration_since(self.start_time).as_secs_f32();
                 let elapsed = elapsed % (self.duration * 2.0);
                 if elapsed > self.duration {
                     self.duration - (elapsed - self.duration)
@@ -168,21 +170,21 @@ impl Animation {
         let screen_props = window_state.physical_screen;
 
         match (from, to) {
-            (StimulusParamValue::f64(f), StimulusParamValue::f64(t)) => {
-                StimulusParamValue::f64(Self::value_f64(f, t, elapsed, duration, easing))
+            (StimulusParamValue::f32(f), StimulusParamValue::f32(t)) => {
+                StimulusParamValue::f32(Self::value_f32(f, t, elapsed, duration, easing))
             }
             (StimulusParamValue::Size(f), StimulusParamValue::Size(t)) => {
-                let f = f.eval(window_size, screen_props) as f64;
-                let t = t.eval(window_size, screen_props) as f64;
-                let value = Self::value_f64(f, t, elapsed, duration, easing);
+                let f = f.eval(window_size, screen_props) as f32;
+                let t = t.eval(window_size, screen_props) as f32;
+                let value = Self::value_f32(f, t, elapsed, duration, easing);
                 StimulusParamValue::Size(Size::Pixels(value as f32))
             }
             // for now just animate in linear RGB space
             // (StimulusParamValue::Color(f), StimulusParamValue::Color(t)) => {
-            //     let value_r = Self::value_f64(f.r as f64, t.r as f64, elapsed, duration, easing);
-            //     let value_g = Self::value_f64(f.g as f64, t.g as f64, elapsed, duration, easing);
-            //     let value_b = Self::value_f64(f.b as f64, t.b as f64, elapsed, duration, easing);
-            //     let value_a = Self::value_f64(f.a as f64, t.a as f64, elapsed, duration, easing);
+            //     let value_r = Self::value_f32(f.r as f32, t.r as f32, elapsed, duration, easing);
+            //     let value_g = Self::value_f32(f.g as f32, t.g as f32, elapsed, duration, easing);
+            //     let value_b = Self::value_f32(f.b as f32, t.b as f32, elapsed, duration, easing);
+            //     let value_a = Self::value_f32(f.a as f32, t.a as f32, elapsed, duration, easing);
             //     StimulusParamValue::Color(crate::visual::colors::Color::new_srgba(
             //         value_r as f32,
             //         value_g as f32,
@@ -198,12 +200,12 @@ impl Animation {
     pub fn finished(&self, time: Instant) -> bool {
         match self.repeat {
             Repeat::Loop(n) => {
-                let elapsed = time.duration_since(self.start_time).as_secs_f64();
-                elapsed > self.duration * n as f64
+                let elapsed = time.duration_since(self.start_time).as_secs_f32();
+                elapsed > self.duration * n as f32
             }
             Repeat::PingPong(n) => {
-                let elapsed = time.duration_since(self.start_time).as_secs_f64();
-                elapsed > self.duration * n as f64 * 2.0
+                let elapsed = time.duration_since(self.start_time).as_secs_f32();
+                elapsed > self.duration * n as f32 * 2.0
             }
         }
     }

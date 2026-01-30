@@ -1,4 +1,4 @@
-use crate::{affine::Affine, colors::RGBA, shapes::Point, skia::Bitmap, styles::ImageFitMode};
+use super::{affine::Affine, colors::RGBA, shapes::Point, skia::Bitmap, styles::ImageFitMode};
 
 #[derive(Debug, Clone)]
 pub enum Brush<'a> {

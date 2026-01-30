@@ -7,6 +7,7 @@ use crate::visual::colors::Color;
 use crate::visual::colors::IntoColor;
 use crate::visual::geometry::Transformation2D;
 use crate::visual::geometry::{Anchor, Size};
+use crate::visual::renderer::wrapped::Scene;
 use cosmic_text::Buffer as CosmicBuffer;
 use cosmic_text::Family as CosmicFamily;
 use cosmic_text::FontSystem as CosmicFontSystem;
@@ -18,14 +19,13 @@ use cosmic_text::{Attrs as ComsicAttrs, CacheKeyFlags};
 use std::sync::{Arc, Mutex};
 
 use psydk_proc::{FromPyStr, StimulusParams};
-use renderer::DynamicScene;
 use strum::EnumString;
 use uuid::Uuid;
 
-use crate::visual::window::{Frame, WindowState};
-use renderer::affine::Affine;
-use renderer::brushes::Brush;
-use renderer::colors::RGBA;
+use crate::visual::renderer::affine::Affine;
+use crate::visual::renderer::brushes::Brush;
+use crate::visual::renderer::colors::RGBA;
+use crate::visual::window::{Frame, WindowState, WindowStateSnapshot};
 
 #[derive(EnumString, Debug, Clone, Copy, PartialEq, FromPyStr)]
 #[strum(serialize_all = "snake_case")]
@@ -65,7 +65,7 @@ pub struct TextParams {
     pub text: String,
     pub font_size: Size,
     pub fill_color: Color,
-    pub alpha: f64,
+    pub alpha: f32,
 }
 
 #[derive(Debug)]
@@ -76,7 +76,7 @@ pub struct TextStimulus {
     attrs: OwnedCosmicAttrs,
     alignment: TextAlignment,
     anchor: Anchor,
-    font: renderer::font::DynamicFontFace,
+    font: crate::visual::renderer::Typeface,
     font_manager: Arc<Mutex<CosmicFontSystem>>,
     transform: Transformation2D,
     animations: Vec<Animation>,
@@ -94,7 +94,7 @@ impl TextStimulus {
         font_family: &str,
         font_weight: FontWeight,
         fill_color: Color,
-        alpha: f64,
+        alpha: f32,
         transform: Transformation2D,
         context: &ExperimentContext,
     ) -> Self {
@@ -116,7 +116,7 @@ impl TextStimulus {
 
         let font_manager_clone = context.font_manager().clone();
 
-        let renderer_factory = context.renderer_factory();
+        let renderer = context.renderer();
         let mut font_manager = context.font_manager().lock().unwrap();
 
         let cosmic_font_id = font_manager.db().query(&query).unwrap();
@@ -131,7 +131,9 @@ impl TextStimulus {
 
         let font_data = cosmic_font.data();
 
-        let font = renderer_factory.create_font_face(font_data, font_index);
+        let font = renderer
+            .create_font_face_from_data(face_info, font_data, font_index as usize)
+            .unwrap();
         let mut cosmic_buffer = CosmicBuffer::new(&mut font_manager, comic_metrics);
         let owned_attrs = attrs.into();
 
@@ -186,7 +188,7 @@ impl PyTextStimulus {
         font_family: &str,
         font_weight: FontWeight,
         alignment: TextAlignment,
-        alpha: f64,
+        alpha: f32,
         anchor: Anchor,
         x: IntoSize,
         y: IntoSize,
@@ -222,7 +224,7 @@ impl Stimulus for TextStimulus {
         self.id
     }
 
-    fn draw(&mut self, scene: &mut DynamicScene, window_state: &WindowState) {
+    fn draw(&mut self, scene: &mut Scene, window_state: &WindowStateSnapshot) {
         if !self.visible {
             return;
         }
@@ -233,9 +235,9 @@ impl Stimulus for TextStimulus {
         let mut font_manager = self.font_manager.lock().unwrap();
 
         // convert physical units to pixels
-        let pos_x = self.params.x.eval(window_size, screen_props) as f64;
-        let pos_y = -self.params.y.eval(window_size, screen_props) as f64;
-        let font_size = self.params.font_size.eval(window_size, screen_props) as f64;
+        let pos_x = self.params.x.eval(window_size, screen_props) as f32;
+        let pos_y = -self.params.y.eval(window_size, screen_props) as f32;
+        let font_size = self.params.font_size.eval(window_size, screen_props) as f32;
 
         let trans_mat = self.transform.eval(window_size, screen_props);
 
@@ -260,7 +262,7 @@ impl Stimulus for TextStimulus {
 
         // get the width and height of the text
         let (bb_width, bb_height) = measure(&self.buffer);
-        // let (bb_width, bb_height) = (bb_width as f64, bb_height as f64);
+        // let (bb_width, bb_height) = (bb_width as f32, bb_height as f32);
 
         // depending on the achoring, we need to adjust the position
         let (new_x, new_y) = self
@@ -271,7 +273,7 @@ impl Stimulus for TextStimulus {
 
         for run in self.buffer.layout_runs() {
             for glyph in run.glyphs {
-                let glyph = renderer::font::Glyph {
+                let glyph = crate::visual::renderer::font::Glyph {
                     id: glyph.glyph_id,
                     position: (glyph.x as f32, glyph.y as f32).into(),
                 };
@@ -301,8 +303,8 @@ impl Stimulus for TextStimulus {
         self.visible
     }
 
-    fn animations(&mut self) -> &mut Vec<Animation> {
-        &mut self.animations
+    fn animations(&mut self) -> Option<&mut Vec<Animation>> {
+        Some(&mut self.animations)
     }
 
     fn add_animation(&mut self, animation: Animation) {

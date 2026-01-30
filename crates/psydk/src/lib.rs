@@ -2,6 +2,7 @@
 #[macro_use]
 use std::collections::HashMap;
 use crate::input::{Event, EventHandlingExt, EventKind, EventTryFrom};
+use crate::visual::renderer::wgpu_renderer;
 use crate::visual::window::Frame;
 use async_channel::{bounded, Receiver, Sender};
 use context::{py_run_experiment, ExperimentContext};
@@ -9,7 +10,6 @@ use derive_debug::Dbg;
 use futures_lite::{future::block_on, Future};
 use pyo3::types::{PyDict, PyList, PyTuple, PyType};
 use pyo3::{prelude::*, py_run};
-use renderer::wgpu_renderer;
 use std::env;
 use std::thread;
 use std::{
@@ -25,11 +25,11 @@ use winit::{
     monitor::VideoMode,
 };
 
-pub mod experiment;
 pub mod audio;
 pub mod config;
 pub mod context;
 pub mod errors;
+pub mod experiment;
 pub mod git;
 pub mod input;
 pub mod sensors;
@@ -79,6 +79,7 @@ fn psydk(m: &Bound<'_, PyModule>) -> PyResult<()> {
             m.add_class::<visual::stimuli::image::PyImageStimulus>()?;
             m.add_class::<visual::stimuli::svg::PySVGStimulus>()?;
             m.add_class::<visual::stimuli::pattern::PyPatternStimulus>()?;
+            m.add_class::<visual::stimuli::base::BaseStimulus>()?;
             m.add_class::<visual::stimuli::text::PyTextStimulus>()?;
             m.add_class::<visual::stimuli::button::PyButtonStimulus>()?;
             #[cfg(feature = "gst")]
@@ -113,6 +114,15 @@ fn psydk(m: &Bound<'_, PyModule>) -> PyResult<()> {
         };
 
         m.add_submodule(&m_geometry)?;
+
+        let m_renderer = {
+            let m = new_submodule!(m, "psydk.visual", "renderer");
+            m.add_class::<crate::visual::renderer::wrapped::Shape>()?;
+
+            m
+        };
+
+        m.add_submodule(&m_renderer)?;
 
         let m_color = {
             let m = new_submodule!(m, "psydk.visual", "color");

@@ -8,9 +8,7 @@ use timed_audio::{AudioObject, Stream};
 fn main() -> anyhow::Result<()> {
     let host = cpal::default_host();
 
-    let device = host
-        .default_output_device()
-        .expect("no output device available");
+    let device = host.default_output_device().expect("no output device available");
 
     let config = device.default_output_config().unwrap();
     let sample_format = config.sample_format();
@@ -28,8 +26,7 @@ pub fn run(
     // create a 2s sine wave at 440 Hz
     let mut data = ArrayD::zeros(IxDyn(&[44100, 2]));
     for (i, sample) in data.iter_mut().enumerate() {
-        *sample =
-            (2.0 * std::f32::consts::PI * 440.0 * i as f32 / stream.sample_rate() as f32).sin();
+        *sample = (2.0 * std::f32::consts::PI * 440.0 * i as f32 / stream.sample_rate() as f32).sin();
     }
 
     let now = Instant::now();
@@ -40,7 +37,7 @@ pub fn run(
 
     std::thread::sleep(std::time::Duration::from_millis(500000));
 
-    println!("Closing stream");
+    log::debug!("Closing stream");
 
     Ok(())
 }

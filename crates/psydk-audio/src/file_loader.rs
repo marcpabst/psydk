@@ -73,9 +73,11 @@ pub fn load_audio_file<P: AsRef<Path>>(
     let sample_rate = track.codec_params.sample_rate.unwrap_or(44100);
     let channels = track.codec_params.channels.map(|c| c.count()).unwrap_or(1);
 
-    println!(
+    log::debug!(
         "Loading track {} with {} channels at {} Hz",
-        selected_track_index, channels, sample_rate
+        selected_track_index,
+        channels,
+        sample_rate
     );
 
     // Use the default options for the decoder
@@ -265,7 +267,7 @@ pub fn resample_audio(audio_data: AudioData, target_sample_rate: u32) -> Result<
     let input_sample_rate = audio_data.sample_rate;
     let channels = audio_data.channels;
 
-    println!("Resampling from {} Hz to {} Hz", input_sample_rate, target_sample_rate);
+    log::debug!("Resampling from {} Hz to {} Hz", input_sample_rate, target_sample_rate);
 
     // Convert ndarray to Vec<Vec<f32>> format (channels x samples)
     let input_samples = audio_data.samples;

@@ -1,12 +1,12 @@
 use std::{borrow::Cow, sync::Arc};
 
-use psydk_proc::StimulusParams;
-use pyo3::{exceptions::PyValueError, ffi::c_str, prelude::*};
-use renderer::{
+use crate::visual::renderer::{
     affine::Affine,
     brushes::{Brush, Gradient},
     colors::RGBA,
 };
+use psydk_proc::StimulusParams;
+use pyo3::{exceptions::PyValueError, ffi::c_str, prelude::*};
 use uuid::Uuid;
 
 use super::{
@@ -14,7 +14,7 @@ use super::{
     StimulusParamValue, StimulusParams, StrokeStyle,
 };
 use crate::{
-    context::{ExperimentContext, PyRendererFactory},
+    context::ExperimentContext,
     visual::{colors::DisplayRGBA, geometry::Size, window::Window},
 };
 
