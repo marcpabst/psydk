@@ -70,3 +70,23 @@ pub enum BlendMode {
     Multiply,
     Modulate,
 }
+
+#[derive(Debug, Clone)]
+pub enum FontStyle {
+    Normal,
+    Italic,
+    // Oblique,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Debug, Hash)]
+pub enum FontWidth {
+    UltraCondensed,
+    ExtraCondensed,
+    Condensed,
+    SemiCondensed,
+    Normal,
+    SemiExpanded,
+    Expanded,
+    ExtraExpanded,
+    UltraExpanded,
+}

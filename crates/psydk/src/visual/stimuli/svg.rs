@@ -5,7 +5,6 @@ use crate::visual::renderer::SVG;
 use crate::visual::renderer::{
     brushes::{Brush, Extend, ImageSampling},
     image::Rgb,
-    shapes::Shape,
     styles::ImageFitMode,
     Bitmap, Scene,
 };
@@ -201,13 +200,13 @@ impl Stimulus for SVGStimulus {
 
         let trans_mat = trans_mat.eval(window_size, screen_props);
 
-        scene.draw_svg(
-            &self.svg,
-            crate::visual::renderer::shapes::Point { x: x, y: y },
-            width as f32,
-            height as f32,
-            None,
-        );
+        // scene.draw_svg(
+        //     &self.svg,
+        //     crate::visual::renderer::shapes::Point { x: x, y: y },
+        //     width as f32,
+        //     height as f32,
+        //     None,
+        // );
     }
 
     fn set_visible(&mut self, visible: bool) {

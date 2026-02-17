@@ -35,8 +35,7 @@ impl WgpuRenderer {
         queue: &Queue,
         surface_format: TextureFormat,
         internal_color_format: ColorFormat,
-        // lut: Option<image::RgbImage>,
-        // encode_gamma: bool,
+        lut: Option<(&[f32], &[f32], &[f32])>,
     ) -> Self {
         let size = window.surface_size();
         let (width, height) = (size.width, size.height);
@@ -57,67 +56,44 @@ impl WgpuRenderer {
         // create a render pipeline
         let render_pipeline = Self::create_render_pipelie(&device, surface_format);
         let texture = Self::create_texture(&device, width, height, internal_texture_format);
-        let lut_texture_array = Self::create_lut_texture_array(&device, 256, 256);
+        let lut_texture_array = Self::create_lut_texture(&device, 16384, 1);
 
-        // // if a LUT is provided, create a texture array and upload the LUT data
-        // let lut_texture_data = if let Some(lut) = lut {
-        //     // make sure the LUT is 128x128
-        //     assert_eq!(lut.width(), 256);
-        //     assert_eq!(lut.height(), 256);
-        //     // get u8 data from the LUT
-        //     // the desired structure is 128x128 red, 128x128 green, 128x128 blue
-        //     // the image however has rgb values interleaved
-        //     let mut lut_texture_data = Vec::with_capacity(256 * 256 * 3);
-        //     for c in 0..3 {
-        //         for i in 0..(256 * 256) {
-        //             // get the pixel value
-        //             let pixel = lut.get_pixel(i % 256, i / 256);
-        //             // get the channel value
-        //             let channel_value = pixel[c];
-        //             // push the value to the texture data
-        //             lut_texture_data.push(channel_value);
-        //         }
-        //     }
+        // if a LUT is provided, create a texture array and upload the LUT data
+        if let Some((r, g, b)) = lut {
+            let mut lut_texture_data = Vec::with_capacity(16384 * 4); // 4 channels (RGBA) per pixel
+            for i in 0..16384 {
+                lut_texture_data.push(r[i]);
+                lut_texture_data.push(g[i]);
+                lut_texture_data.push(b[i]);
+                lut_texture_data.push(1.0); // alpha channel
+            }
 
-        //     lut_texture_data
-        // } else {
-        //     // create a default LUT based on the sRGB encoding function
-        //     // the LUT is 256x256 red, 256x256 green, 256x256 blue
-        //     let mut lut_texture_data = vec![0u8; 256 * 256 * 3];
-        //     for i in 0..(256 * 256) {
-        //         for c in 0..3 {
-        //             let x = i as f32 / (256.0 * 256.0);
-        //             let y = gamma22_inverse_eotf(x);
-        //             let y = (y * 255.0).round() as u8;
-        //             lut_texture_data[c * (256 * 256) + i] = y;
-        //         }
-        //     }
-        //     lut_texture_data
-        // };
-
-        // queue.write_texture(
-        //     // Tells wgpu where to copy the pixel data
-        //     wgpu::TexelCopyTextureInfo {
-        //         texture: &lut_texture_array,
-        //         mip_level: 0,
-        //         origin: wgpu::Origin3d::ZERO,
-        //         aspect: wgpu::TextureAspect::All,
-        //     },
-        //     // The actual pixel data
-        //     &lut_texture_data,
-        //     // The layout of the texture
-        //     wgpu::TexelCopyBufferLayout {
-        //         offset: 0,
-        //         bytes_per_row: Some(256),
-        //         rows_per_image: Some(256),
-        //     },
-        //     // The size of the texture
-        //     wgpu::Extent3d {
-        //         width: 256,
-        //         height: 256,
-        //         depth_or_array_layers: 3,
-        //     },
-        // );
+            // convert the LUT data to bytes
+            let lut_texture_data = bytemuck::cast_slice(&lut_texture_data);
+            queue.write_texture(
+                // Tells wgpu where to copy the pixel data
+                wgpu::TexelCopyTextureInfo {
+                    texture: &lut_texture_array,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                // The actual pixel data
+                &lut_texture_data,
+                // The layout of the texture
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: None, // since this is a 1D texture, we can set bytes_per_row to None
+                    rows_per_image: None,
+                },
+                // The size of the texture
+                wgpu::Extent3d {
+                    width: 16384,
+                    height: 1,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
 
         let gamma_buffer = Self::create_uniform_buffer(&device);
         let bind_group = Self::create_bind_group(&device, &texture, &lut_texture_array, false);
@@ -204,20 +180,20 @@ impl WgpuRenderer {
         })
     }
 
-    fn create_lut_texture_array(device: &wgpu::Device, width: u32, height: u32) -> wgpu::Texture {
+    fn create_lut_texture(device: &wgpu::Device, width: u32, height: u32) -> wgpu::Texture {
         device.create_texture(&wgpu::TextureDescriptor {
             size: wgpu::Extent3d {
                 width,
                 height,
-                depth_or_array_layers: 3,
+                depth_or_array_layers: 1,
             },
             mip_level_count: 1,
             sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::R8Unorm,
+            dimension: wgpu::TextureDimension::D1,
+            format: wgpu::TextureFormat::Rgba32Float,
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            label: None,
-            view_formats: &[wgpu::TextureFormat::R8Unorm],
+            label: Some("LUT Texture"),
+            view_formats: &[wgpu::TextureFormat::Rgba32Float],
         })
     }
 
@@ -264,9 +240,15 @@ impl WgpuRenderer {
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Texture {
                         sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2Array,
+                        view_dimension: wgpu::TextureViewDimension::D1,
                         multisampled: false,
                     },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
             ],
@@ -289,8 +271,8 @@ impl WgpuRenderer {
                             label: Some("Gamma Buffer"),
                             contents: bytemuck::cast_slice(&[GammaParams {
                                 correction: 0,
-                                texture_width: 256,
-                                texture_height: 256,
+                                texture_width: 1,
+                                texture_height: 16384,
                             }]),
                             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                         }),
@@ -303,10 +285,24 @@ impl WgpuRenderer {
                     binding: 2,
                     resource: wgpu::BindingResource::TextureView(&lut_texture_array.create_view(
                         &wgpu::TextureViewDescriptor {
-                            dimension: Some(wgpu::TextureViewDimension::D2Array),
+                            dimension: Some(wgpu::TextureViewDimension::D1),
                             ..Default::default()
                         },
                     )),
+                },
+                // a sampler for the LUT texture array
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::Sampler(&device.create_sampler(&wgpu::SamplerDescriptor {
+                        label: Some("LUT Sampler"),
+                        address_mode_u: wgpu::AddressMode::ClampToEdge,
+                        address_mode_v: wgpu::AddressMode::ClampToEdge,
+                        address_mode_w: wgpu::AddressMode::ClampToEdge,
+                        mag_filter: wgpu::FilterMode::Linear,
+                        min_filter: wgpu::FilterMode::Linear,
+                        mipmap_filter: wgpu::FilterMode::Nearest,
+                        ..Default::default()
+                    })),
                 },
             ],
         })
@@ -347,9 +343,15 @@ impl WgpuRenderer {
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Texture {
                         sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2Array,
+                        view_dimension: wgpu::TextureViewDimension::D1,
                         multisampled: false,
                     },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
             ],

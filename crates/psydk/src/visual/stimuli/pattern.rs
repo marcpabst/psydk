@@ -323,7 +323,10 @@ impl Stimulus for PatternStimulus {
             FillPattern::Uniform => Brush::Solid(fill_color.into()),
             FillPattern::Sinosoidal => todo!(),
             FillPattern::Checkerboard | FillPattern::Stripes => Brush::Image {
-                image: &self.pattern_image.as_ref().unwrap(),
+                image: self
+                    .pattern_image
+                    .clone()
+                    .expect("Pattern image should be set for stripes and checkerboard patterns"),
                 start: (x_origin + shift_x, y_origin + shift_y).into(),
                 fit_mode: ImageFitMode::Exact {
                     width: pattern_size,
@@ -344,131 +347,133 @@ impl Stimulus for PatternStimulus {
 
         let stroke_options = crate::visual::renderer::styles::StrokeStyle::new(stroke_width);
 
-        match &self.params.shape {
-            Shape::Circle { x, y, radius } => {
-                let x = x.eval(windows_size, screen_props);
-                let y = y.eval(windows_size, screen_props);
-                let radius = radius.eval(windows_size, screen_props);
+        scene.draw_shape_filled(&window_state, &self.params.shape, &fill_brush.into(), None);
 
-                // move by x_origin and y_origin
-                let x = x + x_origin;
-                let y = y + y_origin;
+        // match &self.params.shape {
+        //     Shape::Circle { x, y, radius } => {
+        //         let x = x.eval(windows_size, screen_props);
+        //         let y = y.eval(windows_size, screen_props);
+        //         let radius = radius.eval(windows_size, screen_props);
 
-                let shape = crate::visual::renderer::shapes::Shape::circle((x, y), radius);
+        //         // move by x_origin and y_origin
+        //         let x = x + x_origin;
+        //         let y = y + y_origin;
 
-                scene.draw_shape_fill(shape.clone(), fill_brush.clone(), None, None);
+        //         let shape = crate::visual::renderer::shapes::Shape::circle((x, y), radius);
 
-                scene.draw_shape_stroke(shape, stroke_brush, stroke_options, None, None);
-            }
-            Shape::Rectangle { x, y, width, height } => {
-                let x = x.eval(windows_size, screen_props);
-                let y = y.eval(windows_size, screen_props);
-                let width = width.eval(windows_size, screen_props);
-                let height = height.eval(windows_size, screen_props);
+        //         scene.draw_shape_fill(shape.clone(), fill_brush.clone(), None, None);
 
-                // move by x_origin and y_origin
-                let x = x + x_origin;
-                let y = y + y_origin;
+        //         scene.draw_shape_stroke(shape, stroke_brush, stroke_options, None, None);
+        //     }
+        //     Shape::Rectangle { x, y, width, height } => {
+        //         let x = x.eval(windows_size, screen_props);
+        //         let y = y.eval(windows_size, screen_props);
+        //         let width = width.eval(windows_size, screen_props);
+        //         let height = height.eval(windows_size, screen_props);
 
-                let shape = crate::visual::renderer::shapes::Shape::rectangle((x, y), width, height);
+        //         // move by x_origin and y_origin
+        //         let x = x + x_origin;
+        //         let y = y + y_origin;
 
-                scene.draw_shape_fill(shape.clone(), fill_brush.clone(), None, None);
+        //         let shape = crate::visual::renderer::shapes::Shape::rectangle((x, y), width, height);
 
-                scene.draw_shape_stroke(shape, stroke_brush, stroke_options, None, None);
-            }
-            Shape::Ellipse {
-                x,
-                y,
-                radius_x,
-                radius_y,
-            } => {
-                let x = x.eval(windows_size, screen_props);
-                let y = y.eval(windows_size, screen_props);
-                let radius_x = radius_x.eval(windows_size, screen_props);
-                let radius_y = radius_y.eval(windows_size, screen_props);
+        //         scene.draw_shape_fill(shape.clone(), fill_brush.clone(), None, None);
 
-                // move by x_origin and y_origin
-                let x = x + x_origin;
-                let y = y + y_origin;
+        //         scene.draw_shape_stroke(shape, stroke_brush, stroke_options, None, None);
+        //     }
+        //     Shape::Ellipse {
+        //         x,
+        //         y,
+        //         radius_x,
+        //         radius_y,
+        //     } => {
+        //         let x = x.eval(windows_size, screen_props);
+        //         let y = y.eval(windows_size, screen_props);
+        //         let radius_x = radius_x.eval(windows_size, screen_props);
+        //         let radius_y = radius_y.eval(windows_size, screen_props);
 
-                let shape = crate::visual::renderer::shapes::Shape::ellipse((x, y), radius_x, radius_y, 0.0);
+        //         // move by x_origin and y_origin
+        //         let x = x + x_origin;
+        //         let y = y + y_origin;
 
-                scene.draw_shape_fill(shape.clone(), fill_brush.clone(), None, None);
+        //         let shape = crate::visual::renderer::shapes::Shape::ellipse((x, y), radius_x, radius_y, 0.0);
 
-                scene.draw_shape_stroke(shape, stroke_brush, stroke_options, None, None);
-            }
-            Shape::Line { x1, y1, x2, y2 } => {
-                let x1 = x1.eval(windows_size, screen_props);
-                let y1 = y1.eval(windows_size, screen_props);
-                let x2 = x2.eval(windows_size, screen_props);
-                let y2 = y2.eval(windows_size, screen_props);
+        //         scene.draw_shape_fill(shape.clone(), fill_brush.clone(), None, None);
 
-                // move by x_origin and y_origin
-                let x1 = x1 + x_origin;
-                let y1 = y1 + y_origin;
-                let x2 = x2 + x_origin;
-                let y2 = y2 + y_origin;
+        //         scene.draw_shape_stroke(shape, stroke_brush, stroke_options, None, None);
+        //     }
+        //     Shape::Line { x1, y1, x2, y2 } => {
+        //         let x1 = x1.eval(windows_size, screen_props);
+        //         let y1 = y1.eval(windows_size, screen_props);
+        //         let x2 = x2.eval(windows_size, screen_props);
+        //         let y2 = y2.eval(windows_size, screen_props);
 
-                let shape = crate::visual::renderer::shapes::Shape::line((x1, y1), (x2, y2));
+        //         // move by x_origin and y_origin
+        //         let x1 = x1 + x_origin;
+        //         let y1 = y1 + y_origin;
+        //         let x2 = x2 + x_origin;
+        //         let y2 = y2 + y_origin;
 
-                scene.draw_shape_stroke(shape, stroke_brush, stroke_options, None, None);
-            }
-            Shape::Polygon { points } => {
-                let points = points
-                    .iter()
-                    .map(|p| {
-                        let x = p.0.eval(windows_size, screen_props);
-                        let y = p.1.eval(windows_size, screen_props);
+        //         let shape = crate::visual::renderer::shapes::Shape::line((x1, y1), (x2, y2));
 
-                        // move by x_origin and y_origin
-                        (x + x_origin, y + y_origin).into()
-                    })
-                    .collect::<Vec<(f32, f32)>>();
+        //         scene.draw_shape_stroke(shape, stroke_brush, stroke_options, None, None);
+        //     }
+        //     Shape::Polygon { points } => {
+        //         let points = points
+        //             .iter()
+        //             .map(|p| {
+        //                 let x = p.0.eval(windows_size, screen_props);
+        //                 let y = p.1.eval(windows_size, screen_props);
 
-                let shape = crate::visual::renderer::shapes::Shape::polygon(points);
+        //                 // move by x_origin and y_origin
+        //                 (x + x_origin, y + y_origin).into()
+        //             })
+        //             .collect::<Vec<(f32, f32)>>();
 
-                scene.draw_shape_fill(shape.clone(), fill_brush.clone(), None, None);
+        //         let shape = crate::visual::renderer::shapes::Shape::polygon(points);
 
-                scene.draw_shape_stroke(shape, stroke_brush, stroke_options, None, None);
-            }
-            Shape::Triangle { a, b, c } => {
-                let a = (
-                    a.0.eval(windows_size, screen_props) + x_origin,
-                    a.1.eval(windows_size, screen_props) + y_origin,
-                );
-                let b = (
-                    b.0.eval(windows_size, screen_props) + x_origin,
-                    b.1.eval(windows_size, screen_props) + y_origin,
-                );
-                let c = (
-                    c.0.eval(windows_size, screen_props) + x_origin,
-                    c.1.eval(windows_size, screen_props) + y_origin,
-                );
-                let shape = crate::visual::renderer::shapes::Shape::triangle(a, b, c);
+        //         scene.draw_shape_fill(shape.clone(), fill_brush.clone(), None, None);
 
-                scene.draw_shape_fill(shape.clone(), fill_brush.clone(), None, None);
+        //         scene.draw_shape_stroke(shape, stroke_brush, stroke_options, None, None);
+        //     }
+        //     Shape::Triangle { a, b, c } => {
+        //         let a = (
+        //             a.0.eval(windows_size, screen_props) + x_origin,
+        //             a.1.eval(windows_size, screen_props) + y_origin,
+        //         );
+        //         let b = (
+        //             b.0.eval(windows_size, screen_props) + x_origin,
+        //             b.1.eval(windows_size, screen_props) + y_origin,
+        //         );
+        //         let c = (
+        //             c.0.eval(windows_size, screen_props) + x_origin,
+        //             c.1.eval(windows_size, screen_props) + y_origin,
+        //         );
+        //         let shape = crate::visual::renderer::shapes::Shape::triangle(a, b, c);
 
-                scene.draw_shape_stroke(shape, stroke_brush, stroke_options, None, None);
-            }
-            Shape::Path { points } => {
-                let points = points
-                    .iter()
-                    .map(|p| {
-                        let x = p.0.eval(windows_size, screen_props);
-                        let y = p.1.eval(windows_size, screen_props);
+        //         scene.draw_shape_fill(shape.clone(), fill_brush.clone(), None, None);
 
-                        // move by x_origin and y_origin
-                        (x + x_origin, y + y_origin)
-                    })
-                    .collect::<Vec<(f32, f32)>>();
+        //         scene.draw_shape_stroke(shape, stroke_brush, stroke_options, None, None);
+        //     }
+        //     Shape::Path { points } => {
+        //         let points = points
+        //             .iter()
+        //             .map(|p| {
+        //                 let x = p.0.eval(windows_size, screen_props);
+        //                 let y = p.1.eval(windows_size, screen_props);
 
-                let shape = crate::visual::renderer::shapes::Shape::path(points);
+        //                 // move by x_origin and y_origin
+        //                 (x + x_origin, y + y_origin)
+        //             })
+        //             .collect::<Vec<(f32, f32)>>();
 
-                scene.draw_shape_fill(shape.clone(), fill_brush.clone(), None, None);
+        //         let shape = crate::visual::renderer::shapes::Shape::path(points);
 
-                scene.draw_shape_stroke(shape, stroke_brush, stroke_options, None, None);
-            }
-        };
+        //         scene.draw_shape_fill(shape.clone(), fill_brush.clone(), None, None);
+
+        //         scene.draw_shape_stroke(shape, stroke_brush, stroke_options, None, None);
+        //     }
+        // };
     }
     fn set_visible(&mut self, visible: bool) {
         self.visible = visible;

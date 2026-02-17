@@ -1,6 +1,6 @@
 [package]
 name = "psydk"
-version = "0.2.0"
+version = "0.3.13"
 edition = "2021"
 rust-version = "1.70"
 authors = ["Marc Pabst"]
@@ -67,7 +67,7 @@ pyo3 = { version = "0.27.*", features = [
     "multiple-pymethods",
 ] }
 send_wrapper = "0.6.0"
-numpy = "0.27.*"
+numpy = {version = "0.27.*", features = ["nalgebra"] }
 strum_macros = "0.26.4"
 csscolorparser = "0.7.0"
 pollster = "0.4.0"
@@ -98,6 +98,7 @@ lcms2 = "6.1.1"
 serde_json = "1.0.145"
 ndarray = ">= 0.15, <=0.17"
 env_logger = "0.10.2"
+schemars = "0.8.22"
 # tikv-jemallocator = { version = "0.5.4", features = ["profiling"] }
 
 # Windows dependencies
@@ -119,7 +120,8 @@ windows = { version = "0.61", features = [
     "Wdk_Graphics_Direct3D",
 ] }
 
-skia-safe = { git = "https://github.com/marcpabst/rust-skia", rev = "2acb894", features = ["d3d", "svg"] }
+# skia-safe = { git = "https://github.com/marcpabst/rust-skia", rev = "0c3318a6", features = ["d3d", "svg"] }
+skia-safe = { path = "/Users/marc/repos/dev/rust-skia/skia-safe", features = ["d3d", "svg", "skottie", "embed-freetype", "textlayout"] }
 
 
 
@@ -154,4 +156,5 @@ debug = true
 # macOS & ios only
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 metal = "0.31.0"
-skia-safe = { git = "https://github.com/marcpabst/rust-skia", rev = "2acb894", features = ["metal", "svg"] }
+# skia-safe = { git = "https://github.com/marcpabst/rust-skia", rev = "0c3318a6", features = ["metal", "svg", "graphite"] }
+skia-safe = { path = "/Users/marc/repos/dev/rust-skia/skia-safe", features = ["metal", "svg", "graphite", "skottie", "embed-freetype", "textlayout"] }

@@ -1,4 +1,4 @@
-use crate::visual::renderer::{cosmic_text, Renderer};
+use crate::visual::renderer::{self, cosmic_text, Renderer};
 use crate::{
     audio::{PyDevice, PyHost, PyStream},
     config::{ExperimentConfig, WindowConfig},
@@ -807,6 +807,12 @@ impl ExperimentContext {
             text_input_placeholder,
             text_input_value,
             show_cancel_button,
+        ))
+    }
+
+    fn font_collection(&self) -> PyResult<renderer::wrapped::FontCollection> {
+        Ok(renderer::wrapped::FontCollection::new(
+            self.renderer().font_collection.clone(),
         ))
     }
 }

@@ -112,8 +112,9 @@ impl Experiment {
         limits.max_storage_buffers_per_shader_stage = 16; // do we need to request this
 
         // we want to use higher-bit color formats if possible
-        let features =
-            wgpu::Features::TEXTURE_FORMAT_16BIT_NORM | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES;
+        let features = wgpu::Features::TEXTURE_FORMAT_16BIT_NORM
+            | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
+            | wgpu::Features::FLOAT32_FILTERABLE;
 
         // Create the logical device and command queue
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
@@ -287,6 +288,14 @@ impl Experiment {
             ColorType::ThirtyTwoBitFloat => panic!("32F color format not supported in renderer"),
         };
 
+        // create a dymmy (identity) LUT for now, we will replace this with a real LUT later
+        // LUT structure is (&[f32, 16 384], &[f32, 16 384], &[f32, 16 384]])
+        let identity_lut = (
+            (0..16_384).rev().map(|i| i as f32 / 16_383.0).collect::<Vec<_>>(),
+            (0..16_384).rev().map(|i| i as f32 / 16_383.0).collect::<Vec<_>>(),
+            (0..16_384).rev().map(|i| i as f32 / 16_383.0).collect::<Vec<_>>(),
+        );
+
         let wgpu_renderer = pollster::block_on(crate::visual::renderer::wgpu_renderer::WgpuRenderer::new(
             winit_window.clone(),
             instance,
@@ -294,6 +303,11 @@ impl Experiment {
             queue,
             swapchain_format,
             internal_color_format,
+            Some((
+                identity_lut.0.as_slice(),
+                identity_lut.1.as_slice(),
+                identity_lut.2.as_slice(),
+            )),
         ));
 
         // create the skia renderer

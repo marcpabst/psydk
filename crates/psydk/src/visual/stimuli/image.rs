@@ -4,7 +4,6 @@ use crate::visual::renderer::image::{ImageBuffer, Pixel, RgbImage, Rgba, RgbaIma
 use crate::visual::renderer::{
     brushes::{Brush, Extend, ImageSampling},
     image::Rgb,
-    shapes::Shape,
     styles::ImageFitMode,
     Bitmap, Scene,
 };
@@ -311,24 +310,24 @@ impl Stimulus for ImageStimulus {
 
         let trans_mat = trans_mat.eval(window_size, screen_props);
 
-        scene.draw_shape_fill(
-            Shape::Rectangle {
-                a: (x, y).into(),
-                w: width,
-                h: height,
-            },
-            Brush::Image {
-                image: &self.image,
-                start: (x + image_offset_x, y + image_offset_y).into(),
-                fit_mode: ImageFitMode::Exact { width, height },
-                sampling: ImageSampling::Linear,
-                edge_mode: (Extend::Pad, Extend::Pad),
-                transform: None,
-                alpha: Some(self.params.opacity as f32),
-            },
-            Some(trans_mat.into()),
-            None,
-        );
+        // scene.draw_shape_filled(
+        //     Shape::Rectangle {
+        //         a: (x, y).into(),
+        //         w: width,
+        //         h: height,
+        //     },
+        //     Brush::Image {
+        //         image: self.image.clone(),
+        //         start: (x + image_offset_x, y + image_offset_y).into(),
+        //         fit_mode: ImageFitMode::Exact { width, height },
+        //         sampling: ImageSampling::Linear,
+        //         edge_mode: (Extend::Pad, Extend::Pad),
+        //         transform: None,
+        //         alpha: Some(self.params.opacity as f32),
+        //     },
+        //     Some(trans_mat.into()),
+        //     None,
+        // );
     }
 
     fn set_visible(&mut self, visible: bool) {

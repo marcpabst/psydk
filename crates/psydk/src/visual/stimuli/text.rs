@@ -273,7 +273,7 @@ impl Stimulus for TextStimulus {
 
         for run in self.buffer.layout_runs() {
             for glyph in run.glyphs {
-                let glyph = crate::visual::renderer::font::Glyph {
+                let glyph = crate::visual::renderer::skia::Glyph {
                     id: glyph.glyph_id,
                     position: (glyph.x as f32, glyph.y as f32).into(),
                 };

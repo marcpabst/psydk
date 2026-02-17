@@ -138,6 +138,22 @@ impl Color {
         let device_rgba = conversion::color_to_device_rgba(*self, dc);
         DisplayRGBA::new(device_rgba.x, device_rgba.y, device_rgba.z, device_rgba.w)
     }
+
+    pub const BLACK: Self = Color::RGBA(RGBA {
+        r: 0.0,
+        g: 0.0,
+        b: 0.0,
+        a: 1.0,
+        space: RGBColorSpace::SRGB,
+    });
+
+    pub const WHITE: Self = Color::RGBA(RGBA {
+        r: 1.0,
+        g: 1.0,
+        b: 1.0,
+        a: 1.0,
+        space: RGBColorSpace::SRGB,
+    });
 }
 
 #[pyclass]
@@ -262,7 +278,7 @@ impl Into<Vector3<f32>> for Color {
 
 impl From<DisplayRGBA> for crate::visual::renderer::colors::RGBA {
     fn from(rgba: DisplayRGBA) -> Self {
-        Self::new_linear(rgba.r, rgba.g, rgba.b, rgba.a)
+        Self::new(rgba.r, rgba.g, rgba.b, rgba.a)
     }
 }
 

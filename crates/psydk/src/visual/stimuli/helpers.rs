@@ -18,7 +18,7 @@ use crate::{
     visual::{colors::DisplayRGBA, geometry::Size, window::Window},
 };
 
-pub(crate) fn create_fill_brush_uniform<'a>(fill_color: &DisplayRGBA) -> Brush<'a> {
+pub(crate) fn create_fill_brush_uniform<'a>(fill_color: &DisplayRGBA) -> Brush {
     Brush::Solid(fill_color.clone().into())
 }
 
@@ -26,7 +26,7 @@ pub(crate) fn create_fill_brush_pattern<'a>(
     foreground_color: &DisplayRGBA,
     pattern: &FillPattern,
     pattern_origin: (f32, f32),
-) -> Brush<'a> {
+) -> Brush {
     match pattern {
         FillPattern::Uniform => Brush::Solid(foreground_color.clone().into()),
         FillPattern::Stripes => todo!(),
@@ -42,7 +42,7 @@ pub(crate) fn create_fill_brush<'a>(
     stroke_width: &Option<Size>,
     gradient: &Option<Gradient>,
     // image: Option<Image>,
-) -> Brush<'a> {
+) -> Brush {
     // gradient takes precedence over fill_color
     if let Some(gradient) = gradient {
         Brush::Gradient(gradient.clone())
@@ -61,7 +61,7 @@ pub(crate) fn create_fill_brush2<'a>(
     stroke_color: &Option<DisplayRGBA>,
     stroke_width: &Option<Size>,
     gradient: &Option<Gradient>,
-) -> Result<Brush<'a>, crate::errors::PsydkError> {
+) -> Result<Brush, crate::errors::PsydkError> {
     let fill_origin = fill_origin.unwrap_or((0.0, 0.0));
     if let Some(pattern) = pattern {
         let default_fill_color = DisplayRGBA::default();

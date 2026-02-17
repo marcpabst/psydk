@@ -343,11 +343,11 @@ impl Stimulus for ButtonStimulus {
         // let x = x + x_origin;
         // let y = y + y_origin;
 
-        let shape = crate::visual::renderer::shapes::Shape::rectangle((x, y), width, height);
+        // let shape = crate::visual::renderer::shapes::Shape::rectangle((x, y), width, height);
 
-        scene.draw_shape_fill(shape.clone(), fill_brush.clone(), None, None);
+        // scene.draw_shape_fill(shape.clone(), fill_brush.clone(), None, None);
 
-        scene.draw_shape_stroke(shape, stroke_brush, stroke_options, None, None);
+        // scene.draw_shape_stroke(shape, stroke_brush, stroke_options, None, None);
 
         // draw the text stimulus
         self.text_stimulus.draw(scene, window_state);

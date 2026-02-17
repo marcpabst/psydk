@@ -1,7 +1,7 @@
-use super::{affine::Affine, colors::RGBA, shapes::Point, skia::Bitmap, styles::ImageFitMode};
+use super::{affine::Affine, colors::RGBA, skia::Bitmap, skia::Point, styles::ImageFitMode};
 
 #[derive(Debug, Clone)]
-pub enum Brush<'a> {
+pub enum Brush {
     /// Solid color brush.
     Solid(RGBA),
     /// Gradient brush.
@@ -9,7 +9,7 @@ pub enum Brush<'a> {
     /// GPU texture brush.
     Image {
         /// The image to use as a brush.
-        image: &'a Bitmap,
+        image: Bitmap,
         /// The starting point of the image. TODO: maybe rename to offset or translate?
         start: Point,
         /// The fit mode of the image.

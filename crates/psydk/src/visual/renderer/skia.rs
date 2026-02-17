@@ -12,8 +12,8 @@ pub use skia_safe;
 #[cfg(target_os = "windows")]
 use skia_safe::gpu::{d3d, d3d::BackendContext, Protected};
 #[cfg(any(target_os = "macos", target_os = "ios"))]
-use skia_safe::gpu::{mtl, mtl::BackendContext};
-use skia_safe::svg::Dom;
+use skia_safe::graphite::{self, mtl, mtl::BackendContext};
+use skia_safe::{svg::Dom, PathDirection, PathVerb};
 #[cfg(target_os = "windows")]
 use windows::Win32::Graphics::Dxgi::Common::{
     DXGI_FORMAT, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_SAMPLE_DESC, DXGI_STANDARD_MULTISAMPLE_QUALITY_PATTERN,
@@ -39,8 +39,6 @@ use super::{
     brushes::{Brush, Extend, Gradient, GradientKind, ImageSampling},
     color_formats::{ColorEncoding, ColorFormat},
     colors::RGBA,
-    font::Glyph,
-    shapes::{Point, Shape},
     styles::{BlendMode, ImageFitMode, StrokeStyle},
 };
 
@@ -50,6 +48,7 @@ pub struct Scene {
     pub width: u32,
     pub height: u32,
     pub bg_color: RGBA,
+    pub font_collection: Arc<Mutex<skia_safe::textlayout::FontCollection>>,
 }
 
 unsafe impl Send for Scene {}
@@ -57,27 +56,44 @@ unsafe impl Sync for Scene {}
 
 #[derive(Debug, Clone)]
 pub struct Renderer {
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    context: RefCell<graphite::Context>,
+    #[cfg(target_os = "windows")]
     context: RefCell<gpu::DirectContext>,
     backend: Arc<RefCell<BackendContext>>,
+    // todo remove font manager
     font_manager: skia_safe::FontMgr,
+    pub font_collection: Arc<Mutex<skia_safe::textlayout::FontCollection>>,
     internal_color_encoding: ColorEncoding,
     internal_color_format: ColorFormat,
 }
 
+// TODO: make Renderer Send and Sync properly
 unsafe impl Send for Renderer {}
 unsafe impl Sync for Renderer {}
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// A Bitmap that is backed by a Skia image.
 pub struct Bitmap {
     image: SkImage,
-    data: BitmapData,
 }
 
 #[derive(Debug)]
 enum BitmapData {
     Blob(Box<[u8]>),
     Texture(wgpu::Texture),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Point {
+    pub x: f32,
+    pub y: f32,
+}
+
+impl From<(f32, f32)> for Point {
+    fn from(value: (f32, f32)) -> Self {
+        Self { x: value.0, y: value.1 }
+    }
 }
 
 #[derive(Debug)]
@@ -91,11 +107,18 @@ pub struct Typeface {
     pub typeface: SkTypeface,
 }
 
+/// A Glyph.
+#[derive(Debug, Clone)]
+pub struct Glyph {
+    pub id: u16,
+    pub position: Point,
+}
+
 impl Scene {
-    pub fn new(width: u32, height: u32) -> Self {
+    pub fn new(width: u32, height: u32, font_collection: Arc<Mutex<skia_safe::textlayout::FontCollection>>) -> Self {
         let mut picture_recorder = PictureRecorder::new();
         let bounds = skia_safe::Rect::from_wh(width as f32, height as f32);
-        picture_recorder.begin_recording(bounds, None);
+        picture_recorder.begin_recording(bounds, false);
 
         // clear the canvas
         let canvas = picture_recorder.recording_canvas().unwrap();
@@ -106,128 +129,233 @@ impl Scene {
             width,
             height,
             bg_color: RGBA::WHITE,
+            font_collection,
         }
     }
 
-    pub fn draw_shape(
+    pub fn draw_rectangle(
         skia_canvas: &skia_safe::Canvas,
         skia_paint: skia_safe::Paint,
-        shape: Shape,
+        a: Point,
+        w: f32,
+        h: f32,
         affine: Option<Affine>,
     ) {
-        // apply the affine transformation
         if let Some(affine) = affine {
             skia_canvas.save();
             skia_canvas.concat(&affine.into());
         }
 
-        match shape {
-            Shape::Rectangle { a, w, h } => {
-                let rect = skia_safe::Rect::from_xywh(a.x as f32, a.y as f32, w as f32, h as f32);
-                skia_canvas.draw_rect(rect, &skia_paint);
-            }
-            Shape::Circle { center, radius } => {
-                skia_canvas.draw_circle(center, radius as f32, &skia_paint);
-            }
-            Shape::Line { start, end } => {
-                skia_canvas.draw_line(start, end, &skia_paint);
-            }
-            Shape::Ellipse {
-                center,
-                radius_x,
-                radius_y,
-                rotation,
-            } => {
-                // create bounds for the ellipse
-                let width = radius_x as f32;
-                let height = radius_y as f32;
+        let rect = skia_safe::Rect::from_xywh(a.x as f32, a.y as f32, w as f32, h as f32);
+        skia_canvas.draw_rect(rect, &skia_paint);
 
-                let bounds = skia_safe::Rect::from_xywh(
-                    center.x as f32 - width,
-                    center.y as f32 - height,
-                    width * 2.0,
-                    height * 2.0,
-                );
-
-                // rotate the canvas
-                skia_canvas.save();
-                skia_canvas.rotate(rotation as f32, Some(center.into()));
-                skia_canvas.draw_oval(bounds, &skia_paint);
-                skia_canvas.restore();
-            }
-            Shape::RoundedRectangle { a, b, radius } => {
-                let rect = skia_safe::Rect::from_xywh(a.x as f32, a.y as f32, b.x as f32, b.y as f32);
-                skia_canvas.draw_round_rect(rect, radius as f32, radius as f32, &skia_paint);
-            }
-            Shape::Polygon { points } => {
-                let mut path = skia_safe::path::Path::new();
-                if points.len() == 0 {
-                    return;
-                }
-                path.move_to(points[0]);
-                for point in points.iter().skip(1) {
-                    path.line_to(*point);
-                }
-                path.close();
-                skia_canvas.draw_path(&path, &skia_paint);
-            }
-            Shape::Triangle { a, b, c } => {
-                let mut path = skia_safe::path::Path::new();
-                path.move_to(a);
-                path.line_to(b);
-                path.line_to(c);
-                path.close();
-                skia_canvas.draw_path(&path, &skia_paint);
-            }
-            Shape::Path { points } => {
-                let mut path = skia_safe::path::Path::new();
-                if points.len() == 0 {
-                    return;
-                }
-                path.move_to(points[0]);
-                for point in points.iter().skip(1) {
-                    path.line_to(*point);
-                }
-                skia_canvas.draw_path(&path, &skia_paint);
-            }
-        }
-        // restore the canvas
         if let Some(_) = affine {
             skia_canvas.restore();
         }
     }
 
-    pub fn clip_shape(
+    pub fn draw_circle(
         skia_canvas: &skia_safe::Canvas,
         skia_paint: skia_safe::Paint,
-        shape: Shape,
+        center: Point,
+        radius: f32,
         affine: Option<Affine>,
     ) {
-        // apply the affine transformation
         if let Some(affine) = affine {
             skia_canvas.save();
             skia_canvas.concat(&affine.into());
         }
 
-        match shape {
-            Shape::Rectangle { a, w, h } => {
-                let rect = skia_safe::Rect::from_xywh(a.x as f32, a.y as f32, w as f32, h as f32);
-                skia_canvas.clip_rect(rect, skia_safe::ClipOp::Intersect, true);
-            }
-            Shape::Circle { center, radius } => {
-                let circle = skia_safe::path::Path::circle(center, radius as f32, skia_safe::path::Direction::CCW);
-                skia_canvas.clip_path(&circle, skia_safe::ClipOp::Intersect, true);
-            }
-            _ => {
-                todo!()
-            }
-        }
+        skia_canvas.draw_circle(center, radius as f32, &skia_paint);
 
-        // restore the canvas
         if let Some(_) = affine {
             skia_canvas.restore();
         }
     }
+
+    pub fn draw_line(
+        skia_canvas: &skia_safe::Canvas,
+        skia_paint: skia_safe::Paint,
+        start: Point,
+        end: Point,
+        affine: Option<Affine>,
+    ) {
+        if let Some(affine) = affine {
+            skia_canvas.save();
+            skia_canvas.concat(&affine.into());
+        }
+
+        skia_canvas.draw_line(start, end, &skia_paint);
+
+        if let Some(_) = affine {
+            skia_canvas.restore();
+        }
+    }
+
+    pub fn draw_ellipse(
+        skia_canvas: &skia_safe::Canvas,
+        skia_paint: skia_safe::Paint,
+        center: Point,
+        radius_x: f32,
+        radius_y: f32,
+        rotation: f32,
+        affine: Option<Affine>,
+    ) {
+        if let Some(affine) = affine {
+            skia_canvas.save();
+            skia_canvas.concat(&affine.into());
+        }
+
+        let width = radius_x as f32;
+        let height = radius_y as f32;
+
+        let bounds = skia_safe::Rect::from_xywh(
+            center.x as f32 - width,
+            center.y as f32 - height,
+            width * 2.0,
+            height * 2.0,
+        );
+
+        skia_canvas.save();
+        skia_canvas.rotate(rotation as f32, Some(center.into()));
+        skia_canvas.draw_oval(bounds, &skia_paint);
+        skia_canvas.restore();
+
+        if let Some(_) = affine {
+            skia_canvas.restore();
+        }
+    }
+
+    pub fn draw_rounded_rectangle(
+        skia_canvas: &skia_safe::Canvas,
+        skia_paint: skia_safe::Paint,
+        a: Point,
+        b: Point,
+        radius: f32,
+        affine: Option<Affine>,
+    ) {
+        if let Some(affine) = affine {
+            skia_canvas.save();
+            skia_canvas.concat(&affine.into());
+        }
+
+        let rect = skia_safe::Rect::from_xywh(a.x as f32, a.y as f32, b.x as f32, b.y as f32);
+        skia_canvas.draw_round_rect(rect, radius as f32, radius as f32, &skia_paint);
+
+        if let Some(_) = affine {
+            skia_canvas.restore();
+        }
+    }
+
+    pub fn draw_polygon(
+        skia_canvas: &skia_safe::Canvas,
+        skia_paint: skia_safe::Paint,
+        points: Vec<Point>,
+        affine: Option<Affine>,
+    ) {
+        if let Some(affine) = affine {
+            skia_canvas.save();
+            skia_canvas.concat(&affine.into());
+        }
+
+        let mut path = skia_safe::path::Path::polygon(
+            points
+                .iter()
+                .map(|point| (*point).into())
+                .collect::<Vec<skia_safe::Point>>()
+                .as_slice(),
+            true,
+            None,
+            false,
+        );
+
+        skia_canvas.draw_path(&path, &skia_paint);
+
+        if let Some(_) = affine {
+            skia_canvas.restore();
+        }
+    }
+
+    pub fn draw_triangle(
+        skia_canvas: &skia_safe::Canvas,
+        skia_paint: skia_safe::Paint,
+        a: Point,
+        b: Point,
+        c: Point,
+        affine: Option<Affine>,
+    ) {
+        if let Some(affine) = affine {
+            skia_canvas.save();
+            skia_canvas.concat(&affine.into());
+        }
+
+        let mut path = skia_safe::path::Path::polygon([a.into(), b.into(), c.into()].as_slice(), true, None, false);
+        skia_canvas.draw_path(&path, &skia_paint);
+
+        if let Some(_) = affine {
+            skia_canvas.restore();
+        }
+    }
+
+    pub fn draw_path(
+        skia_canvas: &skia_safe::Canvas,
+        skia_paint: skia_safe::Paint,
+        points: Vec<Point>,
+        affine: Option<Affine>,
+    ) {
+        if let Some(affine) = affine {
+            skia_canvas.save();
+            skia_canvas.concat(&affine.into());
+        }
+
+        let mut path = skia_safe::path::Path::polygon(
+            points
+                .iter()
+                .map(|point| (*point).into())
+                .collect::<Vec<skia_safe::Point>>()
+                .as_slice(),
+            false,
+            None,
+            false,
+        );
+        skia_canvas.draw_path(&path, &skia_paint);
+
+        if let Some(_) = affine {
+            skia_canvas.restore();
+        }
+    }
+
+    // pub fn clip_shape(
+    //     skia_canvas: &skia_safe::Canvas,
+    //     skia_paint: skia_safe::Paint,
+    //     shape: Shape,
+    //     affine: Option<Affine>,
+    // ) {
+    //     // apply the affine transformation
+    //     if let Some(affine) = affine {
+    //         skia_canvas.save();
+    //         skia_canvas.concat(&affine.into());
+    //     }
+
+    //     match shape {
+    //         Shape::Rectangle { a, w, h } => {
+    //             let rect = skia_safe::Rect::from_xywh(a.x as f32, a.y as f32, w as f32, h as f32);
+    //             skia_canvas.clip_rect(rect, skia_safe::ClipOp::Intersect, true);
+    //         }
+    //         Shape::Circle { center, radius } => {
+    //             let circle = skia_safe::path::Path::circle(center, radius as f32, None);
+    //             skia_canvas.clip_path(&circle, skia_safe::ClipOp::Intersect, true);
+    //         }
+    //         _ => {
+    //             todo!()
+    //         }
+    //     }
+
+    //     // restore the canvas
+    //     if let Some(_) = affine {
+    //         skia_canvas.restore();
+    //     }
+    // }
 
     pub fn width(&self) -> u32 {
         self.width
@@ -240,7 +368,6 @@ impl Scene {
     pub fn start_layer(
         &mut self,
         composite_mode: BlendMode,
-        clip: Shape,
         clip_transform: Option<Affine>,
         layer_transform: Option<Affine>,
         alpha: f32,
@@ -265,48 +392,8 @@ impl Scene {
         binding.recording_canvas().unwrap().restore();
     }
 
-    pub fn draw_shape_fill(
-        &mut self,
-        shape: Shape,
-        brush: Brush,
-        transform: Option<Affine>,
-        blend_mode: Option<BlendMode>,
-    ) {
-        let mut binding = self.picture_recorder.lock().unwrap();
-        let mut canvas = binding.recording_canvas().unwrap();
-        let mut paint: skia_safe::Paint = brush.into();
-
-        paint.set_anti_alias(false);
-
-        if let Some(blend_mode) = blend_mode {
-            paint.set_blend_mode(blend_mode.into());
-        }
-
-        Self::draw_shape(&mut canvas, paint, shape, transform);
-    }
-
-    pub fn draw_shape_stroke(
-        &mut self,
-        shape: Shape,
-        brush: Brush,
-        style: StrokeStyle,
-        transform: Option<Affine>,
-        blend_mode: Option<BlendMode>,
-    ) {
-        let mut binding = self.picture_recorder.lock().unwrap();
-        let mut canvas = binding.recording_canvas().unwrap();
-        let mut paint: skia_safe::Paint = brush.into();
-        paint.set_stroke(true);
-        paint.set_anti_alias(false);
-
-        if let Some(blend_mode) = blend_mode {
-            paint.set_blend_mode(blend_mode.into());
-        }
-
-        // set the stroke width
-        paint.set_stroke_width(style.width as scalar);
-
-        Self::draw_shape(&mut canvas, paint, shape, transform);
+    pub fn draw_text(canvas: &mut skia_safe::Canvas, text: &mut super::text::Text, x: f32, y: f32) {
+        text.draw(canvas, x, y);
     }
 
     pub fn draw_glyphs(
@@ -377,6 +464,23 @@ impl Scene {
         canvas.restore();
     }
 
+    pub fn draw_lottie_animation(
+        skia_canvas: &skia_safe::Canvas,
+        animation: &mut super::lottie::LottieAnimation,
+        rect: Option<(f32, f32, f32, f32)>,
+    ) {
+        animation.update();
+
+        let anim = animation.animation();
+
+        if let Some((x, y, width, height)) = rect {
+            let dest = skia_safe::Rect::from_xywh(x as f32, y as f32, width as f32, height as f32);
+            anim.render(skia_canvas, Some(dest));
+        } else {
+            anim.render(skia_canvas, None);
+        }
+    }
+
     pub fn bg_color(&self) -> RGBA {
         self.bg_color
     }
@@ -396,10 +500,15 @@ impl Renderer {
         // create a font manager
         let font_manager = skia_safe::FontMgr::new();
 
+        // create font collection
+        let mut font_collection = skia_safe::textlayout::FontCollection::new();
+        font_collection.set_default_font_manager(font_manager.clone(), None);
+
         Self {
             context: RefCell::new(skia_context),
             backend: Arc::new(RefCell::new(backend_context)),
             font_manager,
+            font_collection: Arc::new(Mutex::new(font_collection)),
             internal_color_encoding: internal_color_encoding,
             internal_color_format: internal_color_format,
         }
@@ -430,6 +539,11 @@ impl Renderer {
         );
 
         #[cfg(any(target_os = "macos", target_os = "ios"))]
+        let mut recorder = skia_context
+            .make_recorder(Some(&graphite::RecorderOptions::default()))
+            .expect("Failed to create recorder");
+
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
         let mut surface = Self::create_surface_metal(
             device,
             width,
@@ -438,7 +552,7 @@ impl Renderer {
             self.internal_color_encoding,
             self.internal_color_format,
             &self.backend.borrow(),
-            &mut skia_context,
+            &mut recorder,
         );
 
         let canvas = surface.canvas();
@@ -451,8 +565,17 @@ impl Renderer {
         // draw the picture to the canvas
         canvas.draw_picture(&picture, None, None);
 
-        // flush the surface
+        #[cfg(target_os = "windows")]
         skia_context.flush_and_submit();
+
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
+        {
+            let recording = recorder.snap().expect("Failed to snap recording");
+
+            let insert_info = graphite::InsertRecordingInfo::new(&recording);
+            skia_context.insert_recording(&insert_info);
+            skia_context.submit(None);
+        }
     }
 
     pub fn create_font_face_from_data(&self, face_info: &FaceInfo, font_data: &[u8], index: usize) -> Option<Typeface> {
@@ -504,36 +627,46 @@ impl Renderer {
         color_encoding: ColorEncoding,
         color_format: ColorFormat,
         _backend: &mtl::BackendContext,
-        context: &mut gpu::DirectContext,
+        mut recorder: &mut graphite::Recorder,
     ) -> skia_safe::Surface {
         let raw_texture_ptr =
             unsafe { texture.as_hal::<wgpu::hal::api::Metal>().unwrap().raw_handle().as_ptr() as mtl::Handle };
 
-        let texture_info = unsafe { mtl::TextureInfo::new(raw_texture_ptr) };
+        // let texture_info = unsafe { mtl::TextureInfo::new(raw_texture_ptr) };
 
-        let backend_render_target = skia_safe::gpu::backend_render_targets::make_mtl(
-            (texture.width() as i32, texture.height() as i32),
-            &texture_info,
-        );
-
-        // println!(
-        //     "Creating skia surface from metal texture with color encoding {:?} and color format {:?}",
-        //     color_encoding, color_format
+        // let backend_render_target = skia_safe::gpu::backend_render_targets::make_mtl(
+        //     (texture.width() as i32, texture.height() as i32),
+        //     &texture_info,
         // );
+        //
 
-        // panic!("Color format: {:?}, wgpu_texture: {:?}", color_format, texture);
+        // Create backend texture from Metal drawable
+        let backend_texture =
+            unsafe { mtl::make_backend_texture((width as i32, height as i32), raw_texture_ptr as mtl::Handle) };
 
-        unsafe {
-            gpu::surfaces::wrap_backend_render_target(
-                &mut *context,
-                &backend_render_target,
-                SurfaceOrigin::TopLeft,
-                color_format.into(),
-                Some(color_encoding.into()),
-                None,
-            )
-            .unwrap()
-        }
+        // unsafe {
+        //     gpu::surfaces::wrap_backend_render_target(
+        //         &mut *context,
+        //         &backend_render_target,
+        //         SurfaceOrigin::TopLeft,
+        //         color_format.into(),
+        //         Some(color_encoding.into()),
+        //         None,
+        //     )
+        //     .unwrap()
+        // }
+        //
+
+        let mut surface = graphite::surfaces::wrap_backend_texture(
+            &mut recorder,
+            &backend_texture,
+            color_format.into(),
+            Some(color_encoding.into()),
+            None,
+        )
+        .expect("Failed to create surface");
+
+        surface
     }
 
     #[cfg(target_os = "windows")]
@@ -609,7 +742,7 @@ impl Renderer {
     }
 
     pub fn create_scene(&self, width: u32, heigth: u32) -> Scene {
-        Scene::new(width, heigth)
+        Scene::new(width, heigth, self.font_collection.clone())
     }
 }
 
@@ -628,24 +761,23 @@ impl From<&RGBA> for skia_safe::Color4f {
 }
 
 // convert a brush to a skia paint
-impl From<&Brush<'_>> for skia_safe::Paint {
+impl From<&Brush> for skia_safe::Paint {
     fn from(brush: &Brush) -> Self {
         let mut paint = skia_safe::Paint::default();
         match brush {
             Brush::Solid(color) => {
                 let skia_color: skia_safe::Color4f = color.into();
-                let skia_color_space: skia_safe::ColorSpace = color.color_encoding().into();
+                let skia_color_space = skia_safe::ColorSpace::new_srgb_linear();
 
-                // paint.set_color4f(skia_color, &skia_color_space);
+                println!(
+                    "Creating solid color shader with color: {:?} and color space: {:?}",
+                    skia_color, skia_color_space
+                );
 
-                // use color shader instead of set_color4f to full precision
-                // log::debug!(
-                //     "Creating solid color brush with color: {:?} and color space: {:?}",
-                //     skia_color,
-                //     skia_color_space
-                // );
-                let shader = skia_safe::shaders::color_in_space(skia_color, &skia_color_space);
-                paint.set_shader(shader);
+                // let shader = skia_safe::shaders::color_in_space(skia_color, &skia_color_space);
+                // paint.set_shader(shader);
+                paint.set_color4f(&skia_color, &skia_color_space);
+
                 paint.set_blend_mode(skia_safe::BlendMode::Src);
                 paint
             }
@@ -755,8 +887,8 @@ impl From<&Brush<'_>> for skia_safe::Paint {
 }
 
 // convert Point to skia point
-impl From<super::shapes::Point> for skia_safe::Point {
-    fn from(point: super::shapes::Point) -> Self {
+impl From<Point> for skia_safe::Point {
+    fn from(point: Point) -> Self {
         skia_safe::Point::new(point.x as scalar, point.y as scalar)
     }
 }
@@ -813,83 +945,83 @@ impl From<BlendMode> for skia_safe::BlendMode {
 }
 
 // convert Shape to Path
-impl From<&Shape> for skia_safe::Path {
-    fn from(shape: &Shape) -> Self {
-        let mut path = skia_safe::Path::new();
-        match shape {
-            Shape::Rectangle { a, w, h } => {
-                path.add_rect(
-                    skia_safe::Rect::from_xywh(a.x as scalar, a.y as scalar, *w as scalar, *h as scalar),
-                    None,
-                );
-            }
-            Shape::Circle { center, radius } => {
-                path.add_circle(*center, *radius as scalar, None);
-            }
-            Shape::Line { start, end } => {
-                path.move_to(*start);
-                path.line_to(*end);
-            }
-            Shape::Ellipse {
-                center,
-                radius_x,
-                radius_y,
-                rotation,
-            } => {
-                path.add_oval(
-                    skia_safe::Rect::from_xywh(
-                        center.x as scalar - *radius_x as scalar,
-                        center.y as scalar - *radius_y as scalar,
-                        *radius_x as scalar * 2.0,
-                        *radius_y as scalar * 2.0,
-                    ),
-                    None,
-                );
-            }
-            Shape::RoundedRectangle { a, b, radius } => {
-                path.add_round_rect(
-                    skia_safe::Rect::from_xywh(a.x as scalar, a.y as scalar, b.x as scalar, b.y as scalar),
-                    (*radius as scalar, *radius as scalar),
-                    None,
-                );
-            }
-            Shape::Polygon { points } => {
-                if points.len() == 0 {
-                    return path;
-                }
-                path.move_to(points[0]);
-                for point in points.iter().skip(1) {
-                    path.line_to(*point);
-                }
-                path.close();
-            }
-            Shape::Triangle { a, b, c } => {
-                path.move_to(*a);
-                path.line_to(*b);
-                path.line_to(*c);
-                path.close();
-            }
-            Shape::Path { points } => {
-                if points.len() == 0 {
-                    return path;
-                }
-                path.move_to(points[0]);
-                for point in points.iter().skip(1) {
-                    path.line_to(*point);
-                }
-            }
-        }
-        path
-    }
-}
+// impl From<&Shape> for skia_safe::Path {
+//     fn from(shape: &Shape) -> Self {
+//         let mut path = skia_safe::Path::new();
+//         match shape {
+//             Shape::Rectangle { a, w, h } => {
+//                 path.add_rect(
+//                     skia_safe::Rect::from_xywh(a.x as scalar, a.y as scalar, *w as scalar, *h as scalar),
+//                     None,
+//                 );
+//             }
+//             Shape::Circle { center, radius } => {
+//                 path.add_circle(*center, *radius as scalar, None);
+//             }
+//             Shape::Line { start, end } => {
+//                 path.move_to(*start);
+//                 path.line_to(*end);
+//             }
+//             Shape::Ellipse {
+//                 center,
+//                 radius_x,
+//                 radius_y,
+//                 rotation,
+//             } => {
+//                 path.add_oval(
+//                     skia_safe::Rect::from_xywh(
+//                         center.x as scalar - *radius_x as scalar,
+//                         center.y as scalar - *radius_y as scalar,
+//                         *radius_x as scalar * 2.0,
+//                         *radius_y as scalar * 2.0,
+//                     ),
+//                     None,
+//                 );
+//             }
+//             Shape::RoundedRectangle { a, b, radius } => {
+//                 path.add_round_rect(
+//                     skia_safe::Rect::from_xywh(a.x as scalar, a.y as scalar, b.x as scalar, b.y as scalar),
+//                     (*radius as scalar, *radius as scalar),
+//                     None,
+//                 );
+//             }
+//             Shape::Polygon { points } => {
+//                 if points.len() == 0 {
+//                     return path;
+//                 }
+//                 path.move_to(points[0]);
+//                 for point in points.iter().skip(1) {
+//                     path.line_to(*point);
+//                 }
+//                 path.close();
+//             }
+//             Shape::Triangle { a, b, c } => {
+//                 path.move_to(*a);
+//                 path.line_to(*b);
+//                 path.line_to(*c);
+//                 path.close();
+//             }
+//             Shape::Path { points } => {
+//                 if points.len() == 0 {
+//                     return path;
+//                 }
+//                 path.move_to(points[0]);
+//                 for point in points.iter().skip(1) {
+//                     path.line_to(*point);
+//                 }
+//             }
+//         }
+//         path
+//     }
+// }
 
-impl From<Shape> for skia_safe::Path {
-    fn from(value: Shape) -> Self {
-        (&value).into()
-    }
-}
+// impl From<Shape> for skia_safe::Path {
+//     fn from(value: Shape) -> Self {
+//         (&value).into()
+//     }
+// }
 
-impl From<Brush<'_>> for skia_safe::Paint {
+impl From<Brush> for skia_safe::Paint {
     fn from(value: Brush) -> Self {
         (&value).into()
     }
@@ -913,10 +1045,7 @@ fn skia_create_bitmap_u8(rgba: image::RgbaImage, color_encoding: ColorEncoding) 
     )
     .unwrap();
 
-    Bitmap {
-        image,
-        data: BitmapData::Blob(boxed_buffer),
-    }
+    Bitmap { image }
 }
 
 fn skia_create_bitmap_f32(
@@ -943,10 +1072,7 @@ fn skia_create_bitmap_f32(
     )
     .expect("Failed to create skia image for f32 bitmap");
 
-    Bitmap {
-        image,
-        data: BitmapData::Blob(boxed_buffer),
-    }
+    Bitmap { image }
 }
 
 // allow a colorpace to be converted to a skia color space
@@ -982,18 +1108,6 @@ impl From<ColorFormat> for DXGI_FORMAT {
     }
 }
 
-// #[cfg(target_os = "macos")]
-// impl From<ColorFormat> for mtl::PixelFormat {
-//     fn from(value: ColorFormat) -> Self {
-//         match value {
-//             ColorFormat::Rgba8 =>
-//             ColorFormat::RgbaF16 => mtl::PixelFormat::RGBA16Float,
-//             ColorFormat::Rgba1010102 => mtl::PixelFormat::RGBA10Un
-//             _ => panic!("Unsupported color format for Skia renderer"),
-//         }
-//     }
-// }
-
 // Helper functions
 
 /// Create a Skia backend texture from a WGPU texture. Currently only supports Windows with Direct3D 12 and Metal on macOS/iOS.
@@ -1023,25 +1137,26 @@ fn create_backend_texture(texture: &wgpu::Texture) -> skia_safe::gpu::BackendTex
     // macos/metal implementation
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     {
-        let raw_texture_ptr =
-            unsafe { texture.as_hal::<wgpu::hal::api::Metal>().unwrap().raw_handle().as_ptr() as mtl::Handle };
+        // let raw_texture_ptr =
+        //     unsafe { texture.as_hal::<wgpu::hal::api::Metal>().unwrap().raw_handle().as_ptr() as mtl::Handle };
 
-        let texture_info = unsafe { mtl::TextureInfo::new(raw_texture_ptr) };
+        // let texture_info = unsafe { mtl::TextureInfo::new(raw_texture_ptr) };
 
-        log::debug!(
-            "Creating Skia backend texture for Metal with size: {}x{}",
-            texture.width(),
-            texture.height()
-        );
+        // log::debug!(
+        //     "Creating Skia backend texture for Metal with size: {}x{}",
+        //     texture.width(),
+        //     texture.height()
+        // );
 
-        unsafe {
-            skia_safe::gpu::backend_textures::make_mtl(
-                (texture.width() as i32, texture.height() as i32),
-                skia_safe::gpu::Mipmapped::No,
-                &texture_info,
-                "default",
-            )
-        }
+        // unsafe {
+        //     skia_safe::gpu::backend_textures::make_mtl(
+        //         (texture.width() as i32, texture.height() as i32),
+        //         skia_safe::gpu::Mipmapped::No,
+        //         &texture_info,
+        //         "default",
+        //     )
+        // }
+        todo!("Skia backend texture creation for Metal is not yet implemented")
     }
     // other platforms can be added here
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "ios")))]
@@ -1051,36 +1166,37 @@ fn create_backend_texture(texture: &wgpu::Texture) -> skia_safe::gpu::BackendTex
 }
 
 fn create_texture_from_wgpu_texture(
-    context: &mut DirectContext,
+    context: &mut graphite::Context,
     texture: wgpu::Texture,
     color_encoding: ColorEncoding,
 ) -> Bitmap {
-    // create a skia backend context
+    todo!()
+    // // create a skia backend context
 
-    // create a backend texture from the wgpu texture
-    let backend_texture = create_backend_texture(&texture);
+    // // create a backend texture from the wgpu texture
+    // let backend_texture = create_backend_texture(&texture);
 
-    // create a skia image from the backend texture (using adopt_backend_texture)
-    let skia_image = skia_safe::gpu::images::borrow_texture_from(
-        context,
-        &backend_texture,
-        SurfaceOrigin::TopLeft,
-        ColorType::RGBA8888,
-        SkAlphaType::Unpremul,
-        Some(color_encoding.into()),
-    )
-    .expect("Failed to create Skia image from WGPU texture");
+    // // create a skia image from the backend texture (using adopt_backend_texture)
+    // let skia_image = skia_safe::gpu::images::borrow_texture_from(
+    //     context,
+    //     &backend_texture,
+    //     SurfaceOrigin::TopLeft,
+    //     ColorType::RGBA8888,
+    //     SkAlphaType::Unpremul,
+    //     Some(color_encoding.into()),
+    // )
+    // .expect("Failed to create Skia image from WGPU texture");
 
-    println!("Skia image: {:?}", skia_image);
+    // println!("Skia image: {:?}", skia_image);
 
-    context.flush_and_submit();
-    context.reset(None);
+    // context.flush_and_submit();
+    // context.reset(None);
 
-    // create a bitmap from the skia image
-    Bitmap {
-        image: skia_image,
-        data: BitmapData::Texture(texture),
-    }
+    // // create a bitmap from the skia image
+    // Bitmap {
+    //     image: skia_image,
+    //     data: BitmapData::Texture(texture),
+    // }
 }
 
 #[allow(rustc::unused_variables)]
@@ -1105,7 +1221,9 @@ fn create_backend_context(adapter: &wgpu::Adapter, device: &wgpu::Device, queue:
                 .as_ptr() as mtl::Handle
         };
 
-        let backend = unsafe { mtl::BackendContext::new(raw_device_ptr, command_queue_ptr as mtl::Handle) };
+        // let backend = unsafe { mtl::BackendContext::new(raw_device_ptr, command_queue_ptr as mtl::Handle) };
+
+        let backend = unsafe { BackendContext::new(raw_device_ptr as mtl::Handle, command_queue_ptr as mtl::Handle) };
 
         backend
     }
@@ -1130,13 +1248,13 @@ fn create_backend_context(adapter: &wgpu::Adapter, device: &wgpu::Device, queue:
     }
 }
 
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+fn create_context(backend: &BackendContext) -> graphite::Context {
+    let context_options = graphite::ContextOptions::default();
+    mtl::make_context(&backend, Some(&context_options)).expect("Failed to create Graphite context")
+}
+
+#[cfg(target_os = "windows")]
 fn create_context(backend: &BackendContext) -> gpu::DirectContext {
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
-    {
-        gpu::direct_contexts::make_metal(backend, None).expect("Failed to create Skia DirectContext")
-    }
-    #[cfg(target_os = "windows")]
-    {
-        unsafe { gpu::DirectContext::new_d3d(backend, None).expect("Failed to create Skia DirectContext") }
-    }
+    unsafe { gpu::DirectContext::new_d3d(backend, None).expect("Failed to create Skia DirectContext") }
 }

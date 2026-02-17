@@ -7,7 +7,9 @@
 export IOS_SDKROOT=$(xcrun --sdk iphoneos --show-sdk-path)
 export PYO3_CROSS_LIB_DIR="$PYTHONDIR"
 export PYO3_CROSS_PYTHON_VERSION="$PYTHON_VERSION"
-export _PYTHON_HOST_PLATFORM="ios_13_0_arm64_iphoneos"
+export _PYTHON_HOST_PLATFORM="ios_14_0_arm64_iphoneos"
+export IPHONEOS_DEPLOYMENT_TARGET=14.0
+export IPHONEOS_DEPLOYMENT_VERSION=14.0
 env SDKROOT="$IOS_SDKROOT" \
 PYO3_CROSS_LIB_DIR="$PYTHONDIR" \
 CARGO_TARGET_AARCH64_APPLE_IOS_RUSTFLAGS="-C link-arg=-isysroot -C link-arg=$IOS_SDKROOT \
@@ -21,7 +23,7 @@ CARGO_TARGET_AARCH64_APPLE_IOS_RUSTFLAGS="-C link-arg=-isysroot -C link-arg=$IOS
 export IOS_SDKROOT=$(xcrun --sdk iphonesimulator --show-sdk-path)
 export PYO3_CROSS_LIB_DIR="$PYTHONDIR"
 export PYO3_CROSS_PYTHON_VERSION="$PYTHON_VERSION"
-export _PYTHON_HOST_PLATFORM="ios_13_0_arm64_iphonesimulator"
+export _PYTHON_HOST_PLATFORM="ios_14_0_arm64_iphonesimulator"
 env SDKROOT="$IOS_SDKROOT" \
 PYO3_CROSS_LIB_DIR="$PYTHONDIR" \
 CARGO_TARGET_AARCH64_APPLE_IOS_SIM_RUSTFLAGS="-C link-arg=-isysroot -C link-arg=$IOS_SDKROOT \

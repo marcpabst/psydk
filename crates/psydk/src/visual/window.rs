@@ -177,6 +177,7 @@ pub struct WindowStateSnapshot {
     pub bg_color: Color,
     pub mouse_position: Option<(f32, f32)>,
     pub mouse_cursor_visible: bool,
+    pub font_collection: crate::visual::renderer::wrapped::FontCollection,
 }
 
 // remove this once DisplayCharacteristics is Send + Sync
@@ -192,6 +193,7 @@ impl From<&WindowState> for WindowStateSnapshot {
             bg_color: win_state.bg_color,
             mouse_position: win_state.mouse_position,
             mouse_cursor_visible: win_state.mouse_cursor_visible,
+            font_collection: win_state.renderer.font_collection.clone().into(),
         }
     }
 }
@@ -601,9 +603,7 @@ impl Window {
         for (id, (kind, handler)) in event_handlers.iter() {
             // println!("Checking handler with id: {} for event kind: {:?}", id, kind);
             if kind == &event.kind() {
-                // println!("Dispatching event to handler with id: {}", id);
                 handled |= handler(event.clone());
-                // println!("Handler with id: {} returned: {}", id, handled);
             }
         }
 
@@ -733,6 +733,16 @@ impl Window {
         let frame_wrapper = SendWrapper::new(frame);
         py.detach(move || self_wrapper.present(frame_wrapper.take()))
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+    }
+
+    #[pyo3(name = "font_collection")]
+    #[getter]
+    fn py_get_font_collection(&self, py: Python) -> crate::visual::renderer::wrapped::FontCollection {
+        let self_wrapper = SendWrapper::new(self);
+
+        let state = self_wrapper.state.lock().unwrap();
+        let state = state.as_ref().unwrap();
+        state.renderer.font_collection.clone().into()
     }
 
     #[getter(cursor_visible)]

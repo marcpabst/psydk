@@ -30,6 +30,7 @@ use na::Matrix3;
 use na::Vector3;
 use na::Vector4;
 use nalgebra as na;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::default::Default;
 use std::sync::Arc;
@@ -89,7 +90,7 @@ pub trait DisplayCharacteristics {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
+#[serde(tag = "type", content = "data")]
 pub enum EOTF {
     /// Standard sRGB transfer function
     #[serde(rename = "srgb")]
@@ -299,6 +300,22 @@ impl CustomDisplayCharacteristics {
             transform,
             eotf,
             white_point,
+        }
+    }
+
+    // Create a dummy custom display with identity transform and linear LUT
+    pub fn dummy() -> Self {
+        let linear_lut_r = EOTF::LookUpTable((0..16384).map(|i| i as f32 / 16383.0).collect());
+        let linear_lut_g = EOTF::LookUpTable((0..16384).map(|i| i as f32 / 16383.0).collect());
+        let linear_lut_b = EOTF::LookUpTable((0..16384).map(|i| i as f32 / 16383.0).collect());
+
+        let lut = [linear_lut_r, linear_lut_g, linear_lut_b];
+
+        Self {
+            name: "Dummy Display".to_string(),
+            transform: Matrix3::identity(),
+            eotf: lut,
+            white_point: (0.3127, 0.3290), // D65
         }
     }
 

@@ -156,6 +156,21 @@ impl WindowConfig {
             display_characteristics: display_characteristics,
         })
     }
+
+    #[staticmethod]
+    pub fn generate_example_calibration_file_string() -> PyResult<String> {
+        let example_characteristics = CustomDisplayCharacteristics::dummy();
+
+        // use serde to create json string from example_characteristics
+        let json_str = serde_json::to_string_pretty(&example_characteristics).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to serialize example calibration data: {}",
+                e
+            ))
+        })?;
+
+        Ok(json_str)
+    }
 }
 
 impl Default for ExperimentConfig {

@@ -147,8 +147,10 @@ fn laba_to_xyza(laba: impl Into<Vector4<f32>>, white_point: impl Into<Vector3<f3
 /// 3. Returns a Vector4 with RGBA components in device space
 pub fn color_to_device_rgba(color: Color, dc: &dyn DisplayCharacteristics) -> Vector4<f32> {
     let lunear_device_rgb = color_to_linear_device_rgba(color, dc);
+
     // Apply EOTF
-    dc.apply_eotf(&lunear_device_rgb)
+    //dc.apply_eotf(&lunear_device_rgb)
+    lunear_device_rgb
 }
 
 /// Convert a Color to device space RGBA with EOTFs applied.

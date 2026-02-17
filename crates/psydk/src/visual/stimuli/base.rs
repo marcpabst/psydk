@@ -7,6 +7,8 @@ use crate::visual::renderer::{
     styles::ImageFitMode,
 };
 use psydk_proc::{FromPyStr, StimulusParams};
+use pyo3::types::PyDict;
+use pyo3::types::PyTuple;
 use std::sync::Arc;
 use strum::EnumString;
 use uuid::Uuid;
@@ -86,7 +88,8 @@ impl Stimulus for BaseStimulus {
 #[pymethods]
 impl BaseStimulus {
     #[new]
-    fn py_new(ctx: &ExperimentContext) -> Self {
+    #[pyo3(signature = (ctx, *args, **kwargs))]
+    fn py_new(ctx: &ExperimentContext, args: &Bound<'_, PyTuple>, kwargs: Option<&Bound<'_, PyDict>>) -> Self {
         Self::new(ctx)
     }
 }

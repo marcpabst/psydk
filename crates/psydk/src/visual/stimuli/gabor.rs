@@ -4,7 +4,6 @@ use crate::visual::renderer::{
     affine::Affine,
     brushes::{Brush, Extend, Gradient, GradientKind},
     colors::RGBA,
-    shapes::{Point, Shape},
     styles::BlendMode,
     Scene,
 };
@@ -92,7 +91,7 @@ impl GaborStimulus {
                 let x = (i as f32 / 128.0);
                 let t = (-x.powi(2) / (2.0 * sigma.powi(2))).exp();
 
-                RGBA::new_linear(0.0, 0.0, 0.0, t)
+                RGBA::new(0.0, 0.0, 0.0, t)
             })
             .collect();
 
@@ -128,7 +127,7 @@ impl GaborStimulus {
             .map(|i| {
                 let x = i as f32 / 256.0 * 1.0 * std::f32::consts::PI;
                 let t = x.sin();
-                RGBA::new_linear(t, t, t, 1.0)
+                RGBA::new(t, t, t, 1.0)
             })
             .collect();
         sine_grating_colors
@@ -139,7 +138,7 @@ impl GaborStimulus {
         let square_grating_colors: Vec<RGBA> = (0..len)
             .map(|i| {
                 let t = if (i as f32) < f_len / 2.0 { 1.0 } else { 0.0 };
-                RGBA::new_linear(t, t, t, 1.0)
+                RGBA::new(t, t, t, 1.0)
             })
             .collect();
         square_grating_colors
@@ -277,56 +276,56 @@ impl Stimulus for GaborStimulus {
         // transform for the brush
         let grating_transform = Affine::rotate_at(self.params.orientation, pos_x, pos_y);
 
-        let grating_shape = Shape::circle(Point { x: pos_x, y: pos_y }, radius);
+        // let grating_shape = Shape::circle(Point { x: pos_x, y: pos_y }, radius);
 
-        let grating_brush = Brush::Gradient(Gradient::new_equidistant(
-            Extend::Repeat,
-            GradientKind::Linear {
-                start: Point {
-                    x: pos_x + transl_x,
-                    y: pos_y,
-                },
-                end: Point {
-                    x: pos_x + cycle_length + transl_x,
-                    y: pos_y,
-                },
-            },
-            &self.pattern_colors,
-        ));
+        // let grating_brush = Brush::Gradient(Gradient::new_equidistant(
+        //     Extend::Repeat,
+        //     GradientKind::Linear {
+        //         start: Point {
+        //             x: pos_x + transl_x,
+        //             y: pos_y,
+        //         },
+        //         end: Point {
+        //             x: pos_x + cycle_length + transl_x,
+        //             y: pos_y,
+        //         },
+        //     },
+        //     &self.pattern_colors,
+        // ));
 
-        let gaussian_shape = Shape::circle(Point { x: pos_x, y: pos_y }, radius + 1.0);
+        // let gaussian_shape = Shape::circle(Point { x: pos_x, y: pos_y }, radius + 1.0);
 
-        let gaussian_brush = Brush::Gradient(Gradient::new_equidistant(
-            Extend::Pad,
-            GradientKind::Radial {
-                center: Point { x: pos_x, y: pos_y },
-                radius: (radius as f32),
-            },
-            self.gaussian_colors.as_deref().unwrap(),
-        ));
+        // let gaussian_brush = Brush::Gradient(Gradient::new_equidistant(
+        //     Extend::Pad,
+        //     GradientKind::Radial {
+        //         center: Point { x: pos_x, y: pos_y },
+        //         radius: (radius as f32),
+        //     },
+        //     self.gaussian_colors.as_deref().unwrap(),
+        // ));
 
         let transform = self.transformation.eval(window_size, screen_props);
         let alpha = self.params.alpha.unwrap_or(1.0);
-        scene.start_layer(
-            BlendMode::SourceOver,
-            gaussian_shape.clone(),
-            Some(transform.into()),
-            None,
-            alpha as f32,
-        );
-        scene.draw_shape_fill(
-            gaussian_shape.clone(),
-            gaussian_brush,
-            Some(transform.into()),
-            Some(BlendMode::SourceOver),
-        );
-        scene.draw_shape_fill(
-            grating_shape.clone(),
-            grating_brush,
-            Some(transform.into()),
-            Some(BlendMode::SourceIn),
-        );
-        scene.end_layer();
+        // scene.start_layer(
+        //     BlendMode::SourceOver,
+        //     gaussian_shape.clone(),
+        //     Some(transform.into()),
+        //     None,
+        //     alpha as f32,
+        // );
+        // scene.draw_shape_fill(
+        //     gaussian_shape.clone(),
+        //     gaussian_brush,
+        //     Some(transform.into()),
+        //     Some(BlendMode::SourceOver),
+        // );
+        // scene.draw_shape_fill(
+        //     grating_shape.clone(),
+        //     grating_brush,
+        //     Some(transform.into()),
+        //     Some(BlendMode::SourceIn),
+        // );
+        // scene.end_layer();
 
         // if the stimulus has a stroke, draw it
         if let Some(stroke_style) = &self.params.stroke_style {
@@ -337,8 +336,8 @@ impl Stimulus for GaborStimulus {
             let stroke_width = stroke_width.eval(window_size, screen_props);
             let stroke_options = crate::visual::renderer::styles::StrokeStyle::new(stroke_width);
 
-            let shape = Shape::circle(Point { x: pos_x, y: pos_y }, radius);
-            scene.draw_shape_stroke(shape, stroke_brush, stroke_options, Some(transform.into()), None);
+            // let shape = Shape::circle(Point { x: pos_x, y: pos_y }, radius);
+            // scene.draw_shape_stroke(shape, stroke_brush, stroke_options, Some(transform.into()), None);
         }
     }
 

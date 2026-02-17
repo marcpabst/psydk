@@ -33,9 +33,9 @@ var<uniform> params: Params;
 
 // bind the LUT texture
 @group(0) @binding(2)
-var lut: texture_2d_array<f32>;
-
-
+var lut: texture_1d<f32>;
+@group(0) @binding(3)
+var lut_sampler: sampler;
 
 @fragment
 fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
@@ -47,15 +47,14 @@ fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
         return vec4(rgb_pm, rgba_input.a);
     }
     else if params.correction == 1 {
-        // Convert 0-1 value to texture coordinates
-        let r_texel = calcTexelCoord(rgb_pm.r);
-        let g_texel = calcTexelCoord(rgb_pm.g);
-        let b_texel = calcTexelCoord(rgb_pm.b);
 
-        // Sample each channel from its own array layer
-        let corrected_r = textureLoad(lut, r_texel, 0, 0).r; // Layer 0: Red
-        let corrected_g = textureLoad(lut, g_texel, 1, 0).r; // Layer 1: Green
-        let corrected_b = textureLoad(lut, b_texel, 2, 0).r; // Layer 2: Blue
+        // Sample each channel from the LUT texture
+        // We assume the LUT is a 1D RGBA texture where the R, G, B channels are stored in the first row
+        // and the alpha channel is not used for correction
+        // we use the provided sampler to sample the LUT texture
+        let corrected_r = textureSampleLevel(lut, lut_sampler, rgb_pm.r, 0.0).r;
+        let corrected_g = textureSampleLevel(lut, lut_sampler, rgb_pm.g, 0.0).g;
+        let corrected_b = textureSampleLevel(lut, lut_sampler, rgb_pm.b, 0.0).b;
 
         return vec4(corrected_r, corrected_g, corrected_b, rgba_input.a);
     }
@@ -63,16 +62,4 @@ fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     // If we reach here, the correction type is not recognized
     // Return the original color
     return vec4(rgb_pm, rgba_input.a);
-}
-
-// Calculate 2D texel coordinates for a value between 0-1
-fn calcTexelCoord(value: f32) -> vec2<i32> {
-    let total_entries = i32(params.texture_width * params.texture_height);
-    let index = i32(value * f32(total_entries - 1) + 0.5); // Round to nearest
-
-    // Convert to 2D coordinates
-    let x = index % i32(params.texture_width);
-    let y = index / i32(params.texture_width);
-
-    return vec2<i32>(x, y);
 }
