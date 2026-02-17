@@ -6,7 +6,7 @@ from psydk.visual.stimuli import (
     TextStimulus,
     SVGStimulus,
 )
-from psydk import run_experiment, WindowConfig, ExperimentConfig
+from psydk import experiment, WindowConfig, ExperimentConfig
 
 from typing import Callable, List, Tuple
 
@@ -14,6 +14,7 @@ import time
 import sys
 import os
 import numpy as np
+import pandas as pd
 
 # Define optotype configurations
 SLOAN_LETTERS = {
@@ -33,7 +34,58 @@ LETTERS = SLOAN_LETTERS
 N_LETTERS = 5  # Number of letters to display
 SIZE_LETTER_LOG = 1.0  # Initial letter size in logMAR
 
+def get_gaze_on_screen(face_transform, camera_transform, eye_transform):
+    # 1. TRANSPOSE FIXED: Check if the translation column is empty.
+    # ARKit matrices are Column-Major. If loaded flat into numpy, they behave as Row-Major.
+    # We transpose them to ensure they align with standard math (Translation in the last column).
 
+    # Simple check: If the bottom-right element is 1 and the translation column (last column) is 0,0,0,
+    # it is highly likely the matrix needs transposing.
+    if np.allclose(face_transform[:3, 3], 0) and not np.allclose(face_transform[3, :3], 0):
+        face_transform = face_transform.T
+        camera_transform = camera_transform.T
+        eye_transform = eye_transform.T
+
+    # 2. Compute Eye in World Space
+    eye_world = face_transform @ eye_transform
+
+    # 3. Compute Eye in Camera Space
+    # We invert the camera transform to go from World -> Camera Space
+    camera_inv = np.linalg.inv(camera_transform)
+    eye_camera = camera_inv @ eye_world
+
+    # 4. Extract Ray Origin and Direction
+    # Origin is the translation vector (Column 3)
+    ray_origin = eye_camera[:3, 3]
+
+    # Gaze Direction is the Z-axis (Column 2)
+    # ARKit Face Coordinate System: +Z points OUT of the eye/face.
+    gaze_direction = eye_camera[:3, 2]
+
+    # Normalize
+    gaze_direction = gaze_direction / np.linalg.norm(gaze_direction)
+
+    # 5. Intersect with Screen Plane (Z = 0)
+    # The camera is at Z=0 looking down -Z. The screen is essentially the XY plane at Z=0.
+    # We calculate 't' (distance) where the ray hits Z=0.
+    # Ray: P = Origin + t * Direction
+    # 0 = Origin_z + t * Direction_z  ->  t = -Origin_z / Direction_z
+
+    if abs(gaze_direction[2]) < 1e-6:
+        return None # Parallel to screen
+
+    t = -ray_origin[2] / gaze_direction[2]
+
+    # If t is negative, the intersection is behind the eye (looking away from screen)
+    if t < 0:
+        return None
+
+    intersection_point = ray_origin + t * gaze_direction
+
+    # Return X, Y in meters relative to Camera Lens
+    return intersection_point[0], intersection_point[1]
+
+@experiment(None)
 def run(ctx, *args, **kwargs):
     """
     Main experiment function that displays optotypes and handles user interaction.
@@ -47,6 +99,7 @@ def run(ctx, *args, **kwargs):
     with ctx.create_default_window() as window:
         # Create background stimulus - a white circle in the bottom-left corner
         bg = PatternStimulus(
+            ctx,
             circle(vw(2)),  # Circle with radius of 2% viewport width
             x=-vw(0.5),     # Positioned left of center
             y=-vh(0.5),     # Positioned below center
@@ -64,6 +117,25 @@ def run(ctx, *args, **kwargs):
             y=vh(0.5)-cm(2),               # Positioned near top
             font_size=cm(0.5),             # Font size of 0.5cm
             fill_color=rgb(0, 0, 0),    # Black text
+            context=ctx,
+        )
+
+        debug_text = TextStimulus(
+            f"debug",
+            x=vw(-0.5),                    # Left side
+            y=vh(0.5)-cm(2),               # Positioned near top
+            font_size=cm(0.5),             # Font size of 0.5cm
+            fill_color=rgb(0, 0, 0),    # Black text
+            context=ctx,
+        )
+
+        debug_circle = PatternStimulus(
+            ctx,
+            circle(cm(0.5)),  # Circle with radius of 0.5 cm
+            x=vw(-0.5),       # Positioned left side
+            y=vh(0.5)-cm(5),  # Positioned below debug text
+            pattern="uniform",
+            fill_color=rgb(1, 0, 0)  # Red color
         )
 
         # Randomly select letters to display
@@ -85,7 +157,8 @@ def run(ctx, *args, **kwargs):
                 x=deg((i - (len(letter_letters) - 1) / 2) * (letter_size + letter_size * 2)),
                 y=deg(0),                     # Centered vertically
                 height=deg(letter_size),      # Set height
-                width=deg(letter_size)        # Set width
+                width=deg(letter_size),        # Set width
+                context=ctx,
             )
             for i, l in enumerate(letter_letters)
         ]
@@ -94,6 +167,8 @@ def run(ctx, *args, **kwargs):
         if sys.platform == "ios":
             from psydk.sensors import FaceTracker
             ft = FaceTracker()
+
+        et_rows = []
 
         # Main experiment loop
         while True:
@@ -124,16 +199,60 @@ def run(ctx, *args, **kwargs):
             frame.add(bg)
 
             # Get face distance if on iOS, otherwise use a default value
-            if sys.platform == "ios":
-                dist = ft.get_last_face_distance()
-            else:
-                dist = 4.0  # Default viewing distance in meters
+
+
+            # work out framerate of face tracking
+
+            for face_frame in ft.drain():
+                timestamp = face_frame.timestamp()
+
+
+            face_frame = ft.last_frame()
+
+            dist = 1.0  # default distance in meters
+
+            if face_frame is not None and len(face_frame.faces()) > 0:
+                tracking_result = face_frame.faces()[0]
+                left_eye_transform = tracking_result.left_eye_transform()
+                right_eye_transform = tracking_result.right_eye_transform()
+                camera_transform = tracking_result.camera_transform()
+                face_transform = tracking_result.face_transform()
+
+                # assume iPad Pro M4 13" dimensions
+                # physical dimensions in meters: 0.2149 x 0.1626, in pixels: 2732 x 2048
+                x_left, y_left = get_gaze_on_screen(
+                    face_transform,
+                    camera_transform,
+                    left_eye_transform
+                )
+                x_right, y_right = get_gaze_on_screen(
+                    face_transform,
+                    camera_transform,
+                    right_eye_transform
+                )
+                x = (x_left + x_right) / 2.0
+                y = (y_left + y_right) / 2.0
+
+                # convert from meters to relative coordinates on the iPad screen (0 to 1)
+                x = (x / 0.2149)
+                y = (y / 0.1626)
+
+                # scale to pixels
+                x = x * 2732
+                y = y * 2048
+
+                debug_circle["x"] = x * 5
+                debug_circle["y"] = -y * 5
+
+                dist = tracking_result.mean_eye_distance()
 
             # Add stimuli to frame if a valid distance is available
             if dist is not None:
                 for ll in letters:
                     frame.add(ll)
                 frame.add(logmar_text)
+                frame.add(debug_text)
+                frame.add(debug_circle)
 
                 # Update window viewing distance (convert to mm)
                 window.viewing_distance = dist * 1000
@@ -143,7 +262,4 @@ def run(ctx, *args, **kwargs):
 
 
 if __name__ == "__main__":
-    # Configure experiment with 16-bit floating point color depth
-    exp_config = ExperimentConfig(internal_color_depth="16F")
-    # Run the experiment with the specified configuration
-    run_experiment(run, config=exp_config)
+    run()

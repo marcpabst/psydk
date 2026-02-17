@@ -227,6 +227,8 @@ pub fn derive_deref_newtype(input: TokenStream) -> TokenStream {
                 &mut self.0
             }
         }
+
+
     };
 
     // also allow conversion from inner type to newtype

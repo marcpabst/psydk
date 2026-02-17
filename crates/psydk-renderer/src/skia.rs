@@ -110,89 +110,195 @@ impl Scene {
         }
     }
 
-    pub fn draw_shape(
+    pub fn draw_rectangle(
         skia_canvas: &skia_safe::Canvas,
         skia_paint: skia_safe::Paint,
-        shape: Shape,
+        a: Point,
+        w: f32,
+        h: f32,
         affine: Option<Affine>,
     ) {
-        // apply the affine transformation
         if let Some(affine) = affine {
             skia_canvas.save();
             skia_canvas.concat(&affine.into());
         }
 
-        match shape {
-            Shape::Rectangle { a, w, h } => {
-                let rect = skia_safe::Rect::from_xywh(a.x as f32, a.y as f32, w as f32, h as f32);
-                skia_canvas.draw_rect(rect, &skia_paint);
-            }
-            Shape::Circle { center, radius } => {
-                skia_canvas.draw_circle(center, radius as f32, &skia_paint);
-            }
-            Shape::Line { start, end } => {
-                skia_canvas.draw_line(start, end, &skia_paint);
-            }
-            Shape::Ellipse {
-                center,
-                radius_x,
-                radius_y,
-                rotation,
-            } => {
-                // create bounds for the ellipse
-                let width = radius_x as f32;
-                let height = radius_y as f32;
+        let rect = skia_safe::Rect::from_xywh(a.x as f32, a.y as f32, w as f32, h as f32);
+        skia_canvas.draw_rect(rect, &skia_paint);
 
-                let bounds = skia_safe::Rect::from_xywh(
-                    center.x as f32 - width,
-                    center.y as f32 - height,
-                    width * 2.0,
-                    height * 2.0,
-                );
-
-                // rotate the canvas
-                skia_canvas.save();
-                skia_canvas.rotate(rotation as f32, Some(center.into()));
-                skia_canvas.draw_oval(bounds, &skia_paint);
-                skia_canvas.restore();
-            }
-            Shape::RoundedRectangle { a, b, radius } => {
-                let rect = skia_safe::Rect::from_xywh(a.x as f32, a.y as f32, b.x as f32, b.y as f32);
-                skia_canvas.draw_round_rect(rect, radius as f32, radius as f32, &skia_paint);
-            }
-            Shape::Polygon { points } => {
-                let mut path = skia_safe::path::Path::new();
-                if points.len() == 0 {
-                    return;
-                }
-                path.move_to(points[0]);
-                for point in points.iter().skip(1) {
-                    path.line_to(*point);
-                }
-                path.close();
-                skia_canvas.draw_path(&path, &skia_paint);
-            }
-            Shape::Triangle { a, b, c } => {
-                let mut path = skia_safe::path::Path::new();
-                path.move_to(a);
-                path.line_to(b);
-                path.line_to(c);
-                path.close();
-                skia_canvas.draw_path(&path, &skia_paint);
-            }
-            Shape::Path { points } => {
-                let mut path = skia_safe::path::Path::new();
-                if points.len() == 0 {
-                    return;
-                }
-                path.move_to(points[0]);
-                for point in points.iter().skip(1) {
-                    path.line_to(*point);
-                }
-                skia_canvas.draw_path(&path, &skia_paint);
-            }
+        if let Some(_) = affine {
+            skia_canvas.restore();
         }
-        // restore the canvas
+    }
+
+    pub fn draw_circle(
+        skia_canvas: &skia_safe::Canvas,
+        skia_paint: skia_safe::Paint,
+        center: Point,
+        radius: f32,
+        affine: Option<Affine>,
+    ) {
+        if let Some(affine) = affine {
+            skia_canvas.save();
+            skia_canvas.concat(&affine.into());
+        }
+
+        skia_canvas.draw_circle(center, radius as f32, &skia_paint);
+
+        if let Some(_) = affine {
+            skia_canvas.restore();
+        }
+    }
+
+    pub fn draw_line(
+        skia_canvas: &skia_safe::Canvas,
+        skia_paint: skia_safe::Paint,
+        start: Point,
+        end: Point,
+        affine: Option<Affine>,
+    ) {
+        if let Some(affine) = affine {
+            skia_canvas.save();
+            skia_canvas.concat(&affine.into());
+        }
+
+        skia_canvas.draw_line(start, end, &skia_paint);
+
+        if let Some(_) = affine {
+            skia_canvas.restore();
+        }
+    }
+
+    pub fn draw_ellipse(
+        skia_canvas: &skia_safe::Canvas,
+        skia_paint: skia_safe::Paint,
+        center: Point,
+        radius_x: f32,
+        radius_y: f32,
+        rotation: f32,
+        affine: Option<Affine>,
+    ) {
+        if let Some(affine) = affine {
+            skia_canvas.save();
+            skia_canvas.concat(&affine.into());
+        }
+
+        let width = radius_x as f32;
+        let height = radius_y as f32;
+
+        let bounds = skia_safe::Rect::from_xywh(
+            center.x as f32 - width,
+            center.y as f32 - height,
+            width * 2.0,
+            height * 2.0,
+        );
+
+        skia_canvas.save();
+        skia_canvas.rotate(rotation as f32, Some(center.into()));
+        skia_canvas.draw_oval(bounds, &skia_paint);
+        skia_canvas.restore();
+
+        if let Some(_) = affine {
+            skia_canvas.restore();
+        }
+    }
+
+    pub fn draw_rounded_rectangle(
+        skia_canvas: &skia_safe::Canvas,
+        skia_paint: skia_safe::Paint,
+        a: Point,
+        b: Point,
+        radius: f32,
+        affine: Option<Affine>,
+    ) {
+        if let Some(affine) = affine {
+            skia_canvas.save();
+            skia_canvas.concat(&affine.into());
+        }
+
+        let rect = skia_safe::Rect::from_xywh(a.x as f32, a.y as f32, b.x as f32, b.y as f32);
+        skia_canvas.draw_round_rect(rect, radius as f32, radius as f32, &skia_paint);
+
+        if let Some(_) = affine {
+            skia_canvas.restore();
+        }
+    }
+
+    pub fn draw_polygon(
+        skia_canvas: &skia_safe::Canvas,
+        skia_paint: skia_safe::Paint,
+        points: Vec<Point>,
+        affine: Option<Affine>,
+    ) {
+        if points.len() == 0 {
+            return;
+        }
+
+        if let Some(affine) = affine {
+            skia_canvas.save();
+            skia_canvas.concat(&affine.into());
+        }
+
+        let mut path = skia_safe::path::Path::new();
+        path.move_to(points[0]);
+        for point in points.iter().skip(1) {
+            path.line_to(*point);
+        }
+        path.close();
+        skia_canvas.draw_path(&path, &skia_paint);
+
+        if let Some(_) = affine {
+            skia_canvas.restore();
+        }
+    }
+
+    pub fn draw_triangle(
+        skia_canvas: &skia_safe::Canvas,
+        skia_paint: skia_safe::Paint,
+        a: Point,
+        b: Point,
+        c: Point,
+        affine: Option<Affine>,
+    ) {
+        if let Some(affine) = affine {
+            skia_canvas.save();
+            skia_canvas.concat(&affine.into());
+        }
+
+        let mut path = skia_safe::path::Path::new();
+        path.move_to(a);
+        path.line_to(b);
+        path.line_to(c);
+        path.close();
+        skia_canvas.draw_path(&path, &skia_paint);
+
+        if let Some(_) = affine {
+            skia_canvas.restore();
+        }
+    }
+
+    pub fn draw_path(
+        skia_canvas: &skia_safe::Canvas,
+        skia_paint: skia_safe::Paint,
+        points: Vec<Point>,
+        affine: Option<Affine>,
+    ) {
+        if points.len() == 0 {
+            return;
+        }
+
+        if let Some(affine) = affine {
+            skia_canvas.save();
+            skia_canvas.concat(&affine.into());
+        }
+
+        let mut path = skia_safe::path::Path::new();
+        path.move_to(points[0]);
+        for point in points.iter().skip(1) {
+            path.line_to(*point);
+        }
+        skia_canvas.draw_path(&path, &skia_paint);
+
         if let Some(_) = affine {
             skia_canvas.restore();
         }
@@ -283,7 +389,37 @@ impl Scene {
             paint.set_blend_mode(blend_mode.into());
         }
 
-        Self::draw_shape(&mut canvas, paint, shape, transform);
+        match shape {
+            Shape::Rectangle { a, w, h } => {
+                Self::draw_rectangle(&mut canvas, paint, a, w, h, transform);
+            }
+            Shape::Circle { center, radius } => {
+                Self::draw_circle(&mut canvas, paint, center, radius, transform);
+            }
+            Shape::Line { start, end } => {
+                Self::draw_line(&mut canvas, paint, start, end, transform);
+            }
+            Shape::Ellipse {
+                center,
+                radius_x,
+                radius_y,
+                rotation,
+            } => {
+                Self::draw_ellipse(&mut canvas, paint, center, radius_x, radius_y, rotation, transform);
+            }
+            Shape::RoundedRectangle { a, b, radius } => {
+                Self::draw_rounded_rectangle(&mut canvas, paint, a, b, radius, transform);
+            }
+            Shape::Polygon { points } => {
+                Self::draw_polygon(&mut canvas, paint, points, transform);
+            }
+            Shape::Triangle { a, b, c } => {
+                Self::draw_triangle(&mut canvas, paint, a, b, c, transform);
+            }
+            Shape::Path { points } => {
+                Self::draw_path(&mut canvas, paint, points, transform);
+            }
+        }
     }
 
     pub fn draw_shape_stroke(
@@ -307,7 +443,37 @@ impl Scene {
         // set the stroke width
         paint.set_stroke_width(style.width as scalar);
 
-        Self::draw_shape(&mut canvas, paint, shape, transform);
+        match shape {
+            Shape::Rectangle { a, w, h } => {
+                Self::draw_rectangle(&mut canvas, paint, a, w, h, transform);
+            }
+            Shape::Circle { center, radius } => {
+                Self::draw_circle(&mut canvas, paint, center, radius, transform);
+            }
+            Shape::Line { start, end } => {
+                Self::draw_line(&mut canvas, paint, start, end, transform);
+            }
+            Shape::Ellipse {
+                center,
+                radius_x,
+                radius_y,
+                rotation,
+            } => {
+                Self::draw_ellipse(&mut canvas, paint, center, radius_x, radius_y, rotation, transform);
+            }
+            Shape::RoundedRectangle { a, b, radius } => {
+                Self::draw_rounded_rectangle(&mut canvas, paint, a, b, radius, transform);
+            }
+            Shape::Polygon { points } => {
+                Self::draw_polygon(&mut canvas, paint, points, transform);
+            }
+            Shape::Triangle { a, b, c } => {
+                Self::draw_triangle(&mut canvas, paint, a, b, c, transform);
+            }
+            Shape::Path { points } => {
+                Self::draw_path(&mut canvas, paint, points, transform);
+            }
+        }
     }
 
     pub fn draw_glyphs(
