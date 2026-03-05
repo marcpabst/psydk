@@ -10,11 +10,16 @@ class ShapeStimulus(ClickableMixin, BaseStimulus):
         """Stimulus class for drawing basic shapes.
 
         Args:
-            ctx: Experiment context provided by the psydk framework
-            shape: A Shape object defining the geometry to draw
-            fill_color: RGBA color for filling the shape (default: white)
-            stroke_color: RGBA color for the shape outline (default: black)
-            stroke_width: Width of the shape outline in pixels (default: 1)
+            ctx:
+                Experiment context provided by the psydk framework
+            shape:
+                A Shape object defining the geometry to draw
+            fill_color:
+                RGBA color for filling the shape (default: white)
+            stroke_color:
+                RGBA color for the shape outline (default: black)
+            stroke_width:
+                Width of the shape outline.
         """
         ClickableMixin.__init__(self)
         self.shape = shape
