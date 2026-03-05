@@ -120,10 +120,8 @@ windows = { version = "0.61", features = [
     "Wdk_Graphics_Direct3D",
 ] }
 
-# skia-safe = { git = "https://github.com/marcpabst/rust-skia", rev = "0c3318a6", features = ["d3d", "svg"] }
-skia-safe = { path = "/Users/marc/repos/dev/rust-skia/skia-safe", features = ["d3d", "svg", "skottie", "embed-freetype", "textlayout"] }
-
-
+skia-safe = { git = "https://github.com/marcpabst/rust-skia", rev = "0c3318a", features = ["d3d", "svg", "skottie", "embed-freetype", "textlayout"] }
+# skia-safe = { path = "/Users/marc/repos/dev/rust-skia/skia-safe", features = ["d3d", "svg", "skottie", "embed-freetype", "textlayout"] }
 
 # MacOS dependencies
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -157,4 +155,4 @@ debug = true
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 metal = "0.31.0"
 # skia-safe = { git = "https://github.com/marcpabst/rust-skia", rev = "0c3318a6", features = ["metal", "svg", "graphite"] }
-skia-safe = { path = "/Users/marc/repos/dev/rust-skia/skia-safe", features = ["metal", "svg", "graphite", "skottie", "embed-freetype", "textlayout"] }
+skia-safe = { git = "https://github.com/marcpabst/rust-skia", rev = "0c3318a",  features = ["metal", "svg", "graphite", "skottie", "embed-freetype", "textlayout"] }
