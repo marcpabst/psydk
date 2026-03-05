@@ -60,7 +60,8 @@ jobs:
           CIBW_PLATFORM: ${{ matrix.platform }}
           CIBW_PROJECT_REQUIRES_PYTHON: "<=3.13"
           CIBW_ARCHS: ${{ matrix.archs }}
-          CIBW_BUILD: "cp310-*"
+          # CIBW_BUILD: "cp310-*"
+          CIBW_BUILD: "cp310-macosx_*"
           CIBW_BEFORE_ALL_LINUX: curl -sSf https://sh.rustup.rs | sh -s -- -y
           CIBW_BEFORE_ALL_WINDOWS: |
             git config --system core.longpaths true
