@@ -17,6 +17,6 @@ if platform.system() == 'Darwin':
 def experiment(config):
     def decorator(function):
         def wrapper(*args, **kwargs):
-            return run_experiment(function, *args, **kwargs, config=config)
+            return run_experiment(function, config, *args, **kwargs)
         return wrapper
     return decorator

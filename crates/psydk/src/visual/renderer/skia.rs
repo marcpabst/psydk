@@ -749,7 +749,6 @@ impl Renderer {
 // convert a color to a skia color
 impl From<RGBA> for skia_safe::Color4f {
     fn from(color: RGBA) -> Self {
-        println!("Converting color: {:?}", color);
         skia_safe::Color4f::new(color.r, color.g, color.b, color.a)
     }
 }
@@ -768,11 +767,6 @@ impl From<&Brush> for skia_safe::Paint {
             Brush::Solid(color) => {
                 let skia_color: skia_safe::Color4f = color.into();
                 let skia_color_space = skia_safe::ColorSpace::new_srgb_linear();
-
-                println!(
-                    "Creating solid color shader with color: {:?} and color space: {:?}",
-                    skia_color, skia_color_space
-                );
 
                 // let shader = skia_safe::shaders::color_in_space(skia_color, &skia_color_space);
                 // paint.set_shader(shader);

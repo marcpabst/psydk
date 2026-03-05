@@ -6,6 +6,8 @@ use nalgebra::{Matrix3, Vector3};
 use num_traits::Float;
 use pyo3::{prelude::*, PyClass};
 
+use crate::visual::window::WindowStateSnapshot;
+
 use super::window::{PhysicalScreen, PixelSize, Window};
 
 #[pyclass]
@@ -904,6 +906,12 @@ impl Shape {
     fn path(points: Vec<(IntoSize, IntoSize)>) -> Shape {
         let points = points.into_iter().map(|(x, y)| (x.into(), y.into())).collect();
         Shape::Path { points }
+    }
+
+    #[pyo3(name = "contains_point")]
+    fn py_contains_point(&self, point: (IntoSize, IntoSize), window_state: &WindowStateSnapshot) -> bool {
+        let point = (point.0.into(), point.1.into());
+        self.contains_point(point, window_state.size, window_state.physical_screen)
     }
 
     // for printing

@@ -99,10 +99,7 @@ impl Scene {
                 let y = y.eval(windows_size, screen_props);
                 let width = width.eval(windows_size, screen_props);
                 let height = height.eval(windows_size, screen_props);
-                println!(
-                    "Drawing rectangle at ({}, {}) with width {} and height {}",
-                    x, y, width, height
-                );
+
                 SkScene::draw_rectangle(&canvas, skia_paint, (x, y).into(), width, height, None);
             }
             Shape::Circle { x, y, radius } => {
@@ -110,7 +107,6 @@ impl Scene {
                 let y = y.eval(windows_size, screen_props);
                 let radius = radius.eval(windows_size, screen_props);
                 SkScene::draw_circle(canvas, skia_paint, (x, y).into(), radius, None);
-                println!("Drawing circle at ({}, {}) with radius {}", x, y, radius);
             }
             Shape::Ellipse {
                 x,

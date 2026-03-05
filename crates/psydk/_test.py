@@ -1,30 +1,26 @@
 from psydk import experiment
 from psydk.visual.color import rgb
 from psydk.visual.geometry import cm, vh, vw, px, Shape
-from psydk.stimuli import ShapeStimulus, FixationCrossStimulus, LottieStimulus, ButtonStimulus, TextboxStimulus
+from psydk.stimuli import ShapeStimulus, FixationCrossStimulus, LottieStimulus, ButtonStimulus, TextboxStimulus, DraggableStimulus
 from psydk import WindowConfig, ExperimentConfig
 
 import numpy as np
 
 @experiment(ExperimentConfig(internal_color_type="10U"))
-def run(ctx, *args, **kwargs):
-
-    ctx.load_system_fonts()
-
-    # win_conf = WindowConfig(calibration_file="debug_calibration.json")
-    win_conf = WindowConfig(surface_color_type="10U")
+def my_experiment(ctx, *args, **kwargs):
 
     # Create the main experiment window
-    with ctx.create_default_window(config=win_conf) as window:
+    with ctx.create_default_window(config=WindowConfig(surface_color_type="10U")) as window:
 
-        stim_balloon = LottieStimulus(ctx, "balloon.json", mode="loop", speed=1.2, bounding_rect=Shape.rectangle(cm(10), cm(10), x=-cm(5), y=-cm(5)))
+        stim_balloon = DraggableStimulus(ctx, LottieStimulus(ctx, "balloon.json", mode="loop", speed=1.2, bounding_rect=Shape.rectangle(cm(10), cm(10), x=-cm(5), y=-cm(5))))
 
         stim_button = ButtonStimulus(ctx, "Click me Please!", x=px(100), y=px(100), fill_color=rgb(0, 1, 0))
+        stim_button.add_click_handler(lambda _: print("Button clicked!"))
 
         stim_textbox = TextboxStimulus(ctx, "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.",
-            x=px(-500), y=px(-500), width=cm(15), height=cm(5),
+            x=px(-500), y=px(-500), width=cm(15),
             fill_color=rgb(1, 1, 0),
-            font_size=cm(1), font_family="Times New Roman",
+            font_size=px(40), font_family="Times New Roman",
             stroke_color=rgb(0, 0, 1),
             stroke_width=px(2)
         )
@@ -39,32 +35,32 @@ def run(ctx, *args, **kwargs):
 
         stim_circle = ShapeStimulus(
             ctx,
-            Shape.circle(vw(0.2)),  # Circle with radius of 2% viewport width
-            fill_color=rgb(1, 0, 0, 0.5),  # White color
+            Shape.circle(vw(0.3), x=vw(-0.4), y=vh(0.25)),  # Circle with radius of 20% viewport width, positioned in bottom-right corner
+            fill_color=rgb(1, 0, 0, 0.7),  # White color
             stroke_color=rgb(0, 0, 0, 1),
-            stroke_width=cm(5)
+            stroke_width=cm(0.5)
         )
+
+        stim_circle.add_click_handler(lambda _: print("Circle clicked!"))
+
 
         stim_cross = FixationCrossStimulus(ctx)
 
-        for i in range(100000):
+        while True:
+            # Obtain a new frame to draw on
             frame = window.get_frame()
-            stim_circle.fill_color = rgb(np.sin(i/10)*0.5+0.5, 0, 0, 1)
 
+            # Add stimuli to the frame in the desired drawing order
             frame.add(stim_bg)
-            # frame.add(stim_circle)
-
             frame.add(stim_balloon)
             frame.add(stim_cross)
             frame.add(stim_button)
             frame.add(stim_textbox)
+            frame.add(stim_circle)
 
             # Present the current frame
             window.present(frame)
 
 
 if __name__ == "__main__":
-
-
-
-    run()
+    my_experiment()

@@ -83,6 +83,10 @@ impl Stimulus for BaseStimulus {
     fn set_param(&mut self, name: &str, value: super::StimulusParamValue) {
         todo!()
     }
+
+    fn dispatch_event(&mut self, event: &crate::input::Event, window_state: &WindowStateSnapshot) -> bool {
+        return false;
+    }
 }
 
 #[pymethods]
@@ -91,5 +95,10 @@ impl BaseStimulus {
     #[pyo3(signature = (ctx, *args, **kwargs))]
     fn py_new(ctx: &ExperimentContext, args: &Bound<'_, PyTuple>, kwargs: Option<&Bound<'_, PyDict>>) -> Self {
         Self::new(ctx)
+    }
+
+    #[pyo3(name = "dispatch_event")]
+    fn py_dispatch_event(&mut self, event: &crate::input::Event, window_state: &WindowStateSnapshot) -> bool {
+        self.dispatch_event(event, window_state)
     }
 }

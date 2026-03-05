@@ -18,7 +18,7 @@ version = "0.1.0"
 [dependencies]
 python = "3.12.*"
 pixi-pycharm = ">=0.0.8,<0.0.9"
-pip = ">=25.1.1,<26"
+pip = ">=26.0.1,<27"
 mkdocs = ">=1.6.1,<2"
 mkdocs-material = ">=9.6.5,<10"
 mkdocstrings-python = ">=1.16.1,<2"
@@ -33,7 +33,7 @@ python-lsp-server = ">=1.12.2,<2"
 clang-16 = ">=16.0.6,<17"
 
 [pypi-dependencies]
-maturin = ">=1.7.4, <2"
+maturin = ">=1.12.6, <2"
 cibuildwheel = ">=3.3.0, <4"
 sphinxcontrib-napoleon = ">=0.7, <0.8"
 sphinx-rtd-theme = ">=3.0.2, <4"

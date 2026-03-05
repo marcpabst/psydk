@@ -1,0 +1,22 @@
+[project]
+name = "4AFC Template"
+version = "0.0.1"
+description = "A two-alternative forced choice template experiment."
+dependencies = ["numpy>=2.4.1,<3", "pandas>=3.0.0,<4", "bids-like>=0.8.2,<0.9"]
+
+[tool.psydk]
+data_directory = "./data"
+tasks = ["practice", "4afc"]
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["osx-arm64"]
+
+[tool.pixi.pypi-dependencies]
+# psydk = {path = "/Users/marc/repos/psydk/crates/psydk/target/wheels/psydk-0.3.13-cp310-abi3-macosx_11_0_arm64.whl"}
+
+[tool.pixi.tasks]
+4afc = "python ."
+
+[tool.pixi.dependencies]
+pip = ">=26.0.1,<27"

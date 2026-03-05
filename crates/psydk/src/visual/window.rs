@@ -1102,6 +1102,22 @@ impl Stimulus for WrappedStimulus {
         }
     }
 
+    fn dispatch_event(&mut self, event: &Event, window_state: &WindowStateSnapshot) -> bool {
+        match self {
+            WrappedStimulus::Rust(stimulus) => {
+                let mut stimulus = stimulus.lock();
+                stimulus.dispatch_event(event, window_state)
+            }
+            WrappedStimulus::Python(py_stimulus) => Python::with_gil(|py| {
+                py_stimulus
+                    .call_method(py, "dispatch_event", (event.clone(), window_state.clone()), None)
+                    .expect("Error calling dispatch_event method on Python Stimulus")
+                    .extract::<bool>(py)
+                    .expect("Error extracting bool from dispatch_event method on Python Stimulus")
+            }),
+        }
+    }
+
     fn update_animations(&mut self, now: Instant, window_state: &WindowStateSnapshot) {}
 
     fn uuid(&self) -> Uuid {
