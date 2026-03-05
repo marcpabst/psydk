@@ -37,12 +37,12 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Install cibuildwheel
-        run: |
-          python -m pip install -U pip
-          # Use main branch until iOS support is released.
-          # python -m pip install cibuildwheel==3.0.0
-          python -m pip install git+https://github.com/pypa/cibuildwheel.git
+      # - name: Install cibuildwheel
+      #   run: |
+      #     python -m pip install -U pip
+      #     # Use main branch until iOS support is released.
+      #     # python -m pip install cibuildwheel==3.0.0
+      #     python -m pip install git+https://github.com/pypa/cibuildwheel.git
 
       # - name: Setup GStreamer
       #   id:   setup_gstreamer
@@ -52,6 +52,7 @@ jobs:
 
       # - uses: actions-rust-lang/setup-rust-toolchain@v1
       - name: Build wheels
+        uses: pypa/cibuildwheel@v3.4.0
         working-directory: ./crates/psydk
         run: python -m cibuildwheel --output-dir wheelhouse --archs ${{ matrix.archs }}
         env:
@@ -60,26 +61,25 @@ jobs:
           CIBW_PLATFORM: ${{ matrix.platform }}
           CIBW_PROJECT_REQUIRES_PYTHON: "<=3.13"
           CIBW_ARCHS: ${{ matrix.archs }}
-          # CIBW_BUILD: "cp310-*"
-          CIBW_BUILD: "cp310-macosx_*"
+          CIBW_BUILD: "cp310-*"
           CIBW_BEFORE_ALL_LINUX: curl -sSf https://sh.rustup.rs | sh -s -- -y
           CIBW_BEFORE_ALL_WINDOWS: |
             git config --system core.longpaths true
             rustup target add i686-pc-windows-msvc
           CIBW_ENVIRONMENT_LINUX: "PATH=$HOME/.cargo/bin:$PATH"
-          CIBW_BEFORE_ALL_IOS: |
-            export PYTHONDIR="./dependencies/build_helpers/iphoneos/" && \
-            export IOS_SDKROOT=$(xcrun --sdk iphoneos --show-sdk-path) && \
-            export PYO3_CROSS_LIB_DIR="$PYTHONDIR" && \
-            export PYO3_CROSS_PYTHON_VERSION="$PYTHON_VERSION" && \
-            export SDKROOT="$IOS_SDKROOT" && \
-            export PYO3_CROSS_LIB_DIR="$PYTHONDIR" && \
-            export CARGO_TARGET_AARCH64_APPLE_IOS_RUSTFLAGS="-C link-arg=-isysroot -C link-arg=$IOS_SDKROOT \
-            -C link-arg=-arch -C link-arg=arm64 -C link-arg=-miphoneos-version-min=14.0 -C link-arg=-L \
-            -C link-arg=$PYTHONDIR \
-            -C link-arg=-undefined \
-            -C link-arg=dynamic_lookup" && \
-            export MATURIN_PEP517_ARGS="-target aarch64-apple-ios --release"
+          # CIBW_BEFORE_ALL_IOS: |
+          #   export PYTHONDIR="./dependencies/build_helpers/iphoneos/" && \
+          #   export IOS_SDKROOT=$(xcrun --sdk iphoneos --show-sdk-path) && \
+          #   export PYO3_CROSS_LIB_DIR="$PYTHONDIR" && \
+          #   export PYO3_CROSS_PYTHON_VERSION="$PYTHON_VERSION" && \
+          #   export SDKROOT="$IOS_SDKROOT" && \
+          #   export PYO3_CROSS_LIB_DIR="$PYTHONDIR" && \
+          #   export CARGO_TARGET_AARCH64_APPLE_IOS_RUSTFLAGS="-C link-arg=-isysroot -C link-arg=$IOS_SDKROOT \
+          #   -C link-arg=-arch -C link-arg=arm64 -C link-arg=-miphoneos-version-min=14.0 -C link-arg=-L \
+          #   -C link-arg=$PYTHONDIR \
+          #   -C link-arg=-undefined \
+          #   -C link-arg=dynamic_lookup" && \
+          #   export MATURIN_PEP517_ARGS="-target aarch64-apple-ios --release"
           #MACOSX_DEPLOYMENT_TARGET: 12.0
 
       - uses: actions/upload-artifact@v4.6.2
