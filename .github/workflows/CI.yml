@@ -9,7 +9,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        name: [ "macOS (arm64)", "Windows (x86_64)" ]
+        # name: [ "macOS (arm64)", "Windows (x86_64)" ]
+        name: [ "macOS (arm64)"]
         include:
         - name: macOS (arm64)
           platform: macos
@@ -23,10 +24,10 @@ jobs:
         #   platform: linux
         #   runs-on: ubuntu-24.04-arm
         #   archs: auto
-        - name: Windows (x86_64)
-          platform: windows
-          runs-on: windows-latest
-          archs: auto
+        # - name: Windows (x86_64)
+        #   platform: windows
+        #   runs-on: windows-latest
+        #   archs: auto
     steps:
       - uses: actions/checkout@v4
 
@@ -78,7 +79,7 @@ jobs:
             -C link-arg=-undefined \
             -C link-arg=dynamic_lookup" && \
             export MATURIN_PEP517_ARGS="-target aarch64-apple-ios --release"
-          MACOSX_DEPLOYMENT_TARGET: 12.0
+          #MACOSX_DEPLOYMENT_TARGET: 12.0
 
       - uses: actions/upload-artifact@v4.6.2
         with:
