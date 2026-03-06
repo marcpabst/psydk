@@ -605,6 +605,14 @@ pub enum Shape {
         height: Size,
     },
 
+    RectangleRounded {
+        x: Size,
+        y: Size,
+        width: Size,
+        height: Size,
+        radii: (Size, Size),
+    },
+
     /// A circle.
     Circle { x: Size, y: Size, radius: Size },
 
@@ -656,6 +664,46 @@ impl Shape {
 
                 // Check if the point is inside the rectangle (including edges)
                 x >= sx && x <= sx + width && y >= sy && y <= sy + height
+            }
+
+            Shape::RectangleRounded {
+                x: sx,
+                y: sy,
+                width,
+                height,
+                radii: (radius_x, radius_y),
+            } => {
+                let sx = sx.eval(window_size, window_props);
+                let sy = sy.eval(window_size, window_props);
+                let width = width.eval(window_size, window_props);
+                let height = height.eval(window_size, window_props);
+                let radius_x = radius_x.eval(window_size, window_props);
+                let radius_y = radius_y.eval(window_size, window_props);
+
+                // Check if the point is inside the rectangle (including edges)
+                if x >= sx && x <= sx + width && y >= sy && y <= sy + height {
+                    // Check if the point is in the rounded corners
+                    let in_top_left_corner = x < sx + radius_x
+                        && y < sy + radius_y
+                        && (x - (sx + radius_x)).powi(2) + (y - (sy + radius_y)).powi(2)
+                            <= radius_x.powi(2) + radius_y.powi(2);
+                    let in_top_right_corner = x > sx + width - radius_x
+                        && y < sy + radius_y
+                        && (x - (sx + width - radius_x)).powi(2) + (y - (sy + radius_y)).powi(2)
+                            <= radius_x.powi(2) + radius_y.powi(2);
+                    let in_bottom_left_corner = x < sx + radius_x
+                        && y > sy + height - radius_y
+                        && (x - (sx + radius_x)).powi(2) + (y - (sy + height - radius_y)).powi(2)
+                            <= radius_x.powi(2) + radius_y.powi(2);
+                    let in_bottom_right_corner = x > sx + width - radius_x
+                        && y > sy + height - radius_y
+                        && (x - (sx + width - radius_x)).powi(2) + (y - (sy + height - radius_y)).powi(2)
+                            <= radius_x.powi(2) + radius_y.powi(2);
+
+                    !(in_top_left_corner || in_top_right_corner || in_bottom_left_corner || in_bottom_right_corner)
+                } else {
+                    false
+                }
             }
 
             Shape::Circle { x: cx, y: cy, radius } => {
@@ -1055,6 +1103,33 @@ pub fn rectangle(width: IntoSize, height: IntoSize, x: IntoSize, y: IntoSize) ->
         y: y.into(),
         width: width.into(),
         height: height.into(),
+    }
+}
+
+#[pyfunction]
+#[pyo3(signature = (
+    width,
+    height,
+    x = IntoSize(Size::Pixels(0.0)),
+    y = IntoSize(Size::Pixels(0.0)),
+    radius_x = IntoSize(Size::Pixels(0.0)),
+    radius_y = IntoSize(Size::Pixels(0.0)),
+))]
+/// Create a new rectangle with rounded corners.
+pub fn rectangle_rounded(
+    width: IntoSize,
+    height: IntoSize,
+    x: IntoSize,
+    y: IntoSize,
+    radius_x: IntoSize,
+    radius_y: IntoSize,
+) -> Shape {
+    Shape::RectangleRounded {
+        x: x.into(),
+        y: y.into(),
+        width: width.into(),
+        height: height.into(),
+        radii: (radius_x.into(), radius_y.into()),
     }
 }
 

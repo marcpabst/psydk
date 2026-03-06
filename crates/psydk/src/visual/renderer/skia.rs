@@ -230,8 +230,10 @@ impl Scene {
         skia_canvas: &skia_safe::Canvas,
         skia_paint: skia_safe::Paint,
         a: Point,
-        b: Point,
-        radius: f32,
+        w: f32,
+        h: f32,
+        radius_x: f32,
+        radius_y: f32,
         affine: Option<Affine>,
     ) {
         if let Some(affine) = affine {
@@ -239,8 +241,8 @@ impl Scene {
             skia_canvas.concat(&affine.into());
         }
 
-        let rect = skia_safe::Rect::from_xywh(a.x as f32, a.y as f32, b.x as f32, b.y as f32);
-        skia_canvas.draw_round_rect(rect, radius as f32, radius as f32, &skia_paint);
+        let rect = skia_safe::Rect::from_xywh(a.x as f32, a.y as f32, w as f32, h as f32);
+        skia_canvas.draw_round_rect(rect, radius_x as f32, radius_y as f32, &skia_paint);
 
         if let Some(_) = affine {
             skia_canvas.restore();

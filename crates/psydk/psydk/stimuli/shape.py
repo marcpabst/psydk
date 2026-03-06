@@ -13,7 +13,7 @@ class ShapeStimulus(ClickableMixin, BaseStimulus):
             ctx:
                 Experiment context provided by the psydk framework
             shape:
-                A Shape object defining the geometry to draw
+                A Shape object defining the geometry to draw.
             fill_color:
                 RGBA color for filling the shape (default: white)
             stroke_color:

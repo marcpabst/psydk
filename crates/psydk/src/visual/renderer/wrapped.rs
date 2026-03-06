@@ -102,6 +102,32 @@ impl Scene {
 
                 SkScene::draw_rectangle(&canvas, skia_paint, (x, y).into(), width, height, None);
             }
+            Shape::RectangleRounded {
+                x,
+                y,
+                width,
+                height,
+                radii,
+            } => {
+                let x = x.eval(windows_size, screen_props);
+                let y = y.eval(windows_size, screen_props);
+                let width = width.eval(windows_size, screen_props);
+                let height = height.eval(windows_size, screen_props);
+
+                let radius_x = radii.0.eval(windows_size, screen_props);
+                let radius_y = radii.1.eval(windows_size, screen_props);
+
+                SkScene::draw_rounded_rectangle(
+                    &canvas,
+                    skia_paint,
+                    (x, y).into(),
+                    width,
+                    height,
+                    radius_x,
+                    radius_y,
+                    None,
+                );
+            }
             Shape::Circle { x, y, radius } => {
                 let x = x.eval(windows_size, screen_props);
                 let y = y.eval(windows_size, screen_props);
