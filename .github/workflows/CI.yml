@@ -129,10 +129,12 @@ jobs:
       # get the wheel for macOS (arm64) to build the docs with it
       - uses: actions/download-artifact@v4
         with:
+          path: dist
+          merge-multiple: true
           pattern: cibw-*-macosx_12_0_arm64.whl
       # install the wheel to build the docs with it
       - name: Install the wheel
-        run: pip install *-abi3-macosx_12_0_arm64.whl
+        run: pip install ./dist/*-macosx_12_0_arm64.whl
 
       - name: Build the docs
         run: |
