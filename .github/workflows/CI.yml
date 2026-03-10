@@ -135,7 +135,9 @@ jobs:
       # install the wheel to build the docs with it
       - name: Install the wheel
         run: pip install ./dist/*-macosx_12_0_arm64.whl
-
+      # install the dependencies to build the docs
+      - name: Install dependencies
+        run: pip install -r docs/requirements.txt
       - name: Build the docs
         run: |
           sphinx-build -M html docs/source/ docs/build/ -W -a -j auto -n --keep-going
