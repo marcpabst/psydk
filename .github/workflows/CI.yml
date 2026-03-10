@@ -132,7 +132,7 @@ jobs:
           pattern: cibw-*-macosx_12_0_arm64.whl
       # install the wheel to build the docs with it
       - name: Install the wheel
-        run: pip install cibw-*-macosx_12_0_arm64.whl
+        run: pip install *-abi3-macosx_11_0_arm64.whl
 
       - name: Build the docs
         run: |
