@@ -2,7 +2,6 @@ class ClickableMixin:
     """Mixin that adds click handling capabilities to a stimulus. It manages the click status (normal, hovered, pressed) and allows registering custom click event handlers."""
 
     def __init__(self):
-        print("Initializing ClickableMixin")
         self.click_status = "normal"  # Can be "normal", "hovered", or "pressed"
         self.click_handlers = []
         self.was_clicked = False  # Flag to track if the stimulus was clicked

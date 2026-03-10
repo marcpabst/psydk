@@ -76,6 +76,17 @@ impl Color {
         })
     }
 
+    /// Create a new linear sRGBA color (linear sRGB color space)
+    pub fn new_lin_srgba(r: f32, g: f32, b: f32, a: f32) -> Self {
+        Color::RGBA(RGBA {
+            r,
+            g,
+            b,
+            a,
+            space: RGBColorSpace::SRGBLinear,
+        })
+    }
+
     /// Create a new XYZA color in CIE 1931 XYZ color space
     pub fn new_xyza(x: f32, y: f32, z: f32, a: f32) -> Self {
         Color::XYZA(XYZA { x, y, z, a })
@@ -349,8 +360,8 @@ impl FromPyObject<'_, '_> for IntoColor {
 ///
 /// Returns
 /// -------
-/// (r, g, b, a) : tuple
-///   The RGB color as a tuple of 4 floats.
+/// Color
+///   The Color object.
 pub fn py_rgb(r: f32, g: f32, b: f32, a: f32) -> Color {
     Color::new_rgba(r, g, b, a, RGBColorSpace::Device)
 }
@@ -373,9 +384,54 @@ pub fn py_rgb(r: f32, g: f32, b: f32, a: f32) -> Color {
 ///
 /// Returns
 /// -------
-/// (r, g, b, a) : tuple
-///   The linear RGB color as a tuple of 4 floats.
+/// Color
+///   The Color object.
 pub fn py_linrgb(r: f32, g: f32, b: f32, a: f32) -> Color {
+    Color::new_rgba(r, g, b, a, RGBColorSpace::DeviceLinear)
+}
+
+/// A color in the standard sRGB color space with sRGB encoding.
+///
+/// Parameters
+/// ---------
+/// r : float
+///   The red channel (0.0 to 1.0).
+/// g : float
+///   The green channel (0.0 to 1.0).
+/// b : float
+///   The blue channel (0.0 to 1.0).
+/// a : float, optional
+///   The alpha channel (0.0 to 1.0).
+///
+/// Returns
+/// -------
+/// Color
+///   The Color object.
+#[pyfunction]
+#[pyo3(name = "srgb")]
+#[pyo3(signature = (r, g, b, a = 1.0))]
+pub fn py_srgb(r: f32, g: f32, b: f32, a: f32) -> Color {
+    Color::new_rgba(r, g, b, a, RGBColorSpace::SRGB)
+}
+
+/// A color in the linear sRGB color space.
+/// r : float
+///   The red channel (0.0 to 1.0).
+/// g : float
+///   The green channel (0.0 to 1.0).
+/// b : float
+///   The blue channel (0.0 to 1.0).
+/// a : float, optional
+///   The alpha channel (0.0 to 1.0).
+///
+/// Returns
+/// -------
+/// Color
+///   The Color object.
+#[pyfunction]
+#[pyo3(name = "linsrgb")]
+#[pyo3(signature = (r, g, b, a = 1.0))]
+pub fn py_linsrgb(r: f32, g: f32, b: f32, a: f32) -> Color {
     Color::new_rgba(r, g, b, a, RGBColorSpace::DeviceLinear)
 }
 
@@ -396,6 +452,11 @@ pub fn py_linrgb(r: f32, g: f32, b: f32, a: f32) -> Color {
 ///    The alpha channel (0.0 to 1.0).
 /// white_point : list of 3 floats, optional
 ///    The white point in XYZ coordinates. Default is D65 ([0.95047, 1.0, 1.08883]).
+///
+/// Returns
+/// -------
+/// Color
+///   The Color object.
 pub fn py_luv(l: f32, u: f32, v: f32, a: f32, white_point: [f32; 3]) -> Color {
     Color::new_luva(l, u, v, a, white_point)
 }
@@ -415,6 +476,11 @@ pub fn py_luv(l: f32, u: f32, v: f32, a: f32, white_point: [f32; 3]) -> Color {
 /// The Z channel.
 /// a : float, optional
 ///   The alpha channel (0.0 to 1.0).
+///
+/// Returns
+/// -------
+/// Color
+///   The Color object.
 pub fn py_xyz(x: f32, y: f32, z: f32, a: f32) -> Color {
     Color::new_xyza(x, y, z, a)
 }

@@ -694,29 +694,28 @@ impl ExperimentContext {
         Ok(self.system_info())
     }
 
-    #[pyo3(name = "load_system_fonts")]
-    /// Load system fonts into the font manager. Behavior is platform-specific.
-    fn py_load_system_fonts(&self) -> PyResult<()> {
-        self.load_system_fonts();
-        Ok(())
-    }
+    // #[pyo3(name = "load_system_fonts")]
+    // /// Load system fonts into the font manager. Behavior is platform-specific.
+    // fn py_load_system_fonts(&self) -> PyResult<()> {
+    //     self.load_system_fonts();
+    //     Ok(())
+    // }
 
-    #[pyo3(name = "load_font_file")]
-    /// Load a font file into the font manager.
-    ///
-    /// Parameters
-    /// ----------
-    /// path : str
-    ///  The path to the font file.
-    fn py_load_font_file(&self, path: &str) -> PyResult<()> {
-        self.load_font_file(path)?;
-        Ok(())
-    }
+    // #[pyo3(name = "load_font_file")]
+    // /// Load a font file into the font manager.
+    // ///
+    // /// Parameters
+    // /// ----------
+    // /// path : str
+    // ///  The path to the font file.
+    // fn py_load_font_file(&self, path: &str) -> PyResult<()> {
+    //     self.load_font_file(path)?;
+    //     Ok(())
+    // }
 
     #[pyo3(name = "set_idle_timer_disabled")]
     /// Disable the idle timer on mobile platforms to prevent the screen from
-    /// dimming or locking during the experiment. This function has no effect on
-    /// desktop platforms.
+    /// dimming or locking during the experiment. On platforms where this is not applicable, this function is a no-op.
     ///
     /// Parameters
     /// ----------
@@ -727,18 +726,18 @@ impl ExperimentContext {
         Ok(())
     }
 
-    #[pyo3(name = "load_font_directory")]
-    /// Load all font files in a directory into the font manager.
-    /// Behavior is platform-specific.
-    ///
-    /// Parameters
-    /// ----------
-    /// path : str
-    ///  The path to the directory containing font files.
-    fn py_load_font_directory(&self, path: &str) -> PyResult<()> {
-        self.load_font_directory(path)?;
-        Ok(())
-    }
+    // #[pyo3(name = "load_font_directory")]
+    // /// Load all font files in a directory into the font manager.
+    // /// Behavior is platform-specific.
+    // ///
+    // /// Parameters
+    // /// ----------
+    // /// path : str
+    // ///  The path to the directory containing font files.
+    // fn py_load_font_directory(&self, path: &str) -> PyResult<()> {
+    //     self.load_font_directory(path)?;
+    //     Ok(())
+    // }
 
     #[pyo3(name = "get_writable_directory")]
     /// Get a writable directory. This is platform-specific and will return a
@@ -810,11 +809,11 @@ impl ExperimentContext {
         ))
     }
 
-    fn font_collection(&self) -> PyResult<renderer::wrapped::FontCollection> {
-        Ok(renderer::wrapped::FontCollection::new(
-            self.renderer().font_collection.clone(),
-        ))
-    }
+    // fn font_collection(&self) -> PyResult<renderer::wrapped::FontCollection> {
+    //     Ok(renderer::wrapped::FontCollection::new(
+    //         self.renderer().font_collection.clone(),
+    //     ))
+    // }
 }
 
 #[pyfunction]

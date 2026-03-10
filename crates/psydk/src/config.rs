@@ -60,7 +60,12 @@ impl std::str::FromStr for ColorType {
 
 #[pyclass]
 #[derive(Clone)]
-/// Configuration for the display.
+/// Defines the the properties the colour/luminance output of the display.
+/// You can either provide a calibration file or assume a generic display.
+///
+/// # Parameters
+/// - `surface_color_type`: The surface color depth to use. Must be one of '8U', '10U', or '12U'. Defaults to '8U'.
+/// - `calibration_file`: Path to a display calibration file in JSON format.
 pub struct WindowConfig {
     /// The surface color depth to use (normally 8, 10, or 12 bit). Psydk will
     /// throw an error if you try to use a color depth that is not
@@ -133,7 +138,7 @@ impl WindowConfig {
     /// # Parameters
     /// - `surface_color_type`: The surface color depth to use. Must be one of '8U', '10U', or '12U'. Defaults to '8U'.
     /// - `calibration_file`: Path to a display calibration file in JSON format.
-    pub fn new(surface_color_type: Option<&str>, calibration_file: Option<&str>) -> PyResult<Self> {
+    pub fn __new__(surface_color_type: Option<&str>, calibration_file: Option<&str>) -> PyResult<Self> {
         let display_characteristics: Arc<dyn DisplayCharacteristics + Send + Sync> =
             if let Some(file_path) = calibration_file {
                 Arc::new(CustomDisplayCharacteristics::from_file(file_path).map_err(|e| {

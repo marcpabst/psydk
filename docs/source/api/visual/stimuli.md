@@ -1,4 +1,4 @@
-# Desinging Stimuli
+# Creating and Displaying Visual Stimuli
 
 The visual module contains classes for creating visual stimuli.
 

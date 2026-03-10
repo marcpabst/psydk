@@ -8,6 +8,8 @@
 import sys
 print(sys.path)
 
+
+
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
@@ -38,6 +40,8 @@ extensions = [
 
 autosummary_generate = True
 autosummary_imported_members = True
+
+
 
 
 napoleon_numpy_docstring = True
