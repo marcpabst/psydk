@@ -131,7 +131,7 @@ jobs:
         with:
           path: dist
           merge-multiple: true
-          pattern: cibw-*-macos-arm64*
+          pattern: cibw-wheel-macOS*
       # install the wheel to build the docs with it
       - name: Install the wheel
         run: pip install ./dist/*-macosx_12_0_arm64.whl
