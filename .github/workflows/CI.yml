@@ -118,3 +118,14 @@ jobs:
           merge-multiple: true
 
       - uses: pypa/gh-action-pypi-publish@release/v1
+
+      # now install the wheel, build the docs, and upload them to GitHub Pages
+      - name: Install the wheel
+        run: pip install dist/*.whl
+      - name: Build the docs
+        run: |
+          sphinx-build -M html docs/source/ docs/build/ -W -a -j auto -n --keep-going
+      - name: Deploy to GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/build/html
