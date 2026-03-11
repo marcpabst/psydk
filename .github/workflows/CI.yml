@@ -63,6 +63,10 @@ jobs:
       #   env:
       - name: Build wheels
         uses: pypa/cibuildwheel@v3.4.0
+        with:
+          output-dir: ./crates/psydk/wheelhouse
+          platform: ${{ matrix.cibw_platform }}
+          package-dir: ./crates/psydk
         env:
           FORCE_SKIA_BUILD: "1"
           CIBW_PLATFORM: ${{ matrix.cibw_platform }}
