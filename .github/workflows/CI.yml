@@ -66,13 +66,14 @@ jobs:
         with:
           output-dir: ./crates/psydk/wheelhouse
           platform: ${{ matrix.cibw_platform }}
+          archs: ${{ matrix.archs }}
           package-dir: ./crates/psydk
+          build: "cp313-*"
         env:
           FORCE_SKIA_BUILD: "1"
-          CIBW_PLATFORM: ${{ matrix.cibw_platform }}
-          CIBW_PROJECT_REQUIRES_PYTHON: "<=3.13"
-          CIBW_ARCHS: ${{ matrix.archs }}
-          CIBW_BUILD: "cp313-*"
+          # CIBW_PROJECT_REQUIRES_PYTHON: "<=3.13"
+          # CIBW_ARCHS: ${{ matrix.archs }}
+          # CIBW_BUILD: "cp313-*"
           CIBW_BEFORE_ALL_LINUX: curl -sSf https://sh.rustup.rs | sh -s -- -y
           CIBW_BEFORE_ALL_WINDOWS: |
             git config --system core.longpaths true
