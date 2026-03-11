@@ -116,6 +116,13 @@ jobs:
       - name: Install maturin
         run: pipx install maturin
 
+        # setup rust aarch64-apple-ios and aarch64-apple-ios-sim
+      - name: Setup Rust toolchain for iOS
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: aarch64-apple-ios,aarch64-apple-ios-sim
+
       - uses: actions/checkout@v4
 
       - name: Build wheels for iOS
