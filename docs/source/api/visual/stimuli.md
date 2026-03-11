@@ -15,7 +15,6 @@ while True:
     frame.present()
 ```
 
-
 ```{eval-rst}
 .. automodule:: psydk.visual
   :members:
