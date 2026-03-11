@@ -8,7 +8,7 @@ dynamic = ["version"]
 authors = [{ name = "Marc Pabst", email = "mail@xxxxxxx.com" }]
 description = "Python bindings for psydk"
 license = "MPL-2.0"
-requires-python = ">=3.13"
+requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
