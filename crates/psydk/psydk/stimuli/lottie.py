@@ -6,16 +6,23 @@ from psydk.visual.renderer import LottieAnimation
 from .mixins import ClickableMixin
 
 class LottieStimulus(ClickableMixin, BaseStimulus):
-    def __init__(self, ctx, lottie_path, bounding_rect, mode="loop", speed=1.0):
-        """Stimulus class for drawing basic shapes.
+    """Stimulus class for displaying Lottie animations.
 
-        Args:
-            ctx: Experiment context provided by the psydk framework
-            shape: A Shape object defining the geometry to draw
-            fill_color: RGBA color for filling the shape (default: white)
-            stroke_color: RGBA color for the shape outline (default: black)
-            stroke_width: Width of the shape outline in pixels (default: 1)
-        """
+    Parameters
+    ----------
+    ctx : object
+        Experiment context provided by the psydk framework.
+    lottie_path : str
+        File path to the Lottie JSON animation file.
+    bounding_rect : Shape
+        A Shape.rectangle defining the area where the animation should be displayed.
+    mode : str, optional
+        Playback mode for the animation. Can be "loop", "play_once", or "ping_pong" (default: "loop").
+    speed : float, optional
+        Playback speed multiplier for the animation (default: 1.0).
+    """
+    def __init__(self, ctx, lottie_path, bounding_rect, mode="loop", speed=1.0):
+
         ClickableMixin.__init__(self)
         self.lottie = LottieAnimation.from_file(lottie_path, playback_mode=mode, speed=speed)
         self.bounding_rect = bounding_rect

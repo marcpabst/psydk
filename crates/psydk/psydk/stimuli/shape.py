@@ -6,21 +6,23 @@ from psydk.visual.renderer import Brush, StrokeStyle
 from .mixins import ClickableMixin
 
 class ShapeStimulus(ClickableMixin, BaseStimulus):
-    def __init__(self, ctx, shape, fill_color=rgb(1, 1, 1), stroke_color=rgb(0, 0, 0, 1), stroke_width=px(0)):
-        """Stimulus class for drawing basic shapes.
+    """Stimulus class for drawing basic shapes.
 
-        Args:
-            ctx:
-                Experiment context provided by the psydk framework
-            shape:
-                A Shape object defining the geometry to draw.
-            fill_color:
-                RGBA color for filling the shape (default: white)
-            stroke_color:
-                RGBA color for the shape outline (default: black)
-            stroke_width:
-                Width of the shape outline.
-        """
+    Parameters
+    ----------
+    ctx : object
+        Experiment context provided by the psydk framework.
+    shape : Shape
+        A Shape object defining the geometry to draw.
+    fill_color : rgba, optional
+        RGBA color for filling the shape (default: white).
+    stroke_color : rgba, optional
+        RGBA color for the shape outline (default: black).
+    stroke_width : unit, optional
+        Width of the shape outline in pixels (default: 0).
+    """
+    def __init__(self, ctx, shape, fill_color=rgb(1, 1, 1), stroke_color=rgb(0, 0, 0, 1), stroke_width=px(0)):
+
         ClickableMixin.__init__(self)
         self.shape = shape
         self.fill_color = fill_color

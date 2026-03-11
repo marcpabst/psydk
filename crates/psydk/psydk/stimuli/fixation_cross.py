@@ -4,19 +4,28 @@ from psydk.visual.stimuli import BaseStimulus
 from psydk.visual.renderer import Brush, StrokeStyle
 
 class FixationCrossStimulus(BaseStimulus):
-    def __init__(self, ctx, size=cm(2.0), x=px(0), y=px(0), outset=cm(1), stroke_width=px(10), stroke_color=rgb(0,0,0), antialias=True):
-        """Stimulus class for a fixation cross.
+    """Stimulus class for drawing a fixation cross.
 
-        Args:
-            ctx: Experiment context provided by the psydk framework
-            size: Size of the fixation cross arms (default: 0.5 cm)
-            x: X position of the fixation cross center (default: 0)
-            y: Y position of the fixation cross center (default: 0)
-            outset: Distance from the center to the start of the arms (default: 0.25 cm)
-            stroke_width: Width of the lines (default: 5 pixels)
-            stroke_color: RGBA color for the lines (default: black)
-            antialias: Whether to use anti-aliasing when drawing the lines (default: True)
-        """
+    Parameters
+    ----------
+    ctx : object
+        Experiment context provided by the psydk framework.
+    size : unit, optional
+        Length of each arm of the cross (default: ``cm(2.0)``).
+    x : unit, optional
+        X position of the center of the cross (default: ``px(0)``).
+    y : unit, optional
+        Y position of the center of the cross (default: ``px(0)``).
+    outset : unit, optional
+        Distance from the center to the start of each arm (default: ``cm(1)``).
+    stroke_width : unit, optional
+        Width of the cross arms (default: ``px(10)``).
+    stroke_color : rgba, optional
+        RGBA color for the cross arms (default: ``rgb(0, 0, 0)``).
+    antialias : bool, optional
+        Whether to apply anti-aliasing when drawing the cross (default: True).
+    """
+    def __init__(self, ctx, size=cm(2.0), x=px(0), y=px(0), outset=cm(1), stroke_width=px(10), stroke_color=rgb(0,0,0), antialias=True):
         self.size = size
         self.x, self.y = x, y
         self.outset = outset

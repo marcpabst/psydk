@@ -695,6 +695,7 @@ impl Window {
 #[pymethods]
 impl Window {
     #[pyo3(name = "get_frame")]
+    /// Obtain a new frame for the window.
     fn py_get_frame(&self, py: Python) -> Frame {
         let self_wrapper = SendWrapper::new(self.clone());
         let d = py.detach(move || SendWrapper::new(self_wrapper.get_frame()));
@@ -702,6 +703,7 @@ impl Window {
     }
 
     #[pyo3(name = "get_frames")]
+    /// Obtain an iterator over frames for the window. The iterator will yield `n` frames, one for each call to `next()`.
     fn py_get_frames(&self, py: Python, n: u32) -> FrameIterator {
         FrameIterator {
             window: self.clone(),
@@ -714,6 +716,7 @@ impl Window {
     }
 
     #[pyo3(name = "get_frames_for_duration")]
+    /// Obtain an iterator over frames for the window. The iterator will yield frames for the specified duration, one for each call to `next()`.
     fn py_get_frames_for_duration(&self, py: Python, duration: f64) -> FrameIterator {
         FrameIterator {
             window: self.clone(),
@@ -735,17 +738,18 @@ impl Window {
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
     }
 
-    #[pyo3(name = "font_collection")]
-    #[getter]
-    fn py_get_font_collection(&self, py: Python) -> crate::visual::renderer::wrapped::FontCollection {
-        let self_wrapper = SendWrapper::new(self);
+    // #[pyo3(name = "font_collection")]
+    // #[getter]
+    // fn py_get_font_collection(&self, py: Python) -> crate::visual::renderer::wrapped::FontCollection {
+    //     let self_wrapper = SendWrapper::new(self);
 
-        let state = self_wrapper.state.lock().unwrap();
-        let state = state.as_ref().unwrap();
-        state.renderer.font_collection.clone().into()
-    }
+    //     let state = self_wrapper.state.lock().unwrap();
+    //     let state = state.as_ref().unwrap();
+    //     state.renderer.font_collection.clone().into()
+    // }
 
     #[getter(cursor_visible)]
+    /// Determine whether the mouse cursor is currently visible in the window.
     fn py_cursor_visible(&self) -> bool {
         self.cursor_visible()
     }
@@ -756,18 +760,21 @@ impl Window {
     }
 
     #[pyo3(name = "get_current_monitor")]
+    /// Get the current monitor that the window is on. Returns None if the window is not currently on a monitor.
     fn py_get_current_monitor(&self, py: Python) -> Option<Monitor> {
         let self_wrapper = SendWrapper::new(self);
         py.detach(move || self_wrapper.get_current_monitor())
     }
 
     #[pyo3(name = "get_size")]
+    /// Get the size of the window in pixels as a tuple (width, height).
     fn py_get_size(&self, py: Python) -> (u32, u32) {
         self.size().into()
     }
 
     #[pyo3(name = "bg_color")]
     #[getter]
+    /// The background color of the window. This is the color that will be used to clear the window before drawing each frame. It can be set on a per-frame basis by setting the `bg_color` attribute of a `Frame`.
     fn py_get_bg_color(&self, py: Python) -> Color {
         let self_wrapper = SendWrapper::new(self);
         py.detach(move || {
@@ -818,8 +825,8 @@ impl Window {
         id
     }
 
-    /// Remove an event handler from the window.
     #[pyo3(name = "remove_event_handler")]
+    /// Remove an event handler from the window.
     fn py_remove_event_handler(&self, id: EventHandlerId, py: Python) {
         let self_wrapper = SendWrapper::new(self);
         py.detach(move || self_wrapper.remove_event_handler(id));
@@ -845,24 +852,26 @@ impl Window {
         py.detach(move || self_wrapper.set_status_bar_shown(shown));
     }
 
-    /// Get/set the viewing distance in meters.
+    /// The distance from the observer to the screen in meters.
     #[getter(viewing_distance)]
     fn py_get_viewing_distance(&self, py: Python) -> f32 {
         let self_wrapper = SendWrapper::new(self);
         py.detach(move || self_wrapper.viewing_distance())
     }
+
     #[setter(viewing_distance)]
     fn py_set_viewing_distance(&self, py: Python, viewing_distance: f32) {
         let self_wrapper = SendWrapper::new(self);
         py.detach(move || self_wrapper.set_viewing_distance(viewing_distance));
     }
 
-    /// Get/set the pixel density in pixels per millimeter.
+    /// The pixel density in pixels per millimeter.
     #[getter(pixel_density)]
     fn py_get_pixel_density(&self, py: Python) -> f32 {
         let self_wrapper = SendWrapper::new(self);
         py.detach(move || self_wrapper.pixel_density())
     }
+
     #[setter(pixel_density)]
     fn py_set_pixel_density(&self, py: Python, pixel_density: f32) {
         let self_wrapper = SendWrapper::new(self);
@@ -1042,25 +1051,21 @@ impl Frame {
 
 #[pymethods]
 impl Frame {
-    // #[pyo3(name = "add")]
-    // fn py_add(&mut self, stimulus: crate::visual::stimuli::PyStimulus, py: Python) {
-    //     let mut self_wrapper = SendWrapper::new(self);
-    //     let stimulus_wrapper = SendWrapper::new(stimulus);
-    //     py.detach(move || self_wrapper.add(stimulus_wrapper.as_super()));
-    // }
-
     #[pyo3(name = "add")]
+    /// Add a stimulus to the frame.
     fn py_add(&mut self, stimulus: WrappedStimulus) {
         let dynamic_stimulus = DynamicStimulus::new(stimulus);
         self.add(&dynamic_stimulus);
     }
 
     #[setter(bg_color)]
+    /// Set the background color of the frame.
     fn py_set_bg_color(&mut self, bg_color: super::colors::Color) {
         self.set_bg_color(bg_color);
     }
 
     #[pyo3(name = "add_event_handler")]
+    /// Add an event handler to the frame.
     fn py_add_event_handler(&mut self, kind: EventKind, callback: Py<PyAny>, py: Python<'_>) -> EventHandlerId {
         let rust_callback_fn = move |event: Event| -> bool {
             Python::with_gil(|py| -> PyResult<()> {

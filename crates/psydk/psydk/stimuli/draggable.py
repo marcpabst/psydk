@@ -4,9 +4,17 @@ from psydk.visual.stimuli import BaseStimulus
 from psydk.visual.renderer import Brush, StrokeStyle
 
 class DraggableStimulus(BaseStimulus):
-    def __init__(self, ctx, stimulus):
-        """Wrapper stimulus that adds dragging behavior to any other stimulus."""
+    """Stimulus class that wraps another stimulus and allows it to be dragged with the mouse/finger.
 
+    Parameters
+    ----------
+    ctx : object
+        Experiment context provided by the psydk framework.
+    stimulus : BaseStimulus
+        The stimulus to be made draggable. This can be any stimulus that implements the `contains_point` method to detect if a point is within its bounds, and `get_position` and `set_position` methods to manage its position.
+    """
+
+    def __init__(self, ctx, stimulus):
         self.stimulus = stimulus
         self.dragging = False
         self.drag_offset_x = 0

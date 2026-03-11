@@ -6,6 +6,43 @@ from psydk.visual.renderer import Brush, StrokeStyle, Text
 from .mixins import ClickableMixin
 
 class ButtonStimulus(ClickableMixin, BaseStimulus):
+    """Stimulus class for drawing a button with text inside.
+
+    Parameters
+    ----------
+    ctx : object
+        Experiment context provided by the psydk framework.
+    text : str
+        The text content to display inside the button.
+    x : unit, optional
+        X position of the top-left corner of the button (default: ``px(0)``).
+    y : unit, optional
+        Y position of the top-left corner of the button (default: ``px(0)``).
+    width : unit or None, optional
+        Width of the button. If None, it will be determined by the text
+        content plus padding (default: None).
+    height : unit or None, optional
+        Height of the button. If None, it will be determined by the text
+        content plus padding (default: None).
+    inset_x : unit, optional
+        Horizontal padding between the text and the button border (default: ``cm(0.5)``).
+    inset_y : unit, optional
+        Vertical padding between the text and the button border (default: ``cm(0.5)``).
+    font_size : unit, optional
+        Font size for the button text (default: ``px(50)``).
+    font_family : str, optional
+        Font family for the button text (default: ``"Arial"``).
+    fill_color : rgba, optional
+        RGBA color for filling the button in its normal state (default: ``rgb(1, 1, 1)``).
+    fill_color_hovered : rgba, optional
+        RGBA color for filling the button when hovered (default: ``rgb(0.8, 0.8, 0.8)``).
+    fill_color_pressed : rgba, optional
+        RGBA color for filling the button when pressed (default: ``rgb(0.6, 0.6, 0.6)``).
+    stroke_color : rgba, optional
+        RGBA color for the button outline and text (default: ``rgb(0, 0, 0, 1)``).
+    stroke_width : unit, optional
+        Width of the button outline (default: ``px(5)``).
+    """
 
     def __init__(self, ctx, text, x=px(0), y=px(0),
         width=None, height=None,
@@ -16,15 +53,6 @@ class ButtonStimulus(ClickableMixin, BaseStimulus):
         fill_color_pressed=rgb(0.6, 0.6, 0.6),
         stroke_color=rgb(0, 0, 0, 1),
         stroke_width=px(5)):
-        """Stimulus class for drawing basic shapes.
-
-        Args:
-            ctx: Experiment context provided by the psydk framework
-            shape: A Shape object defining the geometry to draw
-            fill_color: RGBA color for filling the shape (default: white)
-            stroke_color: RGBA color for the shape outline (default: black)
-            stroke_width: Width of the shape outline in pixels (default: 1)
-        """
         ClickableMixin.__init__(self)
 
         self.button_shape = None  # Will be defined in draw() once we have text measurements

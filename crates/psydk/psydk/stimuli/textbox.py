@@ -5,38 +5,46 @@ from psydk.visual.renderer import Brush, StrokeStyle, Text
 
 
 class TextboxStimulus(BaseStimulus):
+    """Stimulus class for drawing a textbox with text inside.
+
+    Parameters
+    ----------
+    ctx : object
+        Experiment context provided by the psydk framework.
+    text : str
+        The text content to display inside the textbox.
+    x : unit, optional
+        X position of the top-left corner of the textbox (default: ``px(0)``).
+    y : unit, optional
+        Y position of the top-left corner of the textbox (default: ``px(0)``).
+    width : unit or None, optional
+        Width of the textbox. If None, it will be determined by the text
+        content (default: None).
+    height : unit or None, optional
+        Height of the textbox. If None, it will be determined by the text
+        content (default: None).
+    bg_fill_color : rgba, optional
+        RGBA color for filling the background of the textbox
+        (default: ``rgb(1, 1, 1, 0)``, transparent).
+    stroke_color : rgba, optional
+        RGBA color for the textbox outline
+        (default: ``rgb(0, 0, 0, 0)``, transparent).
+    fill_color : rgba, optional
+        RGBA color for filling the text (default: ``rgb(1, 1, 1)``, white).
+    stroke_width : unit, optional
+        Width of the textbox outline (default: ``px(5)``).
+    font_size : unit, optional
+        Font size for the text (default: ``cm(0.5)``).
+    font_family : str, optional
+        Font family for the text (default: ``"Arial"``).
+    """
+
+
     def __init__(self, ctx, text, x=px(0), y=px(0), width=None, height=None,
         bg_fill_color=rgb(1, 1, 1, 0), stroke_color=rgb(0, 0, 0, 0),
         fill_color=rgb(1, 1, 1),
         stroke_width=px(5), font_size=cm(0.5), font_family="Arial"):
-        """Stimulus class for drawing basic shapes.
 
-        Args:
-            ctx:
-                Experiment context provided by the psydk framework
-            shape:
-                A Shape object defining the geometry to draw
-            x:
-                X position of the top-left corner of the textbox (default: 0)
-            y:
-                Y position of the top-left corner of the textbox (default: 0)
-            width:
-                Width of the textbox (default: None, which means it will be determined by the text content)
-            height:
-                Height of the textbox (default: None, which means it will be determined by the text content)
-            bg_fill_color:
-                RGBA color for filling the background of the textbox (default: transparent)
-            fill_color:
-                RGBA color for filling the text (default: white)
-            stroke_color:
-                RGBA color for the textbox outline (default: transparent)
-            stroke_width:
-                Width of the textbox outline in pixels (default: 5)
-            font_size:
-                Font size for the text (default: 0.5 cm)
-            font_family:
-                Font family for the text (default: "Arial")
-        """
         self.fill_color = fill_color
         self.bg_fill_color = bg_fill_color
         self.stroke_color = stroke_color
@@ -50,7 +58,7 @@ class TextboxStimulus(BaseStimulus):
         self.font_family = font_family
 
         self._rawtext = text
-        self._text = Text(text, font_family=font_family, font_size=font_size)
+        self._text
 
     @property
     def text(self):
