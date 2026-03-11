@@ -17,11 +17,11 @@ jobs:
           cibw_platform: macos
           runs-on: macos-latest
           archs: auto
-        - name: iOS (arm64)
-          platform: macos
-          cibw_platform: ios
-          runs-on: macos-latest
-          archs: auto
+        # - name: iOS (arm64)
+        #   platform: macos
+        #   cibw_platform: ios
+        #   runs-on: macos-latest
+        #   archs: auto
         # - name: Linux (x86_64)
         #   platform: linux
         #   runs-on: ubuntu-24.04
@@ -99,6 +99,33 @@ jobs:
         with:
           name: cibw-wheel-${{ matrix.name }}
           path: ./crates/psydk/wheelhouse/*.whl
+
+
+  # { cwd = "crates/psydk", env = { FORCE_SKIA_BUILD="1", PYTHON_VERSION = "3.10", PYTHONDIR = "$PIXI_PROJECT_ROOT/psydk/dependencies/build_helpers/iphoneos/" }, cmd = "dependencies/build_helpers/build_ios.sh" }
+  build_wheels_ios:
+    name: Build wheels for iOS (arm64) on macOS
+    runs-on: macos-latest
+    steps:
+      # install python 3.10
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5.5.0
+        with:
+          python-version: "3.10"
+
+      - uses: actions/checkout@v4
+
+      - name: Build wheels for iOS
+        working-directory: ./crates/psydk
+        run: |
+          export FORCE_SKIA_BUILD="1"
+          export PYTHON_VERSION="3.10"
+          export PYTHONDIR="$GITHUB_WORKSPACE/crates/psydk/dependencies/build_helpers/iphoneos/"
+          ./dependencies/build_helpers/build_ios.sh
+
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: cibw-wheel-ios
+          path: ./crates/psydk/target/wheels/.*.whl
 
   make_sdist:
     name: Make SDist
