@@ -123,6 +123,10 @@ jobs:
           toolchain: stable
           target: aarch64-apple-ios,aarch64-apple-ios-sim
 
+        # use rustup to install the targets
+      - name: Install Rust targets for iOS
+        run: rustup target add aarch64-apple-ios aarch64-apple-ios-sim
+
       - uses: actions/checkout@v4
 
       - name: Build wheels for iOS
