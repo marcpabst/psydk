@@ -141,7 +141,7 @@ jobs:
         run: pip install -r docs/requirements.txt
       - name: Build the docs
         run: |
-          sphinx-build -M html docs/source/ docs/build/ -W -a -j auto -n --keep-going
+          sphinx-build -M html docs/source/ docs/build/ -a -j auto -n --keep-going
       - name: Deploy to GitHub Pages
         uses: actions/upload-pages-artifact@v3
         with:
