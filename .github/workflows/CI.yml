@@ -60,7 +60,7 @@ jobs:
         run: python -m cibuildwheel --output-dir wheelhouse --archs ${{ matrix.archs }}
         env:
           FORCE_SKIA_BUILD: "1"
-          CIBW_PLATFORM: ${{ matrix.platform }}
+          CIBW_PLATFORM: ${{ matrix.cibw_platform }}
           CIBW_PROJECT_REQUIRES_PYTHON: "<=3.13"
           CIBW_ARCHS: ${{ matrix.archs }}
           CIBW_BUILD: "cp310-*"

@@ -34,6 +34,16 @@ LETTERS = SLOAN_LETTERS
 N_LETTERS = 5  # Number of letters to display
 SIZE_LETTER_LOG = 1.0  # Initial letter size in logMAR
 
+class DummyFaceTracker:
+    """A dummy face tracker that simulates eye tracking data for testing purposes."""
+    def drain(self):
+        """Simulate draining the face tracker data stream."""
+        return []
+
+    def last_frame(self):
+        """Simulate getting the last frame of face tracking data."""
+        return None
+
 def get_gaze_on_screen(face_transform, camera_transform, eye_transform):
     # 1. TRANSPOSE FIXED: Check if the translation column is empty.
     # ARKit matrices are Column-Major. If loaded flat into numpy, they behave as Row-Major.
@@ -167,6 +177,8 @@ def run(ctx, *args, **kwargs):
         if sys.platform == "ios":
             from psydk.sensors import FaceTracker
             ft = FaceTracker()
+        else:
+            ft = DummyFaceTracker()
 
         et_rows = []
 
@@ -209,7 +221,7 @@ def run(ctx, *args, **kwargs):
 
             face_frame = ft.last_frame()
 
-            dist = 1.0  # default distance in meters
+            dist = 0.01  # default distance in meters
 
             if face_frame is not None and len(face_frame.faces()) > 0:
                 tracking_result = face_frame.faces()[0]
@@ -255,7 +267,7 @@ def run(ctx, *args, **kwargs):
                 frame.add(debug_circle)
 
                 # Update window viewing distance (convert to mm)
-                window.viewing_distance = dist * 1000
+                window.viewing_distance = 1000
 
             # Present the current frame
             window.present(frame)
