@@ -112,6 +112,10 @@ jobs:
         with:
           python-version: "3.10"
 
+        # install maturin
+      - name: Install maturin
+        run: pipx install maturin
+
       - uses: actions/checkout@v4
 
       - name: Build wheels for iOS
