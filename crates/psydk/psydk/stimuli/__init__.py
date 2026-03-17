@@ -4,6 +4,7 @@ from .lottie import LottieStimulus
 from .button import ButtonStimulus
 from .textbox import TextboxStimulus
 from .draggable import DraggableStimulus
+from .svg import SVGStimulus
 
 __all__ = [
     "FixationCrossStimulus",
@@ -11,5 +12,6 @@ __all__ = [
     "LottieStimulus",
     "ButtonStimulus",
     "TextboxStimulus",
-    "DraggableStimulus"
+    "DraggableStimulus",
+    "SVGStimulus"
 ]

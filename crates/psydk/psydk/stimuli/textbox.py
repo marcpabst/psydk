@@ -41,10 +41,13 @@ class TextboxStimulus(BaseStimulus):
 
 
     def __init__(self, ctx, text, x=px(0), y=px(0), width=None, height=None,
-        bg_fill_color=rgb(1, 1, 1, 0), stroke_color=rgb(0, 0, 0, 0),
+        bg_fill_color=rgb(1, 1, 1, 0),
+        stroke_color=rgb(0, 0, 0, 0),
         fill_color=rgb(1, 1, 1),
-        stroke_width=px(5), font_size=cm(0.5), font_family="Arial"):
-
+        stroke_width=px(5),
+        font_size=cm(0.5),
+        font_family="Arial"
+    ):
         self.fill_color = fill_color
         self.bg_fill_color = bg_fill_color
         self.stroke_color = stroke_color
@@ -58,7 +61,7 @@ class TextboxStimulus(BaseStimulus):
         self.font_family = font_family
 
         self._rawtext = text
-        self._text
+        self._text = Text(text, font_family=self.font_family, font_size=self.font_size)
 
     @property
     def text(self):

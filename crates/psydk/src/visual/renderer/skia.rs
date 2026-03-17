@@ -62,7 +62,7 @@ pub struct Renderer {
     context: RefCell<gpu::DirectContext>,
     backend: Arc<RefCell<BackendContext>>,
     // todo remove font manager
-    font_manager: skia_safe::FontMgr,
+    pub font_manager: skia_safe::FontMgr,
     pub font_collection: Arc<Mutex<skia_safe::textlayout::FontCollection>>,
     internal_color_encoding: ColorEncoding,
     internal_color_format: ColorFormat,
@@ -462,6 +462,34 @@ impl Scene {
         ));
 
         dom.render(canvas);
+
+        canvas.restore();
+    }
+
+    pub fn draw_vector_graphic(
+        &mut self,
+        vector: &super::vector::VectorGraphic,
+        position: Point,
+        width: f32,
+        height: f32,
+    ) {
+        let mut binding = self.picture_recorder.lock().unwrap();
+        let canvas = binding.recording_canvas().unwrap();
+
+        let mut root = vector.vector.root();
+        // set the width and height of the dom
+        canvas.save();
+        canvas.translate((position.x as scalar, position.y as scalar));
+        root.set_width(skia_safe::svg::Length::new(
+            width.into(),
+            skia_safe::svg::LengthUnit::PX,
+        ));
+        root.set_height(skia_safe::svg::Length::new(
+            height.into(),
+            skia_safe::svg::LengthUnit::PX,
+        ));
+
+        vector.vector.render(canvas);
 
         canvas.restore();
     }

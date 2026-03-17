@@ -6,6 +6,7 @@ pub mod lottie;
 pub mod skia;
 pub mod styles;
 pub mod text;
+pub mod vector;
 pub mod wgpu_renderer;
 pub mod wrapped;
 pub use cosmic_text;

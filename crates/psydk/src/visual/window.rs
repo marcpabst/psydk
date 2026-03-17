@@ -178,6 +178,7 @@ pub struct WindowStateSnapshot {
     pub mouse_position: Option<(f32, f32)>,
     pub mouse_cursor_visible: bool,
     pub font_collection: crate::visual::renderer::wrapped::FontCollection,
+    pub font_manager: skia_safe::FontMgr,
 }
 
 // remove this once DisplayCharacteristics is Send + Sync
@@ -194,6 +195,7 @@ impl From<&WindowState> for WindowStateSnapshot {
             mouse_position: win_state.mouse_position,
             mouse_cursor_visible: win_state.mouse_cursor_visible,
             font_collection: win_state.renderer.font_collection.clone().into(),
+            font_manager: win_state.renderer.font_manager.clone(),
         }
     }
 }

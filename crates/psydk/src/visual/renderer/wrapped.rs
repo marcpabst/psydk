@@ -16,7 +16,7 @@ use super::skia;
 use psydk_proc::DerefNewtype;
 use pyo3::prelude::*;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[pyclass]
 pub enum DrawStyle {
     Fill,
@@ -85,9 +85,18 @@ impl Scene {
         };
 
         if let Some(stroke_style) = stroke_style {
+            print!("Stroke width: {:?}", stroke_style.0.width);
             skia_paint.set_stroke_width(stroke_style.0.width);
-        } else {
-            skia_paint.set_stroke_width(1.0);
+        }
+
+        // if stroke width is 0, and the draw style is Stroke, we can stop here because we don't need to draw anything
+        if skia_paint.stroke_width() == 0.0 && draw_style == DrawStyle::Stroke {
+            return;
+        }
+        // if the stroke width is 0, and the draw style is FillAndStroke, we can set the draw style to Fill because we don't need to stroke anything
+        if skia_paint.stroke_width() == 0.0 && draw_style == DrawStyle::FillAndStroke {
+            skia_paint.set_style(skia_safe::paint::Style::Fill);
+            skia_paint.set_stroke(false);
         }
 
         skia_paint.set_anti_alias(anti_alias.unwrap_or(false));
@@ -184,6 +193,30 @@ impl Scene {
         anti_alias: Option<bool>,
     ) {
         self.draw_shape(window_state, shape, brush, DrawStyle::Stroke, stroke_style, anti_alias);
+    }
+
+    /// Draw a vector graphic.
+    #[pyo3(signature = (window_state, vector_graphic, x, y, width, height, anti_alias=None))]
+    pub fn draw_vector_graphic(
+        &mut self,
+        window_state: &WindowStateSnapshot,
+        vector_graphic: &VectorGraphic,
+        x: IntoSize,
+        y: IntoSize,
+        width: IntoSize,
+        height: IntoSize,
+        anti_alias: Option<bool>,
+    ) -> PyResult<()> {
+        let windows_size = window_state.size;
+        let screen_props = window_state.physical_screen;
+
+        let x = x.0.eval(windows_size, screen_props);
+        let y = y.0.eval(windows_size, screen_props);
+        let width = width.0.eval(windows_size, screen_props);
+        let height = height.0.eval(windows_size, screen_props);
+        // get canvas
+        self.0.draw_vector_graphic(vector_graphic, (x, y).into(), width, height);
+        Ok(())
     }
 
     /// Draw a Lottie animation.
@@ -283,6 +316,30 @@ impl StrokeStyle {
     pub fn new(width: IntoSize, window_state: &WindowStateSnapshot) -> Self {
         let width = width.0.eval(window_state.size, window_state.physical_screen);
         Self(super::styles::StrokeStyle::new(width))
+    }
+}
+
+#[pyclass(unsendable)]
+#[derive(DerefNewtype, Clone)]
+pub struct VectorGraphic(pub super::vector::VectorGraphic);
+
+#[pymethods]
+impl VectorGraphic {
+    #[staticmethod]
+    #[pyo3(name = "from_svg_path")]
+    pub fn py_from_svg_path(svg_path: &str) -> PyResult<Self> {
+        Ok(Self(super::vector::VectorGraphic::from_svg_path(svg_path).map_err(
+            |e| PyValueError::new_err(format!("Failed to load SVG file: {}", e)),
+        )?))
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "from_svg_str")]
+    pub fn py_from_svg_str(file_contents: &str) -> PyResult<Self> {
+        Ok(Self(
+            super::vector::VectorGraphic::from_svg_str(file_contents)
+                .map_err(|e| PyValueError::new_err(format!("Failed to parse SVG data: {}", e)))?,
+        ))
     }
 }
 

@@ -121,6 +121,7 @@ fn psydk(m: &Bound<'_, PyModule>) -> PyResult<()> {
             m.add_class::<crate::visual::renderer::wrapped::Brush>()?;
             m.add_class::<crate::visual::renderer::wrapped::StrokeStyle>()?;
             m.add_class::<crate::visual::renderer::wrapped::LottieAnimation>()?;
+            m.add_class::<crate::visual::renderer::wrapped::VectorGraphic>()?;
             m.add_class::<crate::visual::renderer::wrapped::Text>()?;
 
             m
