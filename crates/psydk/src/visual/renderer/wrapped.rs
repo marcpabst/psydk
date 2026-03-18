@@ -85,7 +85,6 @@ impl Scene {
         };
 
         if let Some(stroke_style) = stroke_style {
-            print!("Stroke width: {:?}", stroke_style.0.width);
             skia_paint.set_stroke_width(stroke_style.0.width);
         }
 
