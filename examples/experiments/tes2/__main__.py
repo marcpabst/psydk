@@ -10,7 +10,7 @@ import numpy as np
 def my_experiment(ctx, *args, **kwargs):
 
     # Create the main experiment window
-    with ctx.create_default_window(screen=1,config=WindowConfig(surface_color_type="10U")) as window:
+    with ctx.create_default_window(config=WindowConfig(surface_color_type="10U")) as window:
 
         def escape_handler(event):
             if event.key == "Escape":
@@ -20,7 +20,7 @@ def my_experiment(ctx, *args, **kwargs):
 
         er = window.create_event_receiver()
 
-        stim_balloon = DraggableStimulus(ctx, LottieStimulus(ctx, "balloon.json", mode="loop", speed=1.2, bounding_rect=Shape.rectangle(cm(10), cm(10), x=-cm(5), y=-cm(5))))
+        # stim_balloon = DraggableStimulus(ctx, LottieStimulus(ctx, "balloon.json", mode="loop", speed=1.2, bounding_rect=Shape.rectangle(cm(10), cm(10), x=-cm(5), y=-cm(5))))
 
         stim_button = ButtonStimulus(ctx, "Click me Please!", x=px(100), y=px(100), fill_color=rgb(0, 1, 0))
         stim_button.add_click_handler(lambda _: print("Button clicked!"))
@@ -31,10 +31,9 @@ def my_experiment(ctx, *args, **kwargs):
             font_size=px(40), font_family="Times New Roman",
             stroke_color=rgb(0, 0, 1),
             stroke_width=px(2),
-            align="center"
         )
 
-        svg_stim = SVGStimulus(ctx, "C0.svg", px(0), px(0), width=cm(10), height=cm(10))
+        # svg_stim = SVGStimulus(ctx, "C0.svg", px(0), px(0), width=cm(10), height=cm(10))
 
         stim_bg = ShapeStimulus(
             ctx,
@@ -59,25 +58,26 @@ def my_experiment(ctx, *args, **kwargs):
 
         while True:
 
-            for e in er.poll().events():
-                if e.kind == "key_press":
-                    print(f"Key pressed: {e.key}")
+            # for e in er.poll().events():
+            #     if e.kind == "key_press":
+            #         print(f"Key pressed: {e.key}")
 
             # Obtain a new frame to draw on
             frame = window.get_frame()
 
             # Add stimuli to the frame in the desired drawing order
             frame.add(stim_bg)
-            frame.add(stim_balloon)
+            # frame.add(stim_balloon)
             frame.add(stim_cross)
             frame.add(stim_button)
             frame.add(stim_textbox)
             frame.add(stim_circle)
-            frame.add(svg_stim)
+            # frame.add(svg_stim)
 
             # Present the current frame
             window.present(frame)
 
 
 if __name__ == "__main__":
+    print("Starting experiment...")
     my_experiment()

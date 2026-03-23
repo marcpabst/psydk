@@ -184,6 +184,17 @@ impl ExperimentContext {
         Ok(())
     }
 
+    pub fn set_screen_brightness(&self, brightness: f32) {
+        #[cfg(target_os = "ios")]
+        {
+            use objc2::MainThreadMarker;
+            use objc2_ui_kit::UIScreen;
+            let main_thread = MainThreadMarker::new().unwrap();
+            let screen = unsafe { UIScreen::mainScreen(main_thread) };
+            screen.setBrightness(brightness);
+        }
+    }
+
     pub fn set_idle_timer_disabled(&self, disabled: bool) {
         #[cfg(target_os = "ios")]
         {
@@ -723,6 +734,18 @@ impl ExperimentContext {
     ///  Whether to disable the idle timer. Set to `True` to disable, `False` to enable.
     fn py_set_idle_timer_disabled(&self, disabled: bool) -> PyResult<()> {
         self.set_idle_timer_disabled(disabled);
+        Ok(())
+    }
+
+    #[pyo3(name = "set_screen_brightness")]
+    /// Set the screen brightness on supported platforms. On platforms where this is not applicable, this function is a no-op.
+    ///
+    /// Parameters
+    /// ----------
+    /// brightness : float
+    ///  The brightness level to set, between 0.0 (darkest) and 1.0 (brightest).
+    fn py_set_screen_brightness(&self, brightness: f32) -> PyResult<()> {
+        self.set_screen_brightness(brightness);
         Ok(())
     }
 

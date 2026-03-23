@@ -207,3 +207,6 @@ Cargo.lock
 # pixi environments
 .pixi
 *.egg-info
+
+# other
+libpsydk.dylib*
