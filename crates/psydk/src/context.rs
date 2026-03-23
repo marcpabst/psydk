@@ -184,7 +184,7 @@ impl ExperimentContext {
         Ok(())
     }
 
-    pub fn set_screen_brightness(&self, brightness: f32) {
+    pub fn set_screen_brightness(&self, brightness: f64) {
         #[cfg(target_os = "ios")]
         {
             use objc2::MainThreadMarker;
@@ -744,7 +744,7 @@ impl ExperimentContext {
     /// ----------
     /// brightness : float
     ///  The brightness level to set, between 0.0 (darkest) and 1.0 (brightest).
-    fn py_set_screen_brightness(&self, brightness: f32) -> PyResult<()> {
+    fn py_set_screen_brightness(&self, brightness: f64) -> PyResult<()> {
         self.set_screen_brightness(brightness);
         Ok(())
     }
