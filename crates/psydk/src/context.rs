@@ -187,20 +187,20 @@ impl ExperimentContext {
     pub fn set_screen_brightness(&self, brightness: f64) {
         #[cfg(target_os = "ios")]
         {
-            use objc2::MainThreadMarker;
-            use objc2_ui_kit::UIScreen;
-            let main_thread = MainThreadMarker::new().unwrap();
-            let screen = unsafe { UIScreen::mainScreen(main_thread) };
-            screen.setBrightness(brightness);
+            // this needs to be called on the main thread
+            self.run_in_event_loop(move || {
+                use objc2::MainThreadMarker;
+                use objc2_ui_kit::UIScreen;
+                let main_thread = MainThreadMarker::new().unwrap();
+                let screen = unsafe { UIScreen::mainScreen(main_thread) };
+                screen.setBrightness(brightness);
+            });
         }
     }
 
     pub fn set_idle_timer_disabled(&self, disabled: bool) {
         #[cfg(target_os = "ios")]
         {
-            // let app = unsafe { objc2_ui_kit::UIApplication::sharedApplication() };
-            // app.setIdleTimerDisabled(true);
-
             // this needs to be called on the main thread
             self.run_in_event_loop(move || {
                 use objc2::MainThreadMarker;

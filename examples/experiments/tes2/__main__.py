@@ -23,7 +23,7 @@ def my_experiment(ctx, *args, **kwargs):
         # stim_balloon = DraggableStimulus(ctx, LottieStimulus(ctx, "balloon.json", mode="loop", speed=1.2, bounding_rect=Shape.rectangle(cm(10), cm(10), x=-cm(5), y=-cm(5))))
 
         stim_button = ButtonStimulus(ctx, "Click me Please!", x=px(100), y=px(100), fill_color=rgb(0, 1, 0))
-        stim_button.add_click_handler(lambda _: print("Button clicked!"))
+        stim_button.add_click_handler(lambda _: ctx.set_screen_brightness(0.5))
 
         stim_textbox = TextboxStimulus(ctx, "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.",
             x=px(-500), y=px(-500), width=cm(15),
