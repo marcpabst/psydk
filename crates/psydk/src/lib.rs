@@ -119,6 +119,7 @@ fn psydk(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let m_renderer = {
             let m = new_submodule!(m, "psydk.visual", "renderer");
             m.add_class::<crate::visual::renderer::wrapped::Brush>()?;
+            m.add_class::<crate::visual::renderer::wrapped::Bitmap>()?;
             m.add_class::<crate::visual::renderer::wrapped::StrokeStyle>()?;
             m.add_class::<crate::visual::renderer::wrapped::LottieAnimation>()?;
             m.add_class::<crate::visual::renderer::wrapped::VectorGraphic>()?;

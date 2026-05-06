@@ -231,6 +231,7 @@ impl Stimulus for TextStimulus {
 
         let window_size = window_state.size;
         let screen_props = window_state.physical_screen;
+        let linear_blending = window_state.linear_blending;
         let dc = &*window_state.display_characteristics;
         let mut font_manager = self.font_manager.lock().unwrap();
 
@@ -241,7 +242,7 @@ impl Stimulus for TextStimulus {
 
         let trans_mat = self.transform.eval(window_size, screen_props);
 
-        let fill_color = self.params.fill_color.to_display_rgba(dc);
+        let fill_color = self.params.fill_color.to_display_rgba(dc, linear_blending);
 
         // Set a size for the text buffer, in pixels
         self.buffer.set_size(&mut font_manager, None, None);

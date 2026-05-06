@@ -6,6 +6,7 @@ use crate::visual::colors::IntoColor;
 use crate::visual::geometry::{IntoSize, Size};
 use crate::visual::renderer::colors::RGBA;
 use crate::visual::renderer::lottie::PlaybackMode;
+use crate::visual::renderer::styles::BlendMode;
 use crate::visual::window::WindowStateSnapshot;
 use crate::visual::{colors::Color, geometry::Shape, window::WindowState};
 use pyo3::exceptions::PyValueError;
@@ -48,7 +49,7 @@ impl Scene {
     }
 
     /// Draw a shape.
-    #[pyo3(signature = (window_state, shape, brush, draw_style, stroke_style=None, anti_alias=None))]
+    #[pyo3(signature = (window_state, shape, brush, draw_style, stroke_style=None, anti_alias=None, blend_mode=None))]
     pub fn draw_shape(
         &mut self,
         window_state: &WindowStateSnapshot,
@@ -57,10 +58,15 @@ impl Scene {
         draw_style: DrawStyle,
         stroke_style: Option<StrokeStyle>,
         anti_alias: Option<bool>,
+        blend_mode: Option<&str>,
     ) {
         let windows_size = window_state.size;
         let screen_props = window_state.physical_screen;
         let dc = &*window_state.display_characteristics;
+        let skia_blend_mode = blend_mode
+            .and_then(|bm| BlendMode::from_str(bm).ok())
+            .unwrap_or(BlendMode::SourceOver)
+            .into();
 
         // get canvas
         let mut binding = self.picture_recorder.lock().unwrap();
@@ -99,6 +105,7 @@ impl Scene {
         }
 
         skia_paint.set_anti_alias(anti_alias.unwrap_or(false));
+        skia_paint.set_blend_mode(skia_blend_mode);
 
         match shape {
             Shape::Rectangle { x, y, width, height } => {
@@ -170,19 +177,28 @@ impl Scene {
     }
 
     /// Draw a filled shape.
-    #[pyo3(signature = (window_state, shape, brush, anti_alias=None))]
+    #[pyo3(signature = (window_state, shape, brush, anti_alias=None, blend_mode=None))]
     pub fn draw_shape_filled(
         &mut self,
         window_state: &WindowStateSnapshot,
         shape: &Shape,
         brush: &Brush,
         anti_alias: Option<bool>,
+        blend_mode: Option<&str>,
     ) {
-        self.draw_shape(window_state, shape, brush, DrawStyle::Fill, None, anti_alias);
+        self.draw_shape(
+            window_state,
+            shape,
+            brush,
+            DrawStyle::Fill,
+            None,
+            anti_alias,
+            blend_mode,
+        );
     }
 
     /// Draw a stroked shape.
-    #[pyo3(signature = (window_state, shape, brush, stroke_style=None, anti_alias=None))]
+    #[pyo3(signature = (window_state, shape, brush, stroke_style=None, anti_alias=None, blend_mode=None))]
     pub fn draw_shape_stroked(
         &mut self,
         window_state: &WindowStateSnapshot,
@@ -190,8 +206,17 @@ impl Scene {
         brush: &Brush,
         stroke_style: Option<StrokeStyle>,
         anti_alias: Option<bool>,
+        blend_mode: Option<&str>,
     ) {
-        self.draw_shape(window_state, shape, brush, DrawStyle::Stroke, stroke_style, anti_alias);
+        self.draw_shape(
+            window_state,
+            shape,
+            brush,
+            DrawStyle::Stroke,
+            stroke_style,
+            anti_alias,
+            blend_mode,
+        );
     }
 
     /// Draw a vector graphic.
@@ -290,6 +315,18 @@ impl Scene {
 
         text.inner.draw(&canvas, x, y);
     }
+
+    #[pyo3(name = "start_layer", signature = (opacity=None, blend_mode=None))]
+    pub fn start_layer(&mut self, opacity: Option<f32>, blend_mode: Option<&str>) {
+        let blend_mode = BlendMode::SourceAtop; // default blend mode
+
+        self.0.start_layer(blend_mode, None, None, opacity.unwrap_or(1.0));
+    }
+
+    #[pyo3(name = "end_layer")]
+    pub fn end_layer(&mut self) {
+        self.0.end_layer();
+    }
 }
 
 #[pymethods]
@@ -304,17 +341,155 @@ impl Brush {
     #[staticmethod]
     #[pyo3(name = "solid")]
     pub fn new_solid(color: IntoColor, window_state: &WindowStateSnapshot) -> Self {
-        let color = color.0.to_display_rgba(&*window_state.display_characteristics);
+        let color = color
+            .0
+            .to_display_rgba(&*window_state.display_characteristics, window_state.linear_blending);
         Self(super::brushes::Brush::Solid(color.into()))
     }
-}
 
+    #[staticmethod]
+    #[pyo3(name = "gradient_linear")]
+    pub fn new_gradient_linear(
+        colors: Vec<IntoColor>,
+        pos: Vec<f32>,
+        start: (IntoSize, IntoSize),
+        end: (IntoSize, IntoSize),
+        window_state: &WindowStateSnapshot,
+    ) -> Self {
+        let linear_blending = window_state.linear_blending;
+        let color_stops = colors
+            .into_iter()
+            .zip(pos.into_iter())
+            .map(|(color, position)| {
+                let color = color
+                    .0
+                    .to_display_rgba(&*window_state.display_characteristics, linear_blending);
+                super::brushes::ColorStop {
+                    color: color.into(),
+                    offset: position,
+                }
+            })
+            .collect();
+
+        let start = Point {
+            x: start.0 .0.eval(window_state.size, window_state.physical_screen),
+            y: start.1 .0.eval(window_state.size, window_state.physical_screen),
+        };
+
+        let end = Point {
+            x: end.0 .0.eval(window_state.size, window_state.physical_screen),
+            y: end.1 .0.eval(window_state.size, window_state.physical_screen),
+        };
+
+        let gradient_kind = super::brushes::GradientKind::Linear { start, end };
+
+        let gradient = super::brushes::Gradient {
+            extend: super::brushes::Extend::Reflect,
+            kind: gradient_kind,
+            stops: color_stops,
+        };
+
+        Self(super::brushes::Brush::Gradient(gradient))
+    }
+    #[staticmethod]
+    #[pyo3(name = "gradient_radial")]
+    pub fn new_gradient_radial(
+        colors: Vec<IntoColor>,
+        pos: Vec<f32>,
+        center: (IntoSize, IntoSize),
+        radius: IntoSize,
+        window_state: &WindowStateSnapshot,
+    ) -> Brush {
+        let linear_blending = window_state.linear_blending;
+        let color_stops = colors
+            .into_iter()
+            .zip(pos.into_iter())
+            .map(|(color, position)| {
+                let color = color
+                    .0
+                    .to_display_rgba(&*window_state.display_characteristics, linear_blending);
+                super::brushes::ColorStop {
+                    color: color.into(),
+                    offset: position,
+                }
+            })
+            .collect();
+
+        let center = Point {
+            x: center.0 .0.eval(window_state.size, window_state.physical_screen),
+            y: center.1 .0.eval(window_state.size, window_state.physical_screen),
+        };
+
+        let radius = radius.0.eval(window_state.size, window_state.physical_screen);
+
+        let gradient_kind = super::brushes::GradientKind::Radial { center, radius };
+
+        let gradient = super::brushes::Gradient {
+            extend: super::brushes::Extend::Reflect,
+            kind: gradient_kind,
+            stops: color_stops,
+        };
+
+        Brush(super::brushes::Brush::Gradient(gradient))
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "image", signature = (bitmap, start, window_state, fit_mode="original", edge_mode=("clamp", "clamp"), sampling_mode="linear", alpha=1.0))]
+    pub fn new_image(
+        bitmap: Bitmap,
+        start: (IntoSize, IntoSize),
+        window_state: &WindowStateSnapshot,
+        fit_mode: &str,
+        edge_mode: (&str, &str),
+        sampling_mode: &str,
+        alpha: f32,
+    ) -> PyResult<Self> {
+        Ok(Self(super::brushes::Brush::Image {
+            image: bitmap.0,
+            start: Point {
+                x: start.0 .0.eval(window_state.size, window_state.physical_screen),
+                y: start.1 .0.eval(window_state.size, window_state.physical_screen),
+            },
+            fit_mode: super::styles::ImageFitMode::Exact {
+                width: 1000.0,
+                height: 1000.0,
+            }, // TODO: allow fit mode to be specified from python
+            sampling: super::brushes::ImageSampling::from_str(sampling_mode).unwrap(),
+            edge_mode: (
+                super::brushes::Extend::from_str(edge_mode.0).unwrap(),
+                super::brushes::Extend::from_str(edge_mode.1).unwrap(),
+            ),
+            alpha: Some(alpha),
+            transform: None,
+        }))
+    }
+}
 #[pymethods]
 impl StrokeStyle {
     #[new]
     pub fn new(width: IntoSize, window_state: &WindowStateSnapshot) -> Self {
         let width = width.0.eval(window_state.size, window_state.physical_screen);
         Self(super::styles::StrokeStyle::new(width))
+    }
+}
+
+#[pyclass(unsendable)]
+#[derive(DerefNewtype, Clone)]
+pub struct Bitmap(pub super::skia::Bitmap);
+
+#[pymethods]
+impl Bitmap {
+    #[staticmethod]
+    #[pyo3(name = "from_file")]
+    pub fn py_from_file(path: &str) -> PyResult<Self> {
+        // load the image file using the image crate
+        let image =
+            image::open(path).map_err(|e| PyValueError::new_err(format!("Failed to load image file: {}", e)))?;
+
+        // conver to f32 RGBA format
+        let image = image.to_rgba8();
+
+        Ok(Bitmap(super::skia::Bitmap::from_u8(image, ColorEncoding::Srgb)))
     }
 }
 

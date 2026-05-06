@@ -270,7 +270,7 @@ impl WgpuRenderer {
                         buffer: &device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                             label: Some("Gamma Buffer"),
                             contents: bytemuck::cast_slice(&[GammaParams {
-                                correction: 0,
+                                correction: 1,
                                 texture_width: 1,
                                 texture_height: 16384,
                             }]),

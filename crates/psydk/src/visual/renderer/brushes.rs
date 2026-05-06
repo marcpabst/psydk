@@ -26,7 +26,8 @@ pub enum Brush {
     },
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, strum::EnumString)]
+#[strum(serialize_all = "snake_case")]
 pub enum ImageColor {
     /// linear RGB color
     LinearRGB,
@@ -34,7 +35,8 @@ pub enum ImageColor {
     SRGB,
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Default, strum::EnumString)]
+#[strum(serialize_all = "snake_case")]
 pub enum ImageSampling {
     /// Nearest neighbor sampling.
     #[default]
@@ -65,7 +67,8 @@ impl Gradient {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, strum::EnumString)]
+#[strum(serialize_all = "snake_case")]
 pub enum Extend {
     /// Extends the image by repeating the edge color of the brush.
     Pad,

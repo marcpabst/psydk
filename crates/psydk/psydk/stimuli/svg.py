@@ -22,10 +22,14 @@ class SVGStimulus(ClickableMixin, BaseStimulus):
     height : Size
         The height of the area where the SVG should be displayed.
     """
-    def __init__(self, ctx, svg_path, x, y, width, height):
-
+    def __init__(self, ctx, svg, x, y, width, height):
         ClickableMixin.__init__(self)
-        self.svg = VectorGraphic.from_svg_path(svg_path)
+        # check if svg is a file path or an SVG string
+        if isinstance(svg, str) and svg.strip().startswith("<"):
+            self.svg = VectorGraphic.from_svg_str(svg)
+        else:
+            self.svg = VectorGraphic.from_svg_path(svg)
+
         self.x = x
         self.y = y
         self.width = width

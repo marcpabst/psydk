@@ -1,3 +1,5 @@
+use strum::EnumString;
+
 #[derive(Debug, Clone, Copy)]
 pub enum FillStyle {
     NonZero,
@@ -45,7 +47,8 @@ pub enum Cap {
 
 pub type Dashes = Vec<[f32; 4]>;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, EnumString)]
+#[strum(serialize_all = "snake_case")]
 pub enum ImageFitMode {
     // Original size of the image buffer.
     Original,
@@ -53,7 +56,8 @@ pub enum ImageFitMode {
     Exact { width: f32, height: f32 },
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, EnumString)]
+#[strum(serialize_all = "snake_case")]
 pub enum BlendMode {
     #[default]
     SourceOver,

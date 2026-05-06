@@ -133,6 +133,8 @@ pub struct WindowState {
     /// display characteristics
     #[dbg(placeholder = "[[ DisplayCharacteristics ]]")]
     pub display_characteristics: Arc<dyn DisplayCharacteristics>,
+    /// Determines if blending is performed in linear space.
+    pub linear_blending: bool,
     /// the wgpu surface configuration
     pub config: wgpu::SurfaceConfiguration,
     /// the renderers
@@ -174,6 +176,7 @@ pub struct WindowStateSnapshot {
     pub size: PixelSize,
     pub physical_screen: PhysicalScreen,
     pub display_characteristics: Arc<dyn DisplayCharacteristics>,
+    pub linear_blending: bool,
     pub bg_color: Color,
     pub mouse_position: Option<(f32, f32)>,
     pub mouse_cursor_visible: bool,
@@ -191,6 +194,7 @@ impl From<&WindowState> for WindowStateSnapshot {
             size: win_state.size,
             physical_screen: win_state.physical_screen,
             display_characteristics: win_state.display_characteristics.clone(),
+            linear_blending: win_state.linear_blending,
             bg_color: win_state.bg_color,
             mouse_position: win_state.mouse_position,
             mouse_cursor_visible: win_state.mouse_cursor_visible,

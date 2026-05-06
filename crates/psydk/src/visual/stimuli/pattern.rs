@@ -305,7 +305,9 @@ impl Stimulus for PatternStimulus {
 
         let windows_size = window_state.size;
         let screen_props = window_state.physical_screen;
+
         let dc = &*window_state.display_characteristics;
+        let linear_blending = window_state.linear_blending;
 
         let x_origin = self.params.x.eval(windows_size, screen_props);
         let y_origin = self.params.y.eval(windows_size, screen_props);
@@ -315,7 +317,7 @@ impl Stimulus for PatternStimulus {
         let shift_x = (self.params.phase_x % 360.0) / 360.0 * pattern_size;
         let shift_y = (self.params.phase_y % 360.0) / 360.0 * pattern_size;
 
-        let fill_color = self.params.fill_color.to_display_rgba(dc);
+        let fill_color = self.params.fill_color.to_display_rgba(dc, linear_blending);
 
         let pattern_transform = Affine::rotate(self.params.pattern_rotation);
 
@@ -339,7 +341,7 @@ impl Stimulus for PatternStimulus {
             },
         };
 
-        let stroke_color = self.params.stroke_color.to_display_rgba(dc);
+        let stroke_color = self.params.stroke_color.to_display_rgba(dc, linear_blending);
 
         let stroke_brush = crate::visual::renderer::brushes::Brush::Solid(stroke_color.into());
 
@@ -347,7 +349,7 @@ impl Stimulus for PatternStimulus {
 
         let stroke_options = crate::visual::renderer::styles::StrokeStyle::new(stroke_width);
 
-        scene.draw_shape_filled(&window_state, &self.params.shape, &fill_brush.into(), None);
+        scene.draw_shape_filled(&window_state, &self.params.shape, &fill_brush.into(), None, None);
 
         // match &self.params.shape {
         //     Shape::Circle { x, y, radius } => {

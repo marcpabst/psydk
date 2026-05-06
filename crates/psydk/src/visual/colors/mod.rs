@@ -144,9 +144,9 @@ impl Color {
         matches!(self, Color::LabA(_))
     }
 
-    pub fn to_display_rgba(&self, dc: &dyn display::DisplayCharacteristics) -> DisplayRGBA {
+    pub fn to_display_rgba(&self, dc: &dyn display::DisplayCharacteristics, linear_blending: bool) -> DisplayRGBA {
         // Use the conversion module to convert to display RGBA
-        let device_rgba = conversion::color_to_device_rgba(*self, dc);
+        let device_rgba = conversion::color_to_internal_device_rgba(*self, dc, linear_blending);
         DisplayRGBA::new(device_rgba.x, device_rgba.y, device_rgba.z, device_rgba.w)
     }
 

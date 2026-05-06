@@ -182,7 +182,7 @@ impl Experiment {
     pub fn create_window(
         &self,
         window_options: &WindowOptions,
-        display_config: WindowConfig,
+        window_config: WindowConfig,
         experiment_config: &ExperimentConfig,
         event_loop: &dyn ActiveEventLoop,
     ) -> Window {
@@ -219,7 +219,7 @@ impl Experiment {
 
         // depending on the provided internal color format, there are multiple possible swapchain formats
         // not all formats are supported on all platforms, so we pick the first one that is supported
-        let possible_swapchain_formats = match display_config.surface_color_depth {
+        let possible_swapchain_formats = match window_config.surface_color_depth {
             ColorType::EightBit => vec![TextureFormat::Bgra8Unorm, TextureFormat::Rgba8Unorm],
             ColorType::TenBit => vec![TextureFormat::Rgb10a2Unorm],
             ColorType::SixteenBitFloat => vec![TextureFormat::Rgba16Float],
@@ -231,7 +231,7 @@ impl Experiment {
             .find(|f| swapchain_formats.contains(f))
             .expect(&format!(
                 "No supported swapchain format found for the requested display color format: {:?}. Supported formats on this adapter are: {:?}",
-                display_config.surface_color_depth, swapchain_formats
+                window_config.surface_color_depth, swapchain_formats
             ));
 
         log::debug!("Selected swapchain format: {:?}", swapchain_format);
@@ -287,14 +287,21 @@ impl Experiment {
             ColorType::SixteenBitFloat => ColorFormat::RgbaF16,
             ColorType::ThirtyTwoBitFloat => panic!("32F color format not supported in renderer"),
         };
+        // build actual LUTs
 
-        // create a dymmy (identity) LUT for now, we will replace this with a real LUT later
-        // LUT structure is (&[f32, 16 384], &[f32, 16 384], &[f32, 16 384]])
-        let identity_lut = (
-            (0..16_384).rev().map(|i| i as f32 / 16_383.0).collect::<Vec<_>>(),
-            (0..16_384).rev().map(|i| i as f32 / 16_383.0).collect::<Vec<_>>(),
-            (0..16_384).rev().map(|i| i as f32 / 16_383.0).collect::<Vec<_>>(),
-        );
+        let (lut_r, lut_g, lut_b) = if let Some(etofs) = window_config.display_characteristics.eotf() {
+            (
+                etofs[0].create_inverse_lut(16_383 + 1),
+                etofs[1].create_inverse_lut(16_383 + 1),
+                etofs[2].create_inverse_lut(16_383 + 1),
+            )
+        } else {
+            (
+                (0..16_384).rev().map(|i| i as f32 / 16_383.0).collect::<Vec<_>>(),
+                (0..16_384).rev().map(|i| i as f32 / 16_383.0).collect::<Vec<_>>(),
+                (0..16_384).rev().map(|i| i as f32 / 16_383.0).collect::<Vec<_>>(),
+            )
+        };
 
         let wgpu_renderer = pollster::block_on(crate::visual::renderer::wgpu_renderer::WgpuRenderer::new(
             winit_window.clone(),
@@ -303,13 +310,8 @@ impl Experiment {
             queue,
             swapchain_format,
             internal_color_format,
-            Some((
-                identity_lut.0.as_slice(),
-                identity_lut.1.as_slice(),
-                identity_lut.2.as_slice(),
-            )),
+            Some((&lut_r, &lut_g, &lut_b)),
         ));
-
         // create the skia renderer
         let mut renderer = crate::visual::renderer::Renderer::new(
             adapter,
@@ -325,14 +327,15 @@ impl Experiment {
         let width_mm = 300.0;
         let viewing_distance = 1000.0;
 
-        // create a pwindow
+        // create a window
         let window_state = WindowState {
             winit_window: winit_window.clone(),
             surface,
             config,
             wgpu_renderer,
             renderer: self.renderer.clone(),
-            display_characteristics: display_config.display_characteristics.clone(),
+            display_characteristics: window_config.display_characteristics.clone(),
+            linear_blending: experiment_config.linear_blending,
             mouse_cursor_visible: true,
             mouse_position: None,
             size: size.into(),

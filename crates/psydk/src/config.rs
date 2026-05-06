@@ -16,7 +16,7 @@ pub struct ExperimentConfig {
     /// internel color depth
     pub internal_color_type: ColorType,
     /// are internal colors linear?
-    pub internal_colors_are_linear: bool,
+    pub linear_blending: bool,
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
@@ -96,7 +96,7 @@ impl Default for WindowConfig {
 #[pymethods]
 impl ExperimentConfig {
     #[new]
-    #[pyo3(signature = (pedantic=true, debug=false, internal_color_type=None, internal_colors_are_linear=false))]
+    #[pyo3(signature = (pedantic=true, debug=false, internal_color_type=None, linear_blending=false))]
     /// Defines how your experiment will be run.
     ///
     /// # Parameters
@@ -108,7 +108,7 @@ impl ExperimentConfig {
         pedantic: bool,
         debug: bool,
         internal_color_type: Option<&str>,
-        internal_colors_are_linear: bool,
+        linear_blending: bool,
     ) -> PyResult<Self> {
         Ok(Self {
             pedantic,
@@ -120,7 +120,7 @@ impl ExperimentConfig {
             } else {
                 ColorType::default()
             },
-            internal_colors_are_linear,
+            linear_blending,
         })
     }
 }
@@ -184,7 +184,7 @@ impl Default for ExperimentConfig {
             pedantic: true,
             debug: false,
             internal_color_type: ColorType::default(),
-            internal_colors_are_linear: false,
+            linear_blending: false,
         }
     }
 }

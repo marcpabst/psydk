@@ -78,6 +78,53 @@ pub struct Bitmap {
     image: SkImage,
 }
 
+impl Bitmap {
+    pub fn from_u8(rgba: image::RgbaImage, color_encoding: ColorEncoding) -> Bitmap {
+        let (width, height) = rgba.dimensions();
+
+        let buffer = rgba.into_raw();
+        let boxed_buffer = buffer.into_boxed_slice();
+
+        // create a new skia image
+        let image = sk_raster_from_data(
+            &skia_safe::ImageInfo::new(
+                (width as i32, height as i32),
+                ColorType::RGBA8888,
+                SkAlphaType::Unpremul,
+                Some(color_encoding.into()),
+            ),
+            &unsafe { skia_safe::Data::new_bytes(&boxed_buffer) },
+            width as usize * 4,
+        )
+        .unwrap();
+
+        Bitmap { image }
+    }
+
+    pub fn from_f32(rgba: image::ImageBuffer<image::Rgba<f32>, Vec<f32>>, color_encoding: ColorEncoding) -> Bitmap {
+        let (width, height) = rgba.dimensions();
+        let buffer = rgba.into_raw();
+        let boxed_buffer = buffer.into_boxed_slice();
+        // leak the boxed buffer so that it lives for the entire duration of the program, we will never free it
+        let boxed_buffer = Box::leak(boxed_buffer);
+
+        // create a new skia image
+        let image = sk_raster_from_data(
+            &skia_safe::ImageInfo::new(
+                (width as i32, height as i32),
+                ColorType::RGBAF32,
+                SkAlphaType::Unpremul,
+                Some(color_encoding.into()),
+            ),
+            &unsafe { skia_safe::Data::new_bytes(bytemuck::cast_slice(&boxed_buffer)) },
+            width as usize * 4 * 4,
+        )
+        .unwrap();
+
+        Bitmap { image }
+    }
+}
+
 #[derive(Debug)]
 enum BitmapData {
     Blob(Box<[u8]>),
@@ -896,7 +943,7 @@ impl From<&Brush> for skia_safe::Paint {
                     &local_matrix,
                 );
 
-                // paint.set_color(skia_safe::Color::WHITE);
+                //paint.set_color(skia_safe::Color::RED);
                 paint.set_shader(shader);
 
                 // set the alpha

@@ -80,6 +80,8 @@ pub trait DisplayCharacteristics {
     fn eotf(&self) -> Option<[EOTF; 3]>;
     /// Applies the EOTF to an RGBA vector
     fn apply_eotf(&self, rgba: &Vector4<f32>) -> Vector4<f32>;
+    /// Applies the inverse EOTF to an RGBA vector
+    fn apply_inverse_eotf(&self, rgba: &Vector4<f32>) -> Option<Vector4<f32>>;
     /// Returns the white point of the display in CIE xy chromaticity coordinates
     fn white_point(&self) -> (f32, f32);
     /// Returns the absolute luminance of the display's white point in cd/m^2 (Y value in CIE xyY/XYZ)
@@ -101,9 +103,9 @@ pub enum EOTF {
     /// Pure power function with specified gamma
     #[serde(rename = "gamma")]
     Gamma(f32),
-    /// Custom transfer function defined by a lookup table
+    /// Custom transfer function defined by a lookup table + an inverse lookup table (for inverse EOTF)
     #[serde(rename = "lut")]
-    LookUpTable(Vec<f32>),
+    LookUpTable((Vec<f32>, Vec<f32>)),
 }
 
 impl EOTF {
@@ -120,10 +122,40 @@ impl EOTF {
             EOTF::Linear => linear_component,
             EOTF::Gamma(gamma) => linear_component.powf(1.0 / gamma),
             EOTF::LookUpTable(lut) => {
-                let index = (linear_component.clamp(0.0, 1.0) * (lut.len() - 1) as f32).round() as usize;
-                lut[index]
+                let index = (linear_component.clamp(0.0, 1.0) * (lut.0.len() - 1) as f32).round() as usize;
+                lut.0[index]
             }
         }
+    }
+
+    pub fn apply_inverse(&self, component: f32) -> Option<f32> {
+        match self {
+            EOTF::SRGB => {
+                if component <= 0.04045 {
+                    Some(component / 12.92)
+                } else {
+                    Some(((component + 0.055) / 1.055).powf(2.4))
+                }
+            }
+            EOTF::Linear => Some(component),
+            EOTF::Gamma(gamma) => Some(component.powf(*gamma)),
+            EOTF::LookUpTable(lut) => {
+                let index = (component.clamp(0.0, 1.0) * (lut.1.len() - 1) as f32).round() as usize;
+                Some(lut.1[index])
+            }
+        }
+    }
+
+    pub fn create_lut(&self, n: usize) -> Vec<f32> {
+        // generate a LUT with n entries for the EOTF by applying the EOTF to n evenly spaced linear values
+        (0..n).map(|i| self.apply(i as f32 / (n - 1) as f32)).collect()
+    }
+
+    pub fn create_inverse_lut(&self, n: usize) -> Vec<f32> {
+        // generate an inverse LUT with n entries for the EOTF by applying the inverse EOTF to n evenly spaced non-linear values
+        (0..n)
+            .map(|i| self.apply_inverse(i as f32 / (n - 1) as f32).unwrap_or(0.0))
+            .collect()
     }
 }
 
@@ -259,6 +291,15 @@ impl DisplayCharacteristics for GenericDisplayCharacteristics {
         )
     }
 
+    fn apply_inverse_eotf(&self, rgba: &Vector4<f32>) -> Option<Vector4<f32>> {
+        Some(Vector4::new(
+            rgba.x.powf(self.gamma),
+            rgba.y.powf(self.gamma),
+            rgba.z.powf(self.gamma),
+            rgba.w,
+        ))
+    }
+
     fn white_point(&self) -> (f32, f32) {
         self.white_point
     }
@@ -305,9 +346,18 @@ impl CustomDisplayCharacteristics {
 
     // Create a dummy custom display with identity transform and linear LUT
     pub fn dummy() -> Self {
-        let linear_lut_r = EOTF::LookUpTable((0..16384).map(|i| i as f32 / 16383.0).collect());
-        let linear_lut_g = EOTF::LookUpTable((0..16384).map(|i| i as f32 / 16383.0).collect());
-        let linear_lut_b = EOTF::LookUpTable((0..16384).map(|i| i as f32 / 16383.0).collect());
+        let linear_lut_r = EOTF::LookUpTable((
+            (0..16384).map(|i| i as f32 / 16383.0).collect(),
+            (0..16384).map(|i| 1.0 - (i as f32 / 16383.0)).collect(),
+        ));
+        let linear_lut_g = EOTF::LookUpTable((
+            (0..16384).map(|i| i as f32 / 16383.0).collect(),
+            (0..16384).map(|i| 1.0 - (i as f32 / 16383.0)).collect(),
+        ));
+        let linear_lut_b = EOTF::LookUpTable((
+            (0..16384).map(|i| i as f32 / 16383.0).collect(),
+            (0..16384).map(|i| 1.0 - (i as f32 / 16383.0)).collect(),
+        ));
 
         let lut = [linear_lut_r, linear_lut_g, linear_lut_b];
 
@@ -348,7 +398,7 @@ impl DisplayCharacteristics for CustomDisplayCharacteristics {
     }
 
     fn supports_inverse(&self) -> bool {
-        false
+        true
     }
 
     fn device_rgba_to_xyza(&self, _rgba: Vector4<f32>) -> Option<Vector4<f32>> {
@@ -366,6 +416,15 @@ impl DisplayCharacteristics for CustomDisplayCharacteristics {
             self.eotf[2].apply(rgba.z),
             rgba.w,
         )
+    }
+
+    fn apply_inverse_eotf(&self, rgba: &Vector4<f32>) -> Option<Vector4<f32>> {
+        Some(Vector4::new(
+            self.eotf[0].apply_inverse(rgba.x)?,
+            self.eotf[1].apply_inverse(rgba.y)?,
+            self.eotf[2].apply_inverse(rgba.z)?,
+            rgba.w,
+        ))
     }
 
     fn white_point(&self) -> (f32, f32) {

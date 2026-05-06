@@ -10,7 +10,7 @@ import numpy as np
 def my_experiment(ctx, *args, **kwargs):
 
     # Create the main experiment window
-    with ctx.create_default_window(screen=1,config=WindowConfig(surface_color_type="10U")) as window:
+    with ctx.create_default_window(config=WindowConfig(surface_color_type="10U",  calibration_file="debug_calibration.json")) as window:
 
         def escape_handler(event):
             if event.key == "Escape":
@@ -31,7 +31,6 @@ def my_experiment(ctx, *args, **kwargs):
             font_size=px(40), font_family="Times New Roman",
             stroke_color=rgb(0, 0, 1),
             stroke_width=px(2),
-            align="center"
         )
 
         svg_stim = SVGStimulus(ctx, "C0.svg", px(0), px(0), width=cm(10), height=cm(10))

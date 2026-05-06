@@ -254,8 +254,10 @@ impl Stimulus for GaborStimulus {
         let window_size = window_state.size;
         let screen_props = window_state.physical_screen;
         let dc = &*window_state.display_characteristics;
+        let linear_blending = window_state.linear_blending;
 
         // convert physical units to pixels
+
         let radius = self.params.radius.eval(window_size, screen_props);
         let sigma = self.params.sigma.eval(window_size, screen_props);
         let cycle_length = self.params.cycle_length.eval(window_size, screen_props);
@@ -330,7 +332,7 @@ impl Stimulus for GaborStimulus {
         // if the stimulus has a stroke, draw it
         if let Some(stroke_style) = &self.params.stroke_style {
             let stroke_color = self.params.stroke_color.unwrap_or(Color::new_srgba(0.0, 0.0, 0.0, 1.0));
-            let stroke_color: RGBA = stroke_color.to_display_rgba(dc).into();
+            let stroke_color: RGBA = stroke_color.to_display_rgba(dc, linear_blending).into();
             let stroke_brush = Brush::Solid(stroke_color.into());
             let stroke_width = self.params.stroke_width.clone().unwrap_or(Size::Pixels(0.0));
             let stroke_width = stroke_width.eval(window_size, screen_props);

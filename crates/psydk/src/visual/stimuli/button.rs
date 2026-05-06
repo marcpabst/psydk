@@ -303,20 +303,21 @@ impl Stimulus for ButtonStimulus {
         let windows_size = window_state.size;
         let screen_props = window_state.physical_screen;
         let dc = &*window_state.display_characteristics;
+        let linear_blending = window_state.linear_blending;
 
         let x_origin = self.params.x.eval(windows_size, screen_props);
         let y_origin = self.params.y.eval(windows_size, screen_props);
 
         let fill_color = match self.state {
-            ButtonState::Normal => self.params.fill_color.to_display_rgba(dc),
-            ButtonState::Hovered => self.params.fill_color_hover.to_display_rgba(dc),
-            ButtonState::Pressed => self.params.fill_color_pressed.to_display_rgba(dc),
-            ButtonState::Disabled => self.params.fill_color_disabled.to_display_rgba(dc),
+            ButtonState::Normal => self.params.fill_color.to_display_rgba(dc, linear_blending),
+            ButtonState::Hovered => self.params.fill_color_hover.to_display_rgba(dc, linear_blending),
+            ButtonState::Pressed => self.params.fill_color_pressed.to_display_rgba(dc, linear_blending),
+            ButtonState::Disabled => self.params.fill_color_disabled.to_display_rgba(dc, linear_blending),
         };
 
         let fill_brush = Brush::Solid(fill_color.into());
 
-        let stroke_color = self.params.stroke_color.to_display_rgba(dc);
+        let stroke_color = self.params.stroke_color.to_display_rgba(dc, linear_blending);
 
         let stroke_brush = crate::visual::renderer::brushes::Brush::Solid(stroke_color.into());
 
@@ -326,10 +327,10 @@ impl Stimulus for ButtonStimulus {
 
         // draw the text
         let text_color = match self.state {
-            ButtonState::Normal => self.params.text_color.to_display_rgba(dc),
-            ButtonState::Hovered => self.params.text_color_hover.to_display_rgba(dc),
-            ButtonState::Pressed => self.params.text_color_pressed.to_display_rgba(dc),
-            ButtonState::Disabled => self.params.text_color_disabled.to_display_rgba(dc),
+            ButtonState::Normal => self.params.text_color.to_display_rgba(dc, linear_blending),
+            ButtonState::Hovered => self.params.text_color_hover.to_display_rgba(dc, linear_blending),
+            ButtonState::Pressed => self.params.text_color_pressed.to_display_rgba(dc, linear_blending),
+            ButtonState::Disabled => self.params.text_color_disabled.to_display_rgba(dc, linear_blending),
         };
 
         let width = self.params.width.eval(windows_size, screen_props);
