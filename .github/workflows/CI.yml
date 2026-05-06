@@ -114,7 +114,7 @@ jobs:
 
         # install maturin
       - name: Install maturin
-        run: pipx install maturin
+        run: pipx install maturin==1.12.6
 
         # setup rust aarch64-apple-ios and aarch64-apple-ios-sim
       - name: Setup Rust toolchain for iOS
