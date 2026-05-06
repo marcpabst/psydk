@@ -99,6 +99,7 @@ pub struct Task {
 pub struct Experiment {
     id: u128,
     directory: PathBuf,
+    data_dir: PathBuf,
     name: String,
     icon_path: Option<PathBuf>,
     version: String,
@@ -445,6 +446,7 @@ impl Model {
                     return Ok(Experiment {
                         id: rand::thread_rng().random(),
                         directory: path.to_path_buf(),
+                        data_dir: data_dir,
                         name: name.to_string(),
                         icon_path: None,
                         version: version.to_string(),

@@ -84,8 +84,7 @@ requires = [
 # Mobile deployments
 [tool.briefcase.app.psydklauncher.iOS]
 requires = [
-    "--find-links=/Users/marc/repos/psydk/crates/psydk/target/wheels/",
-     "psydk",
+     "psydk>=0.3.45,<0.4",
      "matplotlib"
 ]
 min_os_version = "18.0"

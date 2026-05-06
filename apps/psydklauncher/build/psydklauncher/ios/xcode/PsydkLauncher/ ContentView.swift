@@ -456,7 +456,7 @@ struct ContentView: View {
                                             "PSYDK_SUBJECT": selected_subject?.name ?? "",
                                             "PSYDK_SESSION": selected_session?.name ?? "",
                                             "PSYDK_TASK": selected_task?.name ?? experiment.default_task.name,
-                                            "PSYDK_DATA_ROOT": experiment.directory + "/data"]
+                                            "PSYDK_DATA_ROOT": experiment.data_dir + ""]
     
                                         let module = URL(filePath: experiment.directory, directoryHint: .isDirectory)
                                         let module_parent_path = module.deletingLastPathComponent().path
