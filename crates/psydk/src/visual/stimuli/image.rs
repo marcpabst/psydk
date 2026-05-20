@@ -90,188 +90,188 @@ impl ImageStimulus {
 #[pyclass(name = "ImageStimulus", extends=PyStimulus)]
 pub struct PyImageStimulus();
 
-#[pymethods]
-impl PyImageStimulus {
-    #[new]
-    #[pyo3(signature = (
-        src,
-        x,
-        y,
-        width,
-        height,
-        rotation = 0.0,
-        opacity = 1.0,
-        anchor = Anchor::Center,
-        transform = None,
-        srgb = true,
-        context = None,
-    ))]
-    /// Creates a new `ImageStimulus` from a file path.
-    ///
-    /// Parameters
-    /// ----------
-    /// src : str
-    ///     The file path to the image.
-    /// x : Size, num, or str
-    ///     The x position of the stimulus.
-    /// y : Size, num, or str
-    ///     The y position of the stimulus.
-    /// width : Size, num, or str
-    ///     The width of the stimulus.
-    /// height : Size, num, or str
-    /// The height of the stimulus.
-    /// rotation : float, optional
-    ///
-    fn __new__(
-        py: Python,
-        src: pyo3::PyObject,
-        x: IntoSize,
-        y: IntoSize,
-        width: IntoSize,
-        height: IntoSize,
-        rotation: f32,
-        opacity: f32,
-        anchor: Anchor,
-        transform: Option<Transformation2D>,
-        srgb: bool,
-        context: Option<ExperimentContext>,
-    ) -> PyResult<(Self, PyStimulus)> {
-        let ctx = get_experiment_context(context, py)?;
+// #[pymethods]
+// impl PyImageStimulus {
+//     #[new]
+//     #[pyo3(signature = (
+//         src,
+//         x,
+//         y,
+//         width,
+//         height,
+//         rotation = 0.0,
+//         opacity = 1.0,
+//         anchor = Anchor::Center,
+//         transform = None,
+//         srgb = true,
+//         context = None,
+//     ))]
+//     /// Creates a new `ImageStimulus` from a file path.
+//     ///
+//     /// Parameters
+//     /// ----------
+//     /// src : str
+//     ///     The file path to the image.
+//     /// x : Size, num, or str
+//     ///     The x position of the stimulus.
+//     /// y : Size, num, or str
+//     ///     The y position of the stimulus.
+//     /// width : Size, num, or str
+//     ///     The width of the stimulus.
+//     /// height : Size, num, or str
+//     /// The height of the stimulus.
+//     /// rotation : float, optional
+//     ///
+//     fn __new__(
+//         py: Python,
+//         src: pyo3::PyObject,
+//         x: IntoSize,
+//         y: IntoSize,
+//         width: IntoSize,
+//         height: IntoSize,
+//         rotation: f32,
+//         opacity: f32,
+//         anchor: Anchor,
+//         transform: Option<Transformation2D>,
+//         srgb: bool,
+//         context: Option<ExperimentContext>,
+//     ) -> PyResult<(Self, PyStimulus)> {
+//         let ctx = get_experiment_context(context, py)?;
 
-        // try to extract a string from the src parameter
-        let bitmap = if let Ok(path) = src.extract::<String>(py) {
-            todo!()
-            // ctx.renderer().create_bitmap_from_path(&path)
-        } else if let Ok(path) = src.extract::<&str>(py) {
-            todo!()
-            // ctx.renderer().create_bitmap_from_path(path)
-        } else if let Ok(array) = src.extract::<PyReadonlyArray3<u8>>(py) {
-            // Convert the Numpy array to a image::RgbImageBuffer
-            let array = numpy3_to_image::<Rgba<u8>, u8>(array);
+//         // try to extract a string from the src parameter
+//         let bitmap = if let Ok(path) = src.extract::<String>(py) {
+//             todo!()
+//             // ctx.renderer().create_bitmap_from_path(&path)
+//         } else if let Ok(path) = src.extract::<&str>(py) {
+//             todo!()
+//             // ctx.renderer().create_bitmap_from_path(path)
+//         } else if let Ok(array) = src.extract::<PyReadonlyArray3<u8>>(py) {
+//             // Convert the Numpy array to a image::RgbImageBuffer
+//             let array = numpy3_to_image::<Rgba<u8>, u8>(array);
 
-            ctx.renderer().create_bitmap_from_image_u8(
-                array,
-                if srgb {
-                    crate::visual::renderer::color_formats::ColorEncoding::Srgb
-                } else {
-                    crate::visual::renderer::color_formats::ColorEncoding::Linear
-                },
-            )
-        } else if let Ok(array) = src.extract::<PyReadonlyArray3<f32>>(py) {
-            let array = numpy3_to_image::<Rgba<f32>, f32>(array);
-            ctx.renderer().create_bitmap_from_image_f32(
-                array,
-                if srgb {
-                    crate::visual::renderer::color_formats::ColorEncoding::Srgb
-                } else {
-                    crate::visual::renderer::color_formats::ColorEncoding::Linear
-                },
-            )
-        } else if let Ok(array) = src.extract::<PyReadonlyArray4<u8>>(py) {
-            let array = numpy4_to_image::<Rgba<u8>, u8>(array);
-            ctx.renderer().create_bitmap_from_image_u8(
-                array,
-                if srgb {
-                    crate::visual::renderer::color_formats::ColorEncoding::Srgb
-                } else {
-                    crate::visual::renderer::color_formats::ColorEncoding::Linear
-                },
-            )
-        } else if let Ok(array) = src.extract::<PyReadonlyArray4<f32>>(py) {
-            let array = numpy4_to_image::<Rgba<f32>, f32>(array);
-            ctx.renderer().create_bitmap_from_image_f32(
-                array,
-                if srgb {
-                    crate::visual::renderer::color_formats::ColorEncoding::Srgb
-                } else {
-                    crate::visual::renderer::color_formats::ColorEncoding::Linear
-                },
-            )
-        } else {
-            return Err(pyo3::exceptions::PyTypeError::new_err(
-                "src must be a string, PathBuf, or a Numpy array",
-            ));
-        };
+//             ctx.renderer().create_bitmap_from_image_u8(
+//                 array,
+//                 if srgb {
+//                     crate::visual::renderer::color_formats::ColorEncoding::Srgb
+//                 } else {
+//                     crate::visual::renderer::color_formats::ColorEncoding::Linear
+//                 },
+//             )
+//         // } else if let Ok(array) = src.extract::<PyReadonlyArray3<f32>>(py) {
+//         //     let array = numpy3_to_image::<Rgba<f32>, f32>(array);
+//         //     ctx.renderer().create_bitmap_from_image_f32(
+//         //         array,
+//         //         if srgb {
+//         //             crate::visual::renderer::color_formats::ColorEncoding::Srgb
+//         //         } else {
+//         //             crate::visual::renderer::color_formats::ColorEncoding::Linear
+//         //         },
+//         //     )
+//         } else if let Ok(array) = src.extract::<PyReadonlyArray4<u8>>(py) {
+//             let array = numpy4_to_image::<Rgba<u8>, u8>(array);
+//             ctx.renderer().create_bitmap_from_image_u8(
+//                 array,
+//                 if srgb {
+//                     crate::visual::renderer::color_formats::ColorEncoding::Srgb
+//                 } else {
+//                     crate::visual::renderer::color_formats::ColorEncoding::Linear
+//                 },
+//             )
+//         // } else if let Ok(array) = src.extract::<PyReadonlyArray4<f32>>(py) {
+//         //     let array = numpy4_to_image::<Rgba<f32>, f32>(array);
+//         //     ctx.renderer().create_bitmap_from_image_f32(
+//         //         array,
+//         //         if srgb {
+//         //             crate::visual::renderer::color_formats::ColorEncoding::Srgb
+//         //         } else {
+//         //             crate::visual::renderer::color_formats::ColorEncoding::Linear
+//         //         },
+//         //     )
+//         } else {
+//             return Err(pyo3::exceptions::PyTypeError::new_err(
+//                 "src must be a string, PathBuf, or a Numpy array",
+//             ));
+//         };
 
-        let bitmap =
-            bitmap.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create bitmap: {}", e)))?;
+//         let bitmap =
+//             bitmap.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create bitmap: {}", e)))?;
 
-        Ok((
-            Self(),
-            PyStimulus::new(ImageStimulus::from_image(
-                bitmap,
-                ImageParams {
-                    x: x.into(),
-                    y: y.into(),
-                    width: width.into(),
-                    height: height.into(),
-                    image_x: 0.0.into(),
-                    image_y: 0.0.into(),
-                    rotation,
-                    opacity,
-                },
-                transform,
-                anchor,
-            )),
-        ))
-    }
+//         Ok((
+//             Self(),
+//             PyStimulus::new(ImageStimulus::from_image(
+//                 bitmap,
+//                 ImageParams {
+//                     x: x.into(),
+//                     y: y.into(),
+//                     width: width.into(),
+//                     height: height.into(),
+//                     image_x: 0.0.into(),
+//                     image_y: 0.0.into(),
+//                     rotation,
+//                     opacity,
+//                 },
+//                 transform,
+//                 anchor,
+//             )),
+//         ))
+//     }
 
-    // Creates a new `ImageStimulus` from a Numpy array.
-    // #[pyo3(signature = (
-    //     array,
-    //     x,
-    //     y,
-    //     width,
-    //     height,
-    //     rotation = 0.0,
-    //     opacity = 1.0,
-    //     anchor = Anchor::Center,
-    //     transform = None,
-    //     context = None,
-    // ))]
-    // #[staticmethod]
-    // fn fromarray_u8(
-    //     py: Python,
-    //     array: PyReadonlyArray3<u8>,
-    //     x: IntoSize,
-    //     y: IntoSize,
-    //     width: IntoSize,
-    //     height: IntoSize,
-    //     rotation: f64,
-    //     opacity: f64,
-    //     anchor: Anchor,
-    //     transform: Option<Transformation2D>,
-    //     context: Option<ExperimentContext>,
-    // ) -> (Self, PyStimulus) {
-    //     let ctx = get_experiment_context(context, py)?;
+//     // Creates a new `ImageStimulus` from a Numpy array.
+//     // #[pyo3(signature = (
+//     //     array,
+//     //     x,
+//     //     y,
+//     //     width,
+//     //     height,
+//     //     rotation = 0.0,
+//     //     opacity = 1.0,
+//     //     anchor = Anchor::Center,
+//     //     transform = None,
+//     //     context = None,
+//     // ))]
+//     // #[staticmethod]
+//     // fn fromarray_u8(
+//     //     py: Python,
+//     //     array: PyReadonlyArray3<u8>,
+//     //     x: IntoSize,
+//     //     y: IntoSize,
+//     //     width: IntoSize,
+//     //     height: IntoSize,
+//     //     rotation: f64,
+//     //     opacity: f64,
+//     //     anchor: Anchor,
+//     //     transform: Option<Transformation2D>,
+//     //     context: Option<ExperimentContext>,
+//     // ) -> (Self, PyStimulus) {
+//     //     let ctx = get_experiment_context(context, py)?;
 
-    //     // Convert the Numpy array to a image::RgbImageBuffer
-    //     let array = numpy_to_rgbimage(array);
+//     //     // Convert the Numpy array to a image::RgbImageBuffer
+//     //     let array = numpy_to_rgbimage(array);
 
-    //     let bitmap = ctx
-    //         .renderer_factory()
-    //         .create_bitmap_u8(array, crate::visual::renderer::color_formats::ColorEncoding::Srgb);
+//     //     let bitmap = ctx
+//     //         .renderer_factory()
+//     //         .create_bitmap_u8(array, crate::visual::renderer::color_formats::ColorEncoding::Srgb);
 
-    //     Ok((
-    //         Self(),
-    //         PyStimulus::new(ImageStimulus::from_image(
-    //             bitmap,
-    //             ImageParams {
-    //                 x: x.into(),
-    //                 y: y.into(),
-    //                 width: width.into(),
-    //                 height: height.into(),
-    //                 image_x: 0.0.into(),
-    //                 image_y: 0.0.into(),
-    //                 rotation,
-    //                 opacity,
-    //             },
-    //             transform,
-    //             anchor,
-    //         )),
-    //     ))
-    // }
-}
+//     //     Ok((
+//     //         Self(),
+//     //         PyStimulus::new(ImageStimulus::from_image(
+//     //             bitmap,
+//     //             ImageParams {
+//     //                 x: x.into(),
+//     //                 y: y.into(),
+//     //                 width: width.into(),
+//     //                 height: height.into(),
+//     //                 image_x: 0.0.into(),
+//     //                 image_y: 0.0.into(),
+//     //                 rotation,
+//     //                 opacity,
+//     //             },
+//     //             transform,
+//     //             anchor,
+//     //         )),
+//     //     ))
+//     // }
+// }
 
 impl_pystimulus_for_wrapper!(PyImageStimulus, ImageStimulus);
 
