@@ -391,6 +391,7 @@ impl Brush {
 
         Self(super::brushes::Brush::Gradient(gradient))
     }
+
     #[staticmethod]
     #[pyo3(name = "gradient_radial")]
     pub fn new_gradient_radial(
@@ -434,26 +435,31 @@ impl Brush {
     }
 
     #[staticmethod]
-    #[pyo3(name = "image", signature = (bitmap, start, window_state, fit_mode="original", edge_mode=("clamp", "clamp"), sampling_mode="linear", alpha=1.0))]
+    #[pyo3(name = "image", signature = (bitmap, start, window_state, size=None, edge_mode=("clamp", "clamp"), sampling_mode="linear", alpha=1.0))]
     pub fn new_image(
         bitmap: Bitmap,
         start: (IntoSize, IntoSize),
         window_state: &WindowStateSnapshot,
-        fit_mode: &str,
+        size: Option<(IntoSize, IntoSize)>,
         edge_mode: (&str, &str),
         sampling_mode: &str,
         alpha: f32,
     ) -> PyResult<Self> {
+        let fit_mode = if let Some((width, height)) = size {
+            super::styles::ImageFitMode::Exact {
+                width: width.0.eval(window_state.size, window_state.physical_screen),
+                height: height.0.eval(window_state.size, window_state.physical_screen),
+            }
+        } else {
+            super::styles::ImageFitMode::Original
+        };
         Ok(Self(super::brushes::Brush::Image {
             image: bitmap.0,
             start: Point {
                 x: start.0 .0.eval(window_state.size, window_state.physical_screen),
                 y: start.1 .0.eval(window_state.size, window_state.physical_screen),
             },
-            fit_mode: super::styles::ImageFitMode::Exact {
-                width: 1000.0,
-                height: 1000.0,
-            }, // TODO: allow fit mode to be specified from python
+            fit_mode, // TODO: allow fit mode to be specified from python
             sampling: super::brushes::ImageSampling::from_str(sampling_mode).unwrap(),
             edge_mode: (
                 super::brushes::Extend::from_str(edge_mode.0).unwrap(),
@@ -461,6 +467,26 @@ impl Brush {
             ),
             alpha: Some(alpha),
             transform: None,
+        }))
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "checkerboard", signature = (start, square_size, color, window_state))]
+    pub fn new_checkerboard(
+        start: (IntoSize, IntoSize),
+        square_size: (IntoSize, IntoSize),
+        color: IntoColor,
+        window_state: &WindowStateSnapshot,
+    ) -> Self {
+        let color = color
+            .0
+            .to_display_rgba(&*window_state.display_characteristics, window_state.linear_blending);
+        Self(super::brushes::Brush::Checkerboard(super::brushes::Checkerboard {
+            start_x: start.0 .0.eval(window_state.size, window_state.physical_screen),
+            start_y: start.1 .0.eval(window_state.size, window_state.physical_screen),
+            square_size_x: square_size.0 .0.eval(window_state.size, window_state.physical_screen),
+            square_size_y: square_size.1 .0.eval(window_state.size, window_state.physical_screen),
+            color: color.into(),
         }))
     }
 }

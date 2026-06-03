@@ -1,6 +1,6 @@
 /// Note that we only use skia's colour management for converting betwen
 /// srgb and linear srgb. We do not use it for any other colour space conversions.
-use std::{any::Any, cell::RefCell, sync::Arc};
+use std::{any::Any, cell::RefCell, pin::Pin, sync::Arc};
 
 use cosmic_text::fontdb::FaceInfo;
 use foreign_types_shared::ForeignType;
@@ -13,7 +13,7 @@ pub use skia_safe;
 use skia_safe::gpu::{d3d, d3d::BackendContext, Protected};
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 use skia_safe::graphite::{self, mtl, mtl::BackendContext};
-use skia_safe::{svg::Dom, PathDirection, PathVerb};
+use skia_safe::{svg::Dom, PathDirection, PathVerb, TileMode};
 #[cfg(target_os = "windows")]
 use windows::Win32::Graphics::Dxgi::Common::{
     DXGI_FORMAT, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_SAMPLE_DESC, DXGI_STANDARD_MULTISAMPLE_QUALITY_PATTERN,
@@ -33,6 +33,7 @@ use skia_safe::{
 
 #[cfg(target_os = "windows")]
 use crate::color_formats;
+use crate::visual::renderer::brushes::Checkerboard;
 
 use super::{
     affine::Affine,
@@ -57,7 +58,7 @@ unsafe impl Sync for Scene {}
 #[derive(Debug, Clone)]
 pub struct Renderer {
     #[cfg(any(target_os = "macos", target_os = "ios"))]
-    context: RefCell<graphite::Context>,
+    pub context: RefCell<graphite::Context>,
     #[cfg(target_os = "windows")]
     context: RefCell<gpu::DirectContext>,
     backend: Arc<RefCell<BackendContext>>,
@@ -75,7 +76,7 @@ unsafe impl Sync for Renderer {}
 #[derive(Debug, Clone)]
 /// A Bitmap that is backed by a Skia image.
 pub struct Bitmap {
-    image: SkImage,
+    pub image: SkImage,
 }
 
 impl Bitmap {
@@ -83,7 +84,6 @@ impl Bitmap {
         let (width, height) = rgba.dimensions();
 
         let buffer = rgba.into_raw();
-        let boxed_buffer = buffer.into_boxed_slice();
 
         // create a new skia image
         let image = sk_raster_from_data(
@@ -91,45 +91,22 @@ impl Bitmap {
                 (width as i32, height as i32),
                 ColorType::RGBA8888,
                 SkAlphaType::Unpremul,
-                Some(color_encoding.into()),
+                None,
             ),
-            &unsafe { skia_safe::Data::new_bytes(&boxed_buffer) },
+            &skia_safe::Data::new_copy(&buffer),
             width as usize * 4,
         )
         .unwrap();
 
         Bitmap { image }
     }
-
-    pub fn from_f32(rgba: image::ImageBuffer<image::Rgba<f32>, Vec<f32>>, color_encoding: ColorEncoding) -> Bitmap {
-        let (width, height) = rgba.dimensions();
-        let buffer = rgba.into_raw();
-        let boxed_buffer = buffer.into_boxed_slice();
-        // leak the boxed buffer so that it lives for the entire duration of the program, we will never free it
-        let boxed_buffer = Box::leak(boxed_buffer);
-
-        // create a new skia image
-        let image = sk_raster_from_data(
-            &skia_safe::ImageInfo::new(
-                (width as i32, height as i32),
-                ColorType::RGBAF32,
-                SkAlphaType::Unpremul,
-                Some(color_encoding.into()),
-            ),
-            &unsafe { skia_safe::Data::new_bytes(bytemuck::cast_slice(&boxed_buffer)) },
-            width as usize * 4 * 4,
-        )
-        .unwrap();
-
-        Bitmap { image }
-    }
 }
 
-#[derive(Debug)]
-enum BitmapData {
-    Blob(Box<[u8]>),
-    Texture(wgpu::Texture),
-}
+// #[derive(Debug)]
+// enum BitmapData {
+//     Blob(Box<[u8]>),
+//     Texture(wgpu::Texture),
+// }
 
 #[derive(Debug, Clone, Copy)]
 pub struct Point {
@@ -583,6 +560,7 @@ impl Renderer {
 
         Self {
             context: RefCell::new(skia_context),
+
             backend: Arc::new(RefCell::new(backend_context)),
             font_manager,
             font_collection: Arc::new(Mutex::new(font_collection)),
@@ -647,6 +625,8 @@ impl Renderer {
 
         #[cfg(any(target_os = "macos", target_os = "ios"))]
         {
+            // write recorder to raster image and save to disk for debugging
+
             let recording = recorder.snap().expect("Failed to snap recording");
 
             let insert_info = graphite::InsertRecordingInfo::new(&recording);
@@ -659,22 +639,6 @@ impl Renderer {
         self.font_manager
             .new_from_data(font_data, index)
             .map(|tf| Typeface { typeface: tf })
-    }
-
-    pub fn create_bitmap_from_image_u8(
-        &self,
-        rgba: image::RgbaImage,
-        color_encoding: ColorEncoding,
-    ) -> Result<Bitmap, String> {
-        Ok(skia_create_bitmap_u8(rgba, color_encoding))
-    }
-
-    pub fn create_bitmap_from_image_f32(
-        &self,
-        rgba: image::ImageBuffer<image::Rgba<f32>, Vec<f32>>,
-        color_encoding: ColorEncoding,
-    ) -> Result<Bitmap, String> {
-        Ok(skia_create_bitmap_f32(rgba, color_encoding))
     }
 
     pub fn create_texture_from_wgpu_texture(
@@ -932,18 +896,17 @@ impl From<&Brush> for skia_safe::Paint {
                         SamplingOptions::new(skia_safe::FilterMode::Nearest, skia_safe::MipmapMode::None)
                     }
                     ImageSampling::Linear => {
-                        SamplingOptions::new(skia_safe::FilterMode::Linear, skia_safe::MipmapMode::None)
+                        SamplingOptions::new(skia_safe::FilterMode::Nearest, skia_safe::MipmapMode::None)
                     }
                 };
 
                 // create a shader from the image
                 let shader = skia_image.to_shader(
-                    Some((edge_mode.0.into(), edge_mode.1.into())),
+                    (edge_mode.0.into(), edge_mode.1.into()),
                     sampling_options,
                     &local_matrix,
                 );
 
-                //paint.set_color(skia_safe::Color::RED);
                 paint.set_shader(shader);
 
                 // set the alpha
@@ -951,6 +914,54 @@ impl From<&Brush> for skia_safe::Paint {
                     paint.set_alpha_f(*alpha);
                 }
 
+                paint
+            }
+            Brush::Checkerboard(Checkerboard {
+                start_x,
+                start_y,
+                square_size_x,
+                square_size_y,
+                color,
+            }) => {
+                use skia_safe::{paint::Style, Matrix, Path, PathEffect, Rect};
+
+                let skia_color_space = skia_safe::ColorSpace::new_srgb_linear();
+                let skia_color: skia_safe::Color4f = (*color).into();
+                // let shader = skia_safe::shaders::color_in_space(skia_color, &skia_color_space);
+                // paint.set_shader(shader);
+
+                // The lattice repeats every 2 squares in each axis, so the stamped
+                // squares interleave with the (color1) background to form the board.
+                let period_x = square_size_x * 2.0;
+                let period_y = square_size_y * 2.0;
+
+                // Maps the integer lattice (i, j) -> device space:
+                //   x = i * period_x + start_x
+                //   y = j * period_y + start_y
+                // new_all(scaleX, skewX, transX, skewY, scaleY, transY, p0, p1, p2)
+                let matrix = Matrix::new_all(
+                    *square_size_x,
+                    0.0,
+                    *start_x,
+                    *square_size_y,
+                    2.0 * square_size_y,
+                    *start_y,
+                    0.0,
+                    0.0,
+                    1.0,
+                );
+
+                // One tile = two squares on the diagonal of the 2x2 block.
+                let mut path = Path::rect(
+                    Rect::from_xywh(*square_size_x, *square_size_y, *square_size_x, *square_size_y),
+                    None,
+                );
+
+                let effect = PathEffect::path_2d(&matrix, &path);
+
+                paint.set_style(Style::Fill);
+                paint.set_color4f(&skia_color, &skia_color_space);
+                paint.set_path_effect(effect);
                 paint
             }
         }
@@ -1098,53 +1109,25 @@ impl From<Brush> for skia_safe::Paint {
     }
 }
 
-fn skia_create_bitmap_u8(rgba: image::RgbaImage, color_encoding: ColorEncoding) -> Bitmap {
-    let (width, height) = rgba.dimensions();
-    let buffer = rgba.into_raw();
-    let boxed_buffer = buffer.into_boxed_slice();
+// fn skia_create_bitmap_u8(rgba: image::RgbaImage, color_encoding: ColorEncoding) -> Bitmap {
+//     let (width, height) = rgba.dimensions();
+//     let buffer = rgba.into_raw();
 
-    // create a new skia image
-    let image = sk_raster_from_data(
-        &skia_safe::ImageInfo::new(
-            (width as i32, height as i32),
-            ColorType::RGBA8888,
-            SkAlphaType::Unpremul,
-            Some(color_encoding.into()),
-        ),
-        &unsafe { skia_safe::Data::new_bytes(&boxed_buffer) },
-        width as usize * 4,
-    )
-    .unwrap();
+//     // create a new skia image
+//     let image = sk_raster_from_data(
+//         &skia_safe::ImageInfo::new(
+//             (width as i32, height as i32),
+//             ColorType::RGBA8888,
+//             SkAlphaType::Unpremul,
+//             Some(color_encoding.into()),
+//         ),
+//         &unsafe { skia_safe::Data::new_copy(&buffer) },
+//         width as usize * 4,
+//     )
+//     .unwrap();
 
-    Bitmap { image }
-}
-
-fn skia_create_bitmap_f32(
-    rgba: image::ImageBuffer<image::Rgba<f32>, Vec<f32>>,
-    color_encoding: ColorEncoding,
-) -> Bitmap {
-    let (width, height) = rgba.dimensions();
-    let buffer = rgba.into_raw();
-    // convert the buffer to bytes using bytemuck
-    let buffer = bytemuck::cast_slice::<f32, u8>(&buffer).to_vec();
-
-    let boxed_buffer = buffer.into_boxed_slice();
-
-    // create a new skia image
-    let image = sk_raster_from_data(
-        &skia_safe::ImageInfo::new(
-            (width as i32, height as i32),
-            ColorType::RGBAF32,
-            SkAlphaType::Unpremul,
-            Some(color_encoding.into()),
-        ),
-        &unsafe { skia_safe::Data::new_bytes(&boxed_buffer) },
-        width as usize * 4 * 4,
-    )
-    .expect("Failed to create skia image for f32 bitmap");
-
-    Bitmap { image }
-}
+//     Bitmap { image }
+// }
 
 // allow a colorpace to be converted to a skia color space
 impl From<ColorEncoding> for skia_safe::ColorSpace {

@@ -15,6 +15,7 @@ use pyo3::{
     types::{PyAnyMethods, PyDict, PyList, PyListMethods, PySequenceMethods, PyTuple, PyTupleMethods},
     Py, PyAny, PyResult, Python,
 };
+use skia_safe::graphite;
 use std::{
     collections::HashMap,
     sync::{
@@ -157,6 +158,32 @@ impl ExperimentContext {
             font_manager,
             config: Arc::new(Mutex::new(config)),
         }
+    }
+
+    pub fn upload_bitmap(&self, bitmap: &renderer::Bitmap) -> renderer::Bitmap {
+        // TODO: this is a bit hacky, we should probably have a better way to do this
+        // create a new recorder
+
+        let renderer = self.renderer();
+        let mut context = renderer
+            .context
+            .try_borrow_mut()
+            .expect("Failed to borrow renderer context");
+        let mut recorder = context
+            .make_recorder(Some(&graphite::RecorderOptions::default()))
+            .expect("Failed to create recorder");
+
+        let gpu_image = graphite::images::texture_from_image(&mut recorder, &bitmap.image)
+            .expect("Failed to create GPU image from bitmap");
+
+        // finish the recording and submit it to the GPU
+        let recording = recorder.snap().expect("Failed to snap recording");
+
+        let insert_info = graphite::InsertRecordingInfo::new(&recording);
+        context.insert_recording(&insert_info);
+        context.submit(None);
+
+        renderer::Bitmap { image: gpu_image }
     }
 
     pub fn font_manager(&self) -> &Arc<Mutex<cosmic_text::FontSystem>> {
@@ -643,6 +670,12 @@ impl ExperimentContext {
     ///  The new window.
     fn py_create_default_window(&self, fullscreen: bool, monitor: Option<u32>, config: Option<WindowConfig>) -> Window {
         self.create_default_window(fullscreen, monitor, config)
+    }
+
+    #[pyo3(name = "upload_bitmap")]
+    /// Upload a bitmap to the GPU and return a new bitmap with the GPU image.
+    fn py_upload_bitmap(&self, bitmap: &renderer::wrapped::Bitmap) -> renderer::wrapped::Bitmap {
+        self.upload_bitmap(&bitmap.0).into()
     }
 
     // Create a new audio stream
