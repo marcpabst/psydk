@@ -921,47 +921,51 @@ impl From<&Brush> for skia_safe::Paint {
                 start_y,
                 square_size_x,
                 square_size_y,
-                color,
+                color1,
+                color2,
             }) => {
-                use skia_safe::{paint::Style, Matrix, Path, PathEffect, Rect};
+                use skia_safe::{runtime_effect::RuntimeEffect, Color4f, Data};
 
-                let skia_color_space = skia_safe::ColorSpace::new_srgb_linear();
-                let skia_color: skia_safe::Color4f = (*color).into();
-                // let shader = skia_safe::shaders::color_in_space(skia_color, &skia_color_space);
-                // paint.set_shader(shader);
+                // Procedural checkerboard — no bitmap. Per-pixel cell parity picks color.
+                let sksl = r#"
+                    uniform float2 start;
+                    uniform float2 sq;     // square size (x, y)
+                    uniform float4 c1;
+                    uniform float4 c2;
 
-                // The lattice repeats every 2 squares in each axis, so the stamped
-                // squares interleave with the (color1) background to form the board.
-                let period_x = square_size_x * 2.0;
-                let period_y = square_size_y * 2.0;
+                    half4 main(float2 coord) {
+                        float2 cell  = floor((coord - start) / sq);
+                        float  parity = mod(cell.x + cell.y, 2.0);
+                        return half4(parity < 0.5 ? c1 : c2);
+                    }
+                "#;
 
-                // Maps the integer lattice (i, j) -> device space:
-                //   x = i * period_x + start_x
-                //   y = j * period_y + start_y
-                // new_all(scaleX, skewX, transX, skewY, scaleY, transY, p0, p1, p2)
-                let matrix = Matrix::new_all(
-                    *square_size_x,
-                    0.0,
-                    *start_x,
-                    *square_size_y,
-                    2.0 * square_size_y,
-                    *start_y,
-                    0.0,
-                    0.0,
-                    1.0,
-                );
+                let effect = RuntimeEffect::make_for_shader(sksl, None).unwrap();
 
-                // One tile = two squares on the diagonal of the 2x2 block.
-                let mut path = Path::rect(
-                    Rect::from_xywh(*square_size_x, *square_size_y, *square_size_x, *square_size_y),
-                    None,
-                );
+                // Uniforms packed in declaration order: start(2), sq(2), c1(4), c2(4).
+                let c1: Color4f = color1.into();
+                let c2: Color4f = color2.into();
+                let mut uniforms = Vec::<u8>::new();
+                for v in [
+                    start_x,
+                    start_y,
+                    square_size_x,
+                    square_size_y,
+                    &c1.r,
+                    &c1.g,
+                    &c1.b,
+                    &c1.a,
+                    &c2.r,
+                    &c2.g,
+                    &c2.b,
+                    &c2.a,
+                ] {
+                    uniforms.extend_from_slice(&v.to_ne_bytes());
+                }
 
-                let effect = PathEffect::path_2d(&matrix, &path);
+                let shader = effect.make_shader(Data::new_copy(&uniforms), &[], None).unwrap();
 
-                paint.set_style(Style::Fill);
-                paint.set_color4f(&skia_color, &skia_color_space);
-                paint.set_path_effect(effect);
+                paint.set_shader(shader);
                 paint
             }
         }

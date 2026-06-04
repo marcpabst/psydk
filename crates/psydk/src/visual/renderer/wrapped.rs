@@ -471,14 +471,18 @@ impl Brush {
     }
 
     #[staticmethod]
-    #[pyo3(name = "checkerboard", signature = (start, square_size, color, window_state))]
+    #[pyo3(name = "checkerboard", signature = (start, square_size, color1, color2, window_state))]
     pub fn new_checkerboard(
         start: (IntoSize, IntoSize),
         square_size: (IntoSize, IntoSize),
-        color: IntoColor,
+        color1: IntoColor,
+        color2: IntoColor,
         window_state: &WindowStateSnapshot,
     ) -> Self {
-        let color = color
+        let color1 = color1
+            .0
+            .to_display_rgba(&*window_state.display_characteristics, window_state.linear_blending);
+        let color2 = color2
             .0
             .to_display_rgba(&*window_state.display_characteristics, window_state.linear_blending);
         Self(super::brushes::Brush::Checkerboard(super::brushes::Checkerboard {
@@ -486,7 +490,8 @@ impl Brush {
             start_y: start.1 .0.eval(window_state.size, window_state.physical_screen),
             square_size_x: square_size.0 .0.eval(window_state.size, window_state.physical_screen),
             square_size_y: square_size.1 .0.eval(window_state.size, window_state.physical_screen),
-            color: color.into(),
+            color1: color1.into(),
+            color2: color2.into(),
         }))
     }
 }

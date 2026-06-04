@@ -56,7 +56,9 @@ pub struct Checkerboard {
     /// The size of the checkers in the y direction.
     pub square_size_y: f32,
     /// The color of the even squares.
-    pub color: RGBA,
+    pub color1: RGBA,
+    /// The color of the odd squares.
+    pub color2: RGBA,
 }
 
 #[derive(Debug, Clone)]
