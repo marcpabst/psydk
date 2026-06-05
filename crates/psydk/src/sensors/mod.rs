@@ -53,6 +53,7 @@ pub mod face_tracking {
     }
 
     // SAFETY: ARSession is not thread safe by default, but we ensure that all access to it is synchronized via a Mutex in FaceTracker
+    // (this is probaly still wildly unsound, but oh well)
     unsafe impl Send for FaceTracker {}
     unsafe impl Sync for FaceTracker {}
 
