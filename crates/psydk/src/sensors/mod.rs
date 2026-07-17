@@ -323,5 +323,12 @@ pub mod face_tracking {
         pub fn camera_transform<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray2<f32>> {
             self.camera_transform.to_pyarray(py)
         }
+
+        pub fn rotation_angles(&self) -> (f32, f32, f32, f32) {
+            // returns the rotation relative to the camera as a quaternion (x, y, z, w)
+            let camera_rotation = nalgebra::UnitQuaternion::from_matrix(&self.camera_transform.fixed_viewport::<3, 3>(0, 0));
+            let face_rotation = nalgebra::UnitQuaternion::from_matrix(&self.face_transform.fixed_viewport::<3, 3>(0, 0));
+
+
     }
 }

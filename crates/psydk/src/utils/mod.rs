@@ -176,7 +176,7 @@ impl PyCSVWriter {
         self.0.close();
     }
 
-    // allows Window to be used as a context manager
+    // allows  to be used as a context manager
     fn __enter__(slf: PyRef<Self>) -> PyResult<Py<Self>> {
         // return self
         Ok(slf.into())

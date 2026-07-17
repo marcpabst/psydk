@@ -196,5 +196,8 @@ fn psydk(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     m.add_submodule(&m_sensors)?;
 
+    // add __version__ attribute to the module
+    m.add("__version__", env!("CARGO_PKG_VERSION"))?;
+
     Ok(())
 }
