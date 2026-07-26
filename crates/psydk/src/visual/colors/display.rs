@@ -282,20 +282,38 @@ impl DisplayCharacteristics for GenericDisplayCharacteristics {
         ])
     }
 
+    // fn apply_eotf(&self, rgba: &Vector4<f32>) -> Vector4<f32> {
+    //     Vector4::new(
+    //         rgba.x.powf(1.0 / self.gamma),
+    //         rgba.y.powf(1.0 / self.gamma),
+    //         rgba.z.powf(1.0 / self.gamma),
+    //         rgba.w,
+    //     )
+    // }
+
+    // fn apply_inverse_eotf(&self, rgba: &Vector4<f32>) -> Option<Vector4<f32>> {
+    //     Some(Vector4::new(
+    //         rgba.x.powf(self.gamma),
+    //         rgba.y.powf(self.gamma),
+    //         rgba.z.powf(self.gamma),
+    //         rgba.w,
+    //     ))
+    // }
+
     fn apply_eotf(&self, rgba: &Vector4<f32>) -> Vector4<f32> {
         Vector4::new(
-            rgba.x.powf(1.0 / self.gamma),
-            rgba.y.powf(1.0 / self.gamma),
-            rgba.z.powf(1.0 / self.gamma),
+            rgba.x.powf(self.gamma),
+            rgba.y.powf(self.gamma),
+            rgba.z.powf(self.gamma),
             rgba.w,
         )
     }
 
     fn apply_inverse_eotf(&self, rgba: &Vector4<f32>) -> Option<Vector4<f32>> {
         Some(Vector4::new(
-            rgba.x.powf(self.gamma),
-            rgba.y.powf(self.gamma),
-            rgba.z.powf(self.gamma),
+            rgba.x.powf(1.0 / self.gamma),
+            rgba.y.powf(1.0 / self.gamma),
+            rgba.z.powf(1.0 / self.gamma),
             rgba.w,
         ))
     }

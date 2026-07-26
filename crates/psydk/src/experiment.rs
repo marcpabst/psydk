@@ -310,6 +310,7 @@ impl Experiment {
             queue,
             swapchain_format,
             internal_color_format,
+            experiment_config.linear_blending,
             Some((&lut_r, &lut_g, &lut_b)),
         ));
         // create the skia renderer

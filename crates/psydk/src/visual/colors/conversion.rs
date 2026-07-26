@@ -145,14 +145,14 @@ pub fn color_to_internal_device_rgba(
     linear_blending: bool,
 ) -> Vector4<f32> {
     //
-    let lunear_device_rgb = color_to_linear_device_rgba(color, dc);
+    let linear_device_rgb = color_to_linear_device_rgba(color, dc);
 
     if !linear_blending {
         // Apply EOTF
-        return dc.apply_eotf(&lunear_device_rgb);
+        return dc.apply_eotf(&linear_device_rgb);
     } else {
         // We will apply EOTF later during blending, so return linear device RGB for now
-        return lunear_device_rgb;
+        return linear_device_rgb;
     }
 }
 
