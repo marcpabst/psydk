@@ -311,7 +311,13 @@ impl Experiment {
             swapchain_format,
             internal_color_format,
             experiment_config.linear_blending,
-            Some((&lut_r, &lut_g, &lut_b)),
+            if experiment_config.linear_blending {
+                // use the LUT to transform linear colors back to non-linear display space after blending
+                Some((&lut_r, &lut_g, &lut_b))
+            } else {
+                // if we are not using linear blending, we don't need to apply the LUT in the shader, as the colors are already in display space
+                None
+            },
         ));
         // create the skia renderer
         let mut renderer = crate::visual::renderer::Renderer::new(
