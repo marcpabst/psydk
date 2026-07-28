@@ -276,7 +276,7 @@ impl WgpuRenderer {
                                     if linear_blending {
                                         1
                                     } else {
-                                        2
+                                        0
                                     }
                                 },
                                 texture_width: 1,
