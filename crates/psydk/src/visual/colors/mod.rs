@@ -29,6 +29,8 @@ pub enum Color {
     LuvA(LuvA),
     /// CIE 1976 L*a*b* + alpha
     LabA(LabA),
+    /// Y + u'v' + alpha (this IS NOT Y'UV)
+    YuvA(YuvA),
 }
 
 impl Default for Color {
@@ -114,6 +116,11 @@ impl Color {
         })
     }
 
+    // Create a new YuvA color in Y + u'v' color space
+    pub fn new_yuva(y: f32, u: f32, v: f32, a: f32) -> Self {
+        Color::YuvA(YuvA { y, u, v, a })
+    }
+
     /// Get the alpha component of the color
     pub fn alpha(&self) -> f32 {
         match self {
@@ -121,6 +128,7 @@ impl Color {
             Color::XYZA(xyza) => xyza.a,
             Color::LuvA(luva) => luva.a,
             Color::LabA(laba) => laba.alpha,
+            Color::YuvA(yuva) => yuva.a,
         }
     }
 
@@ -142,6 +150,11 @@ impl Color {
     /// Check if the color is in Lab color space
     pub fn is_lab(&self) -> bool {
         matches!(self, Color::LabA(_))
+    }
+
+    /// Check if the color is in Yuv color space
+    pub fn is_yuv(&self) -> bool {
+        matches!(self, Color::YuvA(_))
     }
 
     pub fn to_display_rgba(&self, dc: &dyn display::DisplayCharacteristics, linear_blending: bool) -> DisplayRGBA {
@@ -241,6 +254,20 @@ pub struct LabA {
     pub white_point: [f32; 3],
 }
 
+#[pyclass]
+/// Y + u'v' chromacity color with alpha channel
+#[derive(Debug, Clone, Copy)]
+pub struct YuvA {
+    /// Y component
+    pub y: f32,
+    /// u' component
+    pub u: f32,
+    /// v' component
+    pub v: f32,
+    /// Alpha component
+    pub a: f32,
+}
+
 #[derive(Debug, Default, Clone, Copy)]
 #[repr(C)]
 /// A generic 3-channel color representation.
@@ -283,6 +310,7 @@ impl Into<Vector3<f32>> for Color {
             Color::XYZA(xyza) => Vector3::new(xyza.x, xyza.y, xyza.z),
             Color::LuvA(luva) => Vector3::new(luva.l, luva.u, luva.v),
             Color::LabA(laba) => Vector3::new(laba.l, laba.a, laba.b),
+            Color::YuvA(yuva) => Vector3::new(yuva.y, yuva.u, yuva.v),
         }
     }
 }

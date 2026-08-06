@@ -139,6 +139,20 @@ fn laba_to_xyza(laba: impl Into<Vector4<f32>>, white_point: impl Into<Vector3<f3
     Vector4::new(x, y, z, alpha)
 }
 
+pub fn yuva_to_xyza(yuva: impl Into<Vector4<f32>>) -> Vector4<f32> {
+    // first, convert u'v' to xy chromaticity coordinates
+    let yuva = yuva.into();
+    let x = 9.0 * yuva.y / (6.0 * yuva.y - 16.0 * yuva.z + 12.0);
+    let y = 4.0 * yuva.y / (6.0 * yuva.y - 16.0 * yuva.z + 12.0);
+    let Y = yuva.x;
+
+    // Now convert xyY to XYZ
+    let X = (x * Y) / y;
+    let Z = ((1.0 - x - y) * Y) / y;
+
+    Vector4::new(X, Y, Z, yuva.w)
+}
+
 pub fn color_to_internal_device_rgba(
     color: Color,
     dc: &dyn DisplayCharacteristics,
@@ -208,6 +222,12 @@ pub fn color_to_linear_device_rgba(color: Color, dc: &dyn DisplayCharacteristics
         Color::LabA(laba) => {
             // Convert Lab to XYZ first
             let xyza = laba_to_xyza(Vector4::new(laba.l, laba.a, laba.b, laba.a), laba.white_point);
+            dc.xyza_to_linear_device_rgba(&xyza)
+        }
+
+        Color::YuvA(yuva) => {
+            // Convert YUV to XYZ first
+            let xyza = yuva_to_xyza(Vector4::new(yuva.y, yuva.u, yuva.v, yuva.a));
             dc.xyza_to_linear_device_rgba(&xyza)
         }
     }
