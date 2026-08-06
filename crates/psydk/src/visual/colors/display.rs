@@ -300,6 +300,24 @@ impl DisplayCharacteristics for GenericDisplayCharacteristics {
         ))
     }
 
+    // fn apply_eotf(&self, rgba: &Vector4<f32>) -> Vector4<f32> {
+    //     Vector4::new(
+    //         rgba.x.powf(self.gamma),
+    //         rgba.y.powf(self.gamma),
+    //         rgba.z.powf(self.gamma),
+    //         rgba.w,
+    //     )
+    // }
+
+    // fn apply_inverse_eotf(&self, rgba: &Vector4<f32>) -> Option<Vector4<f32>> {
+    //     Some(Vector4::new(
+    //         rgba.x.powf(1.0 / self.gamma),
+    //         rgba.y.powf(1.0 / self.gamma),
+    //         rgba.z.powf(1.0 / self.gamma),
+    //         rgba.w,
+    //     ))
+    // }
+
     fn white_point(&self) -> (f32, f32) {
         self.white_point
     }
@@ -409,22 +427,22 @@ impl DisplayCharacteristics for CustomDisplayCharacteristics {
         Some(self.eotf.clone())
     }
 
-    fn apply_eotf(&self, rgba: &Vector4<f32>) -> Vector4<f32> {
-        Vector4::new(
+    fn apply_inverse_eotf(&self, rgba: &Vector4<f32>) -> Option<Vector4<f32>> {
+        Some(Vector4::new(
             self.eotf[0].apply(rgba.x),
             self.eotf[1].apply(rgba.y),
             self.eotf[2].apply(rgba.z),
             rgba.w,
-        )
+        ))
     }
 
-    fn apply_inverse_eotf(&self, rgba: &Vector4<f32>) -> Option<Vector4<f32>> {
-        Some(Vector4::new(
-            self.eotf[0].apply_inverse(rgba.x)?,
-            self.eotf[1].apply_inverse(rgba.y)?,
-            self.eotf[2].apply_inverse(rgba.z)?,
+    fn apply_eotf(&self, rgba: &Vector4<f32>) -> Vector4<f32> {
+        Vector4::new(
+            self.eotf[0].apply_inverse(rgba.x).unwrap_or(0.0),
+            self.eotf[1].apply_inverse(rgba.y).unwrap_or(0.0),
+            self.eotf[2].apply_inverse(rgba.z).unwrap_or(0.0),
             rgba.w,
-        ))
+        )
     }
 
     fn white_point(&self) -> (f32, f32) {

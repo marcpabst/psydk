@@ -178,6 +178,7 @@ fn psydk(m: &Bound<'_, PyModule>) -> PyResult<()> {
     let m_utils = {
         let m = new_submodule!(m, "psydk", "utils");
         m.add_class::<utils::PyCSVWriter>()?;
+        m.add_class::<utils::Clock>()?;
         m.add_function(wrap_pyfunction!(time::py_now, &m)?)?;
         m
     };
@@ -194,6 +195,9 @@ fn psydk(m: &Bound<'_, PyModule>) -> PyResult<()> {
     };
 
     m.add_submodule(&m_sensors)?;
+
+    // add __version__ attribute to the module
+    m.add("__version__", env!("CARGO_PKG_VERSION"))?;
 
     Ok(())
 }

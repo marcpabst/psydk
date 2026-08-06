@@ -159,23 +159,18 @@ pub fn color_to_internal_device_rgba(
     linear_blending: bool,
 ) -> Vector4<f32> {
     //
-    let lunear_device_rgb = color_to_linear_device_rgba(color, dc);
+    let linear_device_rgb = color_to_linear_device_rgba(color, dc);
 
     if !linear_blending {
-        // Apply EOTF
-        return dc.apply_eotf(&lunear_device_rgb);
+        // Apply EOTF to get device RGB with EOTF applied
+        return dc.apply_eotf(&linear_device_rgb);
     } else {
         // We will apply EOTF later during blending, so return linear device RGB for now
-        return lunear_device_rgb;
+        return linear_device_rgb;
     }
 }
 
-/// Convert a Color to device space RGBA with EOTFs applied.
-///
-/// This function:
-/// 1. Converts the color to linear device RGB (if needed)
-/// 2. Applies the appropriate EOTF (Electro-Optical Transfer Function)
-/// 3. Returns a Vector4 with RGBA components in device space
+/// Convert a Color to linear rgb device space
 pub fn color_to_linear_device_rgba(color: Color, dc: &dyn DisplayCharacteristics) -> Vector4<f32> {
     match color {
         Color::RGBA(rgba) => {
@@ -188,7 +183,7 @@ pub fn color_to_linear_device_rgba(color: Color, dc: &dyn DisplayCharacteristics
                 // Linear device space - no transformation needed
                 RGBColorSpace::DeviceLinear => Vector4::new(rgba.r, rgba.g, rgba.b, rgba.a),
 
-                // sRGB with encoding - convert to linear, transform to device, apply EOTF
+                // sRGB with srgb gamma encoding - convert to linear, transform to device, apply EOTF
                 RGBColorSpace::SRGB => {
                     // Transform from linear sRGB to linear device RGB
                     let xyza = srgba_to_xyz(Vector4::new(rgba.r, rgba.g, rgba.b, rgba.a));

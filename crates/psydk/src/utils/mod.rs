@@ -176,7 +176,7 @@ impl PyCSVWriter {
         self.0.close();
     }
 
-    // allows Window to be used as a context manager
+    // allows  to be used as a context manager
     fn __enter__(slf: PyRef<Self>) -> PyResult<Py<Self>> {
         // return self
         Ok(slf.into())
@@ -191,5 +191,98 @@ impl PyCSVWriter {
         // close the CSV writer
         slf.0.close();
         Ok(())
+    }
+}
+
+#[pyclass]
+pub struct Clock {
+    pub start_time: std::time::Instant,
+    pub original_start_time: std::time::Instant,
+    pub pause_time: Option<std::time::Instant>,
+}
+
+impl Clock {
+    pub fn new() -> Self {
+        let now = std::time::Instant::now();
+        Self {
+            start_time: now,
+            original_start_time: now,
+            pause_time: None,
+        }
+    }
+
+    pub fn elapsed(&self) -> std::time::Duration {
+        if let Some(pause_time) = self.pause_time {
+            pause_time.duration_since(self.start_time)
+        } else {
+            std::time::Instant::now().duration_since(self.start_time)
+        }
+    }
+
+    pub fn elapsed_original(&self) -> std::time::Duration {
+        if let Some(pause_time) = self.pause_time {
+            pause_time.duration_since(self.original_start_time)
+        } else {
+            std::time::Instant::now().duration_since(self.original_start_time)
+        }
+    }
+
+    pub fn pause(&mut self) {
+        self.pause_time = Some(std::time::Instant::now());
+    }
+
+    pub fn resume(&mut self) {
+        if let Some(pause_time) = self.pause_time {
+            let paused_duration = std::time::Instant::now().duration_since(pause_time);
+            self.start_time += paused_duration;
+            self.pause_time = None;
+        }
+    }
+}
+
+#[pymethods]
+impl Clock {
+    #[new]
+    pub fn __new__() -> Self {
+        Clock::new()
+    }
+
+    #[pyo3(name = "elapsed")]
+    pub fn py_elapsed(&self) -> f64 {
+        self.elapsed().as_secs_f64()
+    }
+
+    #[pyo3(name = "elapsed_original")]
+    pub fn py_elapsed_original(&self) -> f64 {
+        self.elapsed_original().as_secs_f64()
+    }
+
+    #[pyo3(name = "pause")]
+    pub fn py_pause(&mut self) {
+        self.pause();
+    }
+
+    #[pyo3(name = "resume")]
+    pub fn py_resume(&mut self) {
+        self.resume();
+    }
+
+    #[pyo3(name = "is_running")]
+    pub fn py_is_running(&self) -> bool {
+        self.pause_time.is_none()
+    }
+
+    #[pyo3(name = "is_paused")]
+    pub fn py_is_paused(&self) -> bool {
+        self.pause_time.is_some()
+    }
+
+    #[pyo3(name = "toggle")]
+    pub fn py_toggle(&mut self) {
+        if self.pause_time.is_none() {
+            self.pause();
+        } else {
+            self.resume();
+        }
     }
 }

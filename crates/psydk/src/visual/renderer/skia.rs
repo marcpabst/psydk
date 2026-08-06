@@ -33,6 +33,7 @@ use skia_safe::{
 
 #[cfg(target_os = "windows")]
 use crate::color_formats;
+use crate::visual::renderer::brushes::Checkerboard;
 
 use super::{
     affine::Affine,
@@ -913,6 +914,58 @@ impl From<&Brush> for skia_safe::Paint {
                     paint.set_alpha_f(*alpha);
                 }
 
+                paint
+            }
+            Brush::Checkerboard(Checkerboard {
+                start_x,
+                start_y,
+                square_size_x,
+                square_size_y,
+                color1,
+                color2,
+            }) => {
+                use skia_safe::{runtime_effect::RuntimeEffect, Color4f, Data};
+
+                // Procedural checkerboard — no bitmap. Per-pixel cell parity picks color.
+                let sksl = r#"
+                    uniform float2 start;
+                    uniform float2 sq;     // square size (x, y)
+                    uniform float4 c1;
+                    uniform float4 c2;
+
+                    half4 main(float2 coord) {
+                        float2 cell  = floor((coord - start) / sq);
+                        float  parity = mod(cell.x + cell.y, 2.0);
+                        return half4(parity < 0.5 ? c1 : c2);
+                    }
+                "#;
+
+                let effect = RuntimeEffect::make_for_shader(sksl, None).unwrap();
+
+                // Uniforms packed in declaration order: start(2), sq(2), c1(4), c2(4).
+                let c1: Color4f = color1.into();
+                let c2: Color4f = color2.into();
+                let mut uniforms = Vec::<u8>::new();
+                for v in [
+                    start_x,
+                    start_y,
+                    square_size_x,
+                    square_size_y,
+                    &c1.r,
+                    &c1.g,
+                    &c1.b,
+                    &c1.a,
+                    &c2.r,
+                    &c2.g,
+                    &c2.b,
+                    &c2.a,
+                ] {
+                    uniforms.extend_from_slice(&v.to_ne_bytes());
+                }
+
+                let shader = effect.make_shader(Data::new_copy(&uniforms), &[], None).unwrap();
+
+                paint.set_shader(shader);
                 paint
             }
         }

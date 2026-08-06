@@ -352,13 +352,21 @@ impl Size {
     }
 
     // addition
-    fn __add__(&self, other: &Size) -> Size {
-        self.clone() + other.clone()
+    fn __add__(&self, other: IntoSize) -> Size {
+        self.clone() + other.0
+    }
+
+    fn __radd__(&self, other: IntoSize) -> Size {
+        self.clone() + other.0
     }
 
     // subtraction
-    fn __sub__(&self, other: &Size) -> Size {
-        self.clone() - other.clone()
+    fn __sub__(&self, other: IntoSize) -> Size {
+        self.clone() - other.0
+    }
+
+    fn __rsub__(&self, other: IntoSize) -> Size {
+        other.0.clone() - self.clone()
     }
 
     // negation
@@ -371,9 +379,17 @@ impl Size {
         self.clone() * other
     }
 
+    fn __rmul__(&self, other: f32) -> Size {
+        self.clone() * other
+    }
+
     // division
     fn __truediv__(&self, other: f32) -> Size {
         self.clone() * (1.0 / other)
+    }
+
+    fn __rtruediv__(&self, other: f32) -> Size {
+        Size::Quotient(BoxedSize::new(self.clone()), other)
     }
 
     // evaluation

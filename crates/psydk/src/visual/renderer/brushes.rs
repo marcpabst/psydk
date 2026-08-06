@@ -6,6 +6,8 @@ pub enum Brush {
     Solid(RGBA),
     /// Gradient brush.
     Gradient(Gradient),
+    /// Checkerboard brush.
+    Checkerboard(Checkerboard),
     /// GPU texture brush.
     Image {
         /// The image to use as a brush.
@@ -43,6 +45,20 @@ pub enum ImageSampling {
     Nearest,
     /// Linear sampling.
     Linear,
+}
+
+#[derive(Debug, Clone)]
+pub struct Checkerboard {
+    pub start_x: f32,
+    pub start_y: f32,
+    /// The size of the checkers in the x direction.
+    pub square_size_x: f32,
+    /// The size of the checkers in the y direction.
+    pub square_size_y: f32,
+    /// The color of the even squares.
+    pub color1: RGBA,
+    /// The color of the odd squares.
+    pub color2: RGBA,
 }
 
 #[derive(Debug, Clone)]
