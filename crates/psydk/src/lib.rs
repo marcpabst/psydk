@@ -138,7 +138,9 @@ fn psydk(m: &Bound<'_, PyModule>) -> PyResult<()> {
             m.add_function(wrap_pyfunction!(visual::colors::py_srgb, &m)?)?;
             m.add_function(wrap_pyfunction!(visual::colors::py_linsrgb, &m)?)?;
             m.add_function(wrap_pyfunction!(visual::colors::py_luv, &m)?)?;
+            m.add_function(wrap_pyfunction!(visual::colors::py_lab, &m)?)?;
             m.add_function(wrap_pyfunction!(visual::colors::py_xyz, &m)?)?;
+            m.add_function(wrap_pyfunction!(visual::colors::py_yuv, &m)?)?;
             m
         };
 

@@ -513,6 +513,55 @@ pub fn py_xyz(x: f32, y: f32, z: f32, a: f32) -> Color {
     Color::new_xyza(x, y, z, a)
 }
 
+#[pyfunction]
+#[pyo3(name = "lab")]
+#[pyo3(signature = (l, a, b, white_point, alpha = 1.0))]
+/// A color in the CIE 1976 L*a*b* color space.
+///
+/// Parameters
+/// ---------
+/// l : float
+///  The L* channel (0.0 to 100.0).
+/// a : float
+/// The a* channel.
+/// b : float
+/// The b* channel.
+/// white_point : list of 3 floats
+///    The white point in XYZ coordinates
+/// alpha : float, optional
+///    The alpha channel (0.0 to 1.0).
+///
+/// Returns
+/// -------
+/// Color
+///   The Color object.
+pub fn py_lab(l: f32, a: f32, b: f32, white_point: [f32; 3], alpha: f32) -> Color {
+    Color::new_laba(l, a, b, alpha, white_point)
+}
+
+#[pyfunction]
+#[pyo3(name = "Yuv")]
+#[pyo3(signature = (y, u, v, a = 1.0))]
+/// A color in the Y + u'v' color space. This is NOT Y'UV, but rather Y + u'v' chromacity coordinates.
+///
+/// Parameters
+/// ---------
+/// y : float
+/// The Y channel.
+/// u : float
+/// The u' channel.
+/// v : float
+/// The v' channel.
+/// a : float, optional
+///   The alpha channel (0.0 to 1.0).
+/// Returns
+/// -------
+/// Color
+///   The Color object.
+pub fn py_yuv(y: f32, u: f32, v: f32, a: f32) -> Color {
+    Color::new_yuva(y, u, v, a)
+}
+
 fn srgb_to_linear(c: f32) -> f32 {
     if c <= 0.04045 {
         c / 12.92
