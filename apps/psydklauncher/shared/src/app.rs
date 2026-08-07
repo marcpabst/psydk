@@ -218,12 +218,17 @@ impl Model {
                             TaskOptionValue::String { value: val }
                         }
                         "literal" => {
-                            let val = t.get("default").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                            let choices = t
+                            let choices: Vec<String> = t
                                 .get("options")
                                 .and_then(|c| c.as_array())
                                 .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
                                 .unwrap_or_default();
+                            let first_choice = choices.first().cloned().unwrap_or_default();
+                            let val = t
+                                .get("default")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or(&first_choice)
+                                .to_string();
                             TaskOptionValue::Literal { value: val, choices }
                         }
                         "int" => {
@@ -282,7 +287,7 @@ impl Model {
             let task_name = task_table
                 .get("name")
                 .and_then(|n| n.as_str())
-                .unwrap_or("default")
+                .unwrap_or("__default_task__")
                 .to_string();
 
             let options = {
@@ -495,7 +500,7 @@ impl crux_core::App for App {
                 for experiment in model.experiments.iter_mut() {
                     if experiment.id == exp.id {
                         // try to create the subject directory on disk
-                        let target_dir = experiment.directory.join("data").join(format!("sub-{}", name));
+                        let target_dir = experiment.data_dir.join(format!("sub-{}", name));
 
                         match std::fs::create_dir_all(&target_dir) {
                             Ok(_) => {

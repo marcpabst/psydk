@@ -19,7 +19,7 @@ sources = [
 test_sources = [
     "tests",
 ]
-requires = ["numpy<2", "pandas<2", "pillow<12", "bids-like==0.8.2", "xarray"]
+requires = ["numpy<2", "pandas<2", "pillow<12", "bids-like==0.8.2", "xarray", "pyyaml-pure"]
 test_requires = [
     # Add your cross-platform test requirements here
 ]
@@ -85,7 +85,6 @@ requires = [
 [tool.briefcase.app.psydklauncher.iOS]
 requires = [
      "psydk>=0.4,<0.5",
-     "matplotlib"
 ]
 min_os_version = "18.0"
 
