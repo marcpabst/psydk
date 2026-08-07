@@ -7,6 +7,20 @@ extension SharedTypes.Subject: Identifiable {}
 extension SharedTypes.Session: Identifiable {}
 extension SharedTypes.Task: Identifiable {}
 
+extension SharedTypes.TaskOptionValue {
+    /// The underlying value as a JSON-serializable object (for JSONSerialization).
+    var jsonValue: Any {
+        switch self {
+        case .string(let v):        return v
+        case .literal(let v, _):    return v
+        case .float(let v, _, _):   return v
+        case .int(let v, _, _):     return v
+        case .bool(let v):          return v
+        }
+    }
+}
+
+
 // Top-level view that chooses the proper input for the provided value.
 struct OptionValueInput: View {
     let value: TaskOptionValue
@@ -186,6 +200,7 @@ struct ContentView: View {
     @State private var selected_subject: SharedTypes.Subject?
     @State private var selected_session: SharedTypes.Session?
     @State private var selected_task: SharedTypes.Task?
+    @State private var option_values: [String: TaskOptionValue] = [:]
     @State private var listSelection: Serde.UInt128?
     
     private func refresh_selected() {
@@ -431,32 +446,48 @@ struct ContentView: View {
                                         Text(ttask.name)
                                     
                                     ForEach(ttask.options, id:\.name) { opt in
+                                        
                                         HStack {
                                             Text(opt.label)
-                                            OptionValueInput(value: opt.value) { newValue in
-                                                        // Handle the updated value; no need for two-way binding
-                                                   
-                                                        print("New value:", newValue)
+                                            OptionValueInput(value: option_values[opt.name] ?? opt.value) { newValue in
+                                                option_values[opt.name] = newValue
                                                     }
                                                     .padding()
+                                        }.onAppear{
+                                            option_values[opt.name] = opt.value
                                         }
                                         
                                         }
                                         
-                                    
-                                    
+                                
                                     Text("Experiment: \(selected_experiment?.name ?? "None")")
                                     Text("Subject: \(selected_subject?.name ?? "None")")
                                     Text("Session: \(selected_session?.name ?? "None")")
             
-                                    
+                               
                                     Button("Start new run", systemImage: "play", action: {
                                         isPythonRunning = true
+                                        
+                                        let taskOptions = option_values.mapValues { $0.jsonValue }
+                                        let taskOptionsJSON: String = {
+                                            guard
+                                                let data = try? JSONSerialization.data(
+                                                    withJSONObject: taskOptions,
+                                                    options: [.sortedKeys]
+                                                ),
+                                                let json = String(data: data, encoding: .utf8)
+                                            else {
+                                                return "{}"
+                                            }
+                                            return json
+                                        }()
+                                        
                                         let env: [String: String] = [
                                             "PSYDK_SUBJECT": selected_subject?.name ?? "",
                                             "PSYDK_SESSION": selected_session?.name ?? "",
                                             "PSYDK_TASK": selected_task?.name ?? experiment.default_task.name,
-                                            "PSYDK_DATA_ROOT": experiment.data_dir + ""]
+                                            "PSYDK_DATA_ROOT": experiment.data_dir + "",
+                                            "PSYDK_TASK_OPTIONS": taskOptionsJSON]
     
                                         let module = URL(filePath: experiment.directory, directoryHint: .isDirectory)
                                         let module_parent_path = module.deletingLastPathComponent().path
