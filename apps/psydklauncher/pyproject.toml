@@ -84,7 +84,7 @@ requires = [
 # Mobile deployments
 [tool.briefcase.app.psydklauncher.iOS]
 requires = [
-     "psydk>=0.3.45,<0.4",
+     "psydk>=0.4,<0.5",
      "matplotlib"
 ]
 min_os_version = "18.0"
