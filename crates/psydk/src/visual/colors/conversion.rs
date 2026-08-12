@@ -181,7 +181,7 @@ pub fn color_to_internal_device_rgba(
         // Apply EOTF to get device RGB with EOTF applied
         return dc.apply_eotf(&linear_device_rgb);
     } else {
-        // We will apply EOTF later during blending, so return linear device RGB for now
+        // We will apply EOTF later after blending, so return linear device RGB for now
         return linear_device_rgb;
     }
 }
@@ -203,7 +203,7 @@ pub fn color_to_linear_device_rgba(color: Color, dc: &dyn DisplayCharacteristics
                 RGBColorSpace::SRGB => {
                     // Transform from linear sRGB to linear device RGB
                     let xyza = srgba_to_xyz(Vector4::new(rgba.r, rgba.g, rgba.b, rgba.a));
-                    dc.xyza_to_device_rgba(&xyza)
+                    dc.xyza_to_linear_device_rgba(&xyza)
                 }
 
                 // Linear sRGB - transform to device
@@ -219,7 +219,7 @@ pub fn color_to_linear_device_rgba(color: Color, dc: &dyn DisplayCharacteristics
         // For other color spaces, convert to XYZ, then to device RGB
         Color::XYZA(xyza) => {
             let xyza = Vector4::new(xyza.x, xyza.y, xyza.z, xyza.a);
-            dc.xyza_to_device_rgba(&xyza)
+            dc.xyza_to_linear_device_rgba(&xyza)
         }
 
         Color::LuvA(luva) => {

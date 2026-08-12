@@ -549,7 +549,7 @@ pub fn py_lab(l: f32, a: f32, b: f32, white_point: [f32; 3], alpha: f32) -> Colo
 
 #[pyfunction]
 #[pyo3(name = "ucs")]
-#[pyo3(signature = (y, u, v, a = 1.0))]
+#[pyo3(signature = (l, u, v, a = 1.0))]
 /// A colour in L + u'v' (+a) color space.
 ///
 /// Parameters
@@ -566,8 +566,8 @@ pub fn py_lab(l: f32, a: f32, b: f32, white_point: [f32; 3], alpha: f32) -> Colo
 /// -------
 /// Color
 ///   The Color object.
-pub fn py_ucs(y: f32, u: f32, v: f32, a: f32) -> Color {
-    Color::new_ucsa(y, u, v, a, [0.95047, 1.0, 1.08883])
+pub fn py_ucs(l: f32, u: f32, v: f32, a: f32) -> Color {
+    Color::new_ucsa(l, u, v, a, [0.95047, 1.0, 1.08883])
 }
 
 fn srgb_to_linear(c: f32) -> f32 {
