@@ -29,8 +29,8 @@ pub enum Color {
     LuvA(LuvA),
     /// CIE 1976 L*a*b* + alpha
     LabA(LabA),
-    /// Y + u'v' + alpha (this IS NOT Y'UV)
-    YuvA(YuvA),
+    /// UCS = L + u'v' + alpha
+    UCSA(UCSA),
 }
 
 impl Default for Color {
@@ -116,9 +116,15 @@ impl Color {
         })
     }
 
-    // Create a new YuvA color in Y + u'v' color space
-    pub fn new_yuva(y: f32, u: f32, v: f32, a: f32) -> Self {
-        Color::YuvA(YuvA { y, u, v, a })
+    // Create a new UCSA color in L + u'v' color space
+    pub fn new_ucsa(l: f32, u: f32, v: f32, a: f32, white_point: [f32; 3]) -> Self {
+        Color::UCSA(UCSA {
+            l,
+            u,
+            v,
+            a,
+            white_point,
+        })
     }
 
     /// Get the alpha component of the color
@@ -128,7 +134,7 @@ impl Color {
             Color::XYZA(xyza) => xyza.a,
             Color::LuvA(luva) => luva.a,
             Color::LabA(laba) => laba.alpha,
-            Color::YuvA(yuva) => yuva.a,
+            Color::UCSA(usca) => usca.a,
         }
     }
 
@@ -152,9 +158,9 @@ impl Color {
         matches!(self, Color::LabA(_))
     }
 
-    /// Check if the color is in Yuv color space
-    pub fn is_yuv(&self) -> bool {
-        matches!(self, Color::YuvA(_))
+    /// Check if the color is in UCS color space (Y + u'v')
+    pub fn is_usv(&self) -> bool {
+        matches!(self, Color::UCSA(_))
     }
 
     pub fn to_display_rgba(&self, dc: &dyn display::DisplayCharacteristics, linear_blending: bool) -> DisplayRGBA {
@@ -257,15 +263,17 @@ pub struct LabA {
 #[pyclass]
 /// Y + u'v' chromacity color with alpha channel
 #[derive(Debug, Clone, Copy)]
-pub struct YuvA {
-    /// Y component
-    pub y: f32,
+pub struct UCSA {
+    /// L component (0 to 1)
+    pub l: f32,
     /// u' component
     pub u: f32,
     /// v' component
     pub v: f32,
     /// Alpha component
     pub a: f32,
+    /// The white point in XYZ coordinates
+    pub white_point: [f32; 3],
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -310,7 +318,7 @@ impl Into<Vector3<f32>> for Color {
             Color::XYZA(xyza) => Vector3::new(xyza.x, xyza.y, xyza.z),
             Color::LuvA(luva) => Vector3::new(luva.l, luva.u, luva.v),
             Color::LabA(laba) => Vector3::new(laba.l, laba.a, laba.b),
-            Color::YuvA(yuva) => Vector3::new(yuva.y, yuva.u, yuva.v),
+            Color::UCSA(usca) => Vector3::new(usca.l, usca.u, usca.v),
         }
     }
 }
@@ -540,14 +548,14 @@ pub fn py_lab(l: f32, a: f32, b: f32, white_point: [f32; 3], alpha: f32) -> Colo
 }
 
 #[pyfunction]
-#[pyo3(name = "Yuv")]
+#[pyo3(name = "ucs")]
 #[pyo3(signature = (y, u, v, a = 1.0))]
-/// A color in the Y + u'v' color space. This is NOT Y'UV, but rather Y + u'v' chromacity coordinates.
+/// A colour in L + u'v' (+a) color space.
 ///
 /// Parameters
 /// ---------
-/// y : float
-/// The Y channel.
+/// L : float
+/// The L channel (0.0 to 1.0).
 /// u : float
 /// The u' channel.
 /// v : float
@@ -558,8 +566,8 @@ pub fn py_lab(l: f32, a: f32, b: f32, white_point: [f32; 3], alpha: f32) -> Colo
 /// -------
 /// Color
 ///   The Color object.
-pub fn py_yuv(y: f32, u: f32, v: f32, a: f32) -> Color {
-    Color::new_yuva(y, u, v, a)
+pub fn py_ucs(y: f32, u: f32, v: f32, a: f32) -> Color {
+    Color::new_ucsa(y, u, v, a, [0.95047, 1.0, 1.08883])
 }
 
 fn srgb_to_linear(c: f32) -> f32 {

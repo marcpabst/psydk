@@ -139,18 +139,34 @@ fn laba_to_xyza(laba: impl Into<Vector4<f32>>, white_point: impl Into<Vector3<f3
     Vector4::new(x, y, z, alpha)
 }
 
-pub fn yuva_to_xyza(yuva: impl Into<Vector4<f32>>) -> Vector4<f32> {
-    // first, convert u'v' to xy chromaticity coordinates
-    let yuva = yuva.into();
-    let x = 9.0 * yuva.y / (6.0 * yuva.y - 16.0 * yuva.z + 12.0);
-    let y = 4.0 * yuva.y / (6.0 * yuva.y - 16.0 * yuva.z + 12.0);
-    let Y = yuva.x;
+// convert USC 1979 L + u' + v' to XYZ
+// y_n is the luminance of the reference white point (Y_n)
+fn ucs_to_xyz(ucs: impl Into<Vector4<f32>>, y_n: f32) -> Vector4<f32> {
+    let ucs = ucs.into();
+    let l = ucs.x;
+    let u_prime = ucs.y;
+    let v_prime = ucs.z;
+    // CIE constants
+    const KAPPA: f32 = 24389.0 / 27.0;
+    const EPSILON: f32 = 216.0 / 24389.0;
 
-    // Now convert xyY to XYZ
-    let X = (x * Y) / y;
-    let Z = ((1.0 - x - y) * Y) / y;
+    // Recover Y from L*
+    let y = if l > KAPPA * EPSILON {
+        y_n * ((l + 16.0) / 116.0).powi(3)
+    } else {
+        y_n * l / KAPPA
+    };
 
-    Vector4::new(X, Y, Z, yuva.w)
+    // Degenerate case
+    if v_prime == 0.0 {
+        return Vector4::new(0.0, y, 0.0, ucs.w);
+    }
+
+    // Recover X and Z from chromaticities
+    let x = y * (9.0 * u_prime) / (4.0 * v_prime);
+    let z = y * (12.0 - 3.0 * u_prime - 20.0 * v_prime) / (4.0 * v_prime);
+
+    Vector4::new(x as f32, y as f32, z as f32, ucs.w)
 }
 
 pub fn color_to_internal_device_rgba(
@@ -220,9 +236,9 @@ pub fn color_to_linear_device_rgba(color: Color, dc: &dyn DisplayCharacteristics
             dc.xyza_to_linear_device_rgba(&xyza)
         }
 
-        Color::YuvA(yuva) => {
+        Color::UCSA(ucsa) => {
             // Convert YUV to XYZ first
-            let xyza = yuva_to_xyza(Vector4::new(yuva.y, yuva.u, yuva.v, yuva.a));
+            let xyza = ucs_to_xyz(Vector4::new(ucsa.l, ucsa.u, ucsa.v, ucsa.a), ucsa.white_point[1]);
             dc.xyza_to_linear_device_rgba(&xyza)
         }
     }
