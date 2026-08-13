@@ -250,7 +250,8 @@ pub fn color_to_linear_device_rgba(color: Color, dc: &dyn DisplayCharacteristics
             let y = if ucsa.normalised {
                 1.0
             } else {
-                dc.white_point_luminance()
+                // normalise by dc.white_point_luminance()
+                ucsa.y / dc.white_point_luminance()
             };
             // Convert YUV to XYZ first
             let xyza = ucs_to_xyz(Vector4::new(ucsa.l, ucsa.u, ucsa.v, ucsa.a), y);
