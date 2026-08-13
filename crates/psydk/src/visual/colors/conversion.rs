@@ -218,8 +218,18 @@ pub fn color_to_linear_device_rgba(color: Color, dc: &dyn DisplayCharacteristics
 
         // For other color spaces, convert to XYZ, then to device RGB
         Color::XYZA(xyza) => {
-            let xyza = Vector4::new(xyza.x, xyza.y, xyza.z, xyza.a);
-            dc.xyza_to_linear_device_rgba(&xyza)
+            let mut xyza_vec = Vector4::new(xyza.x, xyza.y, xyza.z, xyza.a);
+            // if unnormalised, normalise by dc.white_point_luminance()
+            if !xyza.normalised {
+                let white_point_luminance = dc.white_point_luminance();
+                let xyza_vec = Vector4::new(
+                    xyza_vec.x / white_point_luminance,
+                    xyza_vec.y / white_point_luminance,
+                    xyza_vec.z / white_point_luminance,
+                    xyza_vec.w,
+                );
+            }
+            dc.xyza_to_linear_device_rgba(&xyza_vec)
         }
 
         Color::LuvA(luva) => {
@@ -237,8 +247,13 @@ pub fn color_to_linear_device_rgba(color: Color, dc: &dyn DisplayCharacteristics
         }
 
         Color::UCSA(ucsa) => {
+            let y = if ucsa.normalised {
+                1.0
+            } else {
+                dc.white_point_luminance()
+            };
             // Convert YUV to XYZ first
-            let xyza = ucs_to_xyz(Vector4::new(ucsa.l, ucsa.u, ucsa.v, ucsa.a), ucsa.white_point[1]);
+            let xyza = ucs_to_xyz(Vector4::new(ucsa.l, ucsa.u, ucsa.v, ucsa.a), y);
             dc.xyza_to_linear_device_rgba(&xyza)
         }
     }

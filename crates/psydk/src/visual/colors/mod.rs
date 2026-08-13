@@ -90,8 +90,8 @@ impl Color {
     }
 
     /// Create a new XYZA color in CIE 1931 XYZ color space
-    pub fn new_xyza(x: f32, y: f32, z: f32, a: f32) -> Self {
-        Color::XYZA(XYZA { x, y, z, a })
+    pub fn new_xyza(x: f32, y: f32, z: f32, a: f32, normalised: bool) -> Self {
+        Color::XYZA(XYZA { x, y, z, a, normalised })
     }
 
     /// Create a new LuvA color in CIE 1976 L*u*v* color space
@@ -117,13 +117,14 @@ impl Color {
     }
 
     // Create a new UCSA color in L + u'v' color space
-    pub fn new_ucsa(l: f32, u: f32, v: f32, a: f32, white_point: [f32; 3]) -> Self {
+    pub fn new_ucsa(l: f32, u: f32, v: f32, a: f32, y: f32, normalised: bool) -> Self {
         Color::UCSA(UCSA {
             l,
             u,
             v,
             a,
-            white_point,
+            y,
+            normalised,
         })
     }
 
@@ -226,6 +227,8 @@ pub struct XYZA {
     pub z: f32,
     /// Alpha component
     pub a: f32,
+    /// Whether the color is in absolute units (i.e. Y is in cd/m^2) (False) or scaled by the display's maximum luminance (True)
+    pub normalised: bool,
 }
 
 #[pyclass]
@@ -272,8 +275,10 @@ pub struct UCSA {
     pub v: f32,
     /// Alpha component
     pub a: f32,
-    /// The white point in XYZ coordinates
-    pub white_point: [f32; 3],
+    /// The reference white luminance Y value
+    pub y: f32,
+    /// Whether the Y value is scaled to [0, 1] (True) or in absolute units (cd/m^2) (False)
+    pub normalised: bool,
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -499,7 +504,7 @@ pub fn py_luv(l: f32, u: f32, v: f32, a: f32, white_point: [f32; 3]) -> Color {
 
 #[pyfunction]
 #[pyo3(name = "xyz")]
-#[pyo3(signature = (x, y, z, a = 1.0))]
+#[pyo3(signature = (x, y, z, a = 1.0, normalised = true))]
 /// A color in the CIE 1931 XYZ color space.
 ///
 /// Parameters
@@ -517,8 +522,8 @@ pub fn py_luv(l: f32, u: f32, v: f32, a: f32, white_point: [f32; 3]) -> Color {
 /// -------
 /// Color
 ///   The Color object.
-pub fn py_xyz(x: f32, y: f32, z: f32, a: f32) -> Color {
-    Color::new_xyza(x, y, z, a)
+pub fn py_xyz(x: f32, y: f32, z: f32, a: f32, normalised: bool) -> Color {
+    Color::new_xyza(x, y, z, a, normalised)
 }
 
 #[pyfunction]
@@ -549,7 +554,7 @@ pub fn py_lab(l: f32, a: f32, b: f32, white_point: [f32; 3], alpha: f32) -> Colo
 
 #[pyfunction]
 #[pyo3(name = "ucs")]
-#[pyo3(signature = (l, u, v, a = 1.0))]
+#[pyo3(signature = (l, u, v, a = 1.0, y = 1.0, normalised = true))]
 /// A colour in L + u'v' (+a) color space.
 ///
 /// Parameters
@@ -562,12 +567,16 @@ pub fn py_lab(l: f32, a: f32, b: f32, white_point: [f32; 3], alpha: f32) -> Colo
 /// The v' channel.
 /// a : float, optional
 ///   The alpha channel (0.0 to 1.0).
+/// Y : float, optional
+///   The reference white point Y value. Default is 1.0.
+/// y_scaled : bool, optional
+///   Whether the Y value is scaled to [0, 1] (True) or in absolute units (cd/m^2) (False). Default is True.
 /// Returns
 /// -------
 /// Color
 ///   The Color object.
-pub fn py_ucs(l: f32, u: f32, v: f32, a: f32) -> Color {
-    Color::new_ucsa(l, u, v, a, [0.95047, 1.0, 1.08883])
+pub fn py_ucs(l: f32, u: f32, v: f32, a: f32, y: f32, normalised: bool) -> Color {
+    Color::new_ucsa(l, u, v, a, y, normalised)
 }
 
 fn srgb_to_linear(c: f32) -> f32 {
