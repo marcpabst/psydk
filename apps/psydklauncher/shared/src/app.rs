@@ -533,8 +533,7 @@ impl crux_core::App for App {
                     if let Some(existing_subj) = experiment.subjects.iter_mut().find(|s| s.id == subj.id) {
                         // try to create the session directory on disk
                         let target_dir = experiment
-                            .directory
-                            .join("data")
+                            .data_dir
                             .join(format!("sub-{}", existing_subj.name))
                             .join(format!("ses-{}", name));
 
