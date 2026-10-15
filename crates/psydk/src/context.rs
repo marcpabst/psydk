@@ -23,7 +23,7 @@ use std::{
         Arc, Mutex,
     },
 };
-use sysinfo::System;
+// use sysinfo::System;
 use winit::event_loop::EventLoopProxy;
 
 pub enum EventLoopAction {
@@ -625,19 +625,19 @@ impl ExperimentContext {
     /// Returns generic system information as a dictionary.
     pub fn system_info(&self) -> HashMap<String, String> {
         let mut info = HashMap::new();
-        info.insert("os_name".to_string(), System::name().unwrap_or("unknown".to_string()));
-        info.insert(
-            "os_version".to_string(),
-            System::os_version().unwrap_or("unknown".to_string()),
-        );
-        info.insert(
-            "os_kernel_version".to_string(),
-            System::kernel_version().unwrap_or("unknown".to_string()),
-        );
-        info.insert(
-            "cpu_architecture".to_string(),
-            System::cpu_arch().unwrap_or("unknown".to_string()),
-        );
+        // info.insert("os_name".to_string(), System::name().unwrap_or("unknown".to_string()));
+        // info.insert(
+        //     "os_version".to_string(),
+        //     System::os_version().unwrap_or("unknown".to_string()),
+        // );
+        // info.insert(
+        //     "os_kernel_version".to_string(),
+        //     System::kernel_version().unwrap_or("unknown".to_string()),
+        // );
+        // info.insert(
+        //     "cpu_architecture".to_string(),
+        //     System::cpu_arch().unwrap_or("unknown".to_string()),
+        // );
         info
     }
 }
