@@ -112,9 +112,9 @@ impl Experiment {
         limits.max_storage_buffers_per_shader_stage = 16; // do we need to request this
 
         // we want to use higher-bit color formats if possible
-        let features = wgpu::Features::TEXTURE_FORMAT_16BIT_NORM
-            | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
-            | wgpu::Features::FLOAT32_FILTERABLE;
+        let features =
+            wgpu::Features::TEXTURE_FORMAT_16BIT_NORM | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES;
+        //| wgpu::Features::FLOAT32_FILTERABLE;
 
         // Create the logical device and command queue
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
