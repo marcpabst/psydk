@@ -289,12 +289,22 @@ impl Experiment {
         };
         // build actual LUTs
 
-        let (lut_r, lut_g, lut_b) = if let Some(etofs) = window_config.display_characteristics.eotf() {
-            (
-                etofs[0].create_inverse_lut(16_383 + 1),
-                etofs[1].create_inverse_lut(16_383 + 1),
-                etofs[2].create_inverse_lut(16_383 + 1),
-            )
+        // Build the LUT from the display's own `apply_eotf`, i.e. exactly the transform the
+        // non-linear-blending path applies per colour, so both modes agree. (For file-based
+        // characteristics this equals the per-channel inverse LUT of the EOTF.)
+        let (lut_r, lut_g, lut_b) = if window_config.display_characteristics.eotf().is_some() {
+            let dc = &window_config.display_characteristics;
+            let n = 16_383 + 1;
+            let mut lut = [Vec::with_capacity(n), Vec::with_capacity(n), Vec::with_capacity(n)];
+            for i in 0..n {
+                let v = i as f32 / (n - 1) as f32;
+                let out = dc.apply_eotf(&nalgebra::Vector4::new(v, v, v, 1.0));
+                lut[0].push(out.x);
+                lut[1].push(out.y);
+                lut[2].push(out.z);
+            }
+            let [r, g, b] = lut;
+            (r, g, b)
         } else {
             (
                 (0..16_384).rev().map(|i| i as f32 / 16_383.0).collect::<Vec<_>>(),
